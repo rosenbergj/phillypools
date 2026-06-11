@@ -234,12 +234,20 @@ def submit(request):
                     "turnstile_site_key": django_settings.CLOUDFLARE_TURNSTILE_SITE_KEY,
                 })
 
-        # Require either a URL or an image
-        url_valid = url and (url.startswith("http://") or url.startswith("https://"))
+        # Require either a valid URL or an image
+        url_valid = False
+        if url:
+            from django.core.validators import URLValidator
+            from django.core.exceptions import ValidationError
+            try:
+                URLValidator(schemes=["http", "https"])(url)
+                url_valid = True
+            except ValidationError:
+                pass
         if not url_valid and not uploaded_image:
             return render(request, "pools/submit.html", {
                 "pools": pools,
-                "error": "Please provide a link or upload a screenshot.",
+                "error": "Please provide a valid link (starting with http:// or https://) or upload a screenshot.",
                 "form_url": url,
                 "submitter_note": submitter_note,
                 "preselected_pool_id": pool_id,

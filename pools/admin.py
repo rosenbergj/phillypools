@@ -1,5 +1,6 @@
 from datetime import date
 
+from django import forms
 from django.contrib import admin, messages
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
@@ -8,6 +9,15 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from pools.models import Pool, ScheduleChange, Submission
+
+
+class SubmissionAdminForm(forms.ModelForm):
+    # Use CharField so the admin is never blocked by URL validation on bad submissions.
+    url = forms.CharField(required=False, widget=forms.TextInput(attrs={"size": 80}))
+
+    class Meta:
+        model = Submission
+        fields = "__all__"
 
 
 @admin.register(Pool)
@@ -87,6 +97,7 @@ apply_to_pool.short_description = "Apply parsed data to linked pool"
 
 @admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):
+    form = SubmissionAdminForm
     change_form_template = "admin/pools/submission_change_form.html"
     list_display = ["short_source", "submitted_at", "parsed_pool", "llm_confidence", "status"]
     list_filter = ["status", "llm_confidence"]
