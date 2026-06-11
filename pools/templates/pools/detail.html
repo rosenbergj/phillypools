@@ -35,7 +35,7 @@
           {% if pool.opening_date %}
             {{ pool.opening_date }}
             {% if pool.opening_date_source_url %}
-              <a href="{{ pool.opening_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              <a href="{{ pool.opening_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
             {% endif %}
           {% else %}
             <span class="text-muted">Unknown</span>
@@ -47,7 +47,7 @@
           {% if pool.closing_date %}
             {{ pool.closing_date }}
             {% if pool.closing_date_source_url %}
-              <a href="{{ pool.closing_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              <a href="{{ pool.closing_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
             {% endif %}
           {% else %}
             <span class="text-muted">Unknown</span>
@@ -59,7 +59,7 @@
           <dd class="col-sm-8">
             {{ pool.hours }}
             {% if pool.hours_source_url %}
-              <a href="{{ pool.hours_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              <a href="{{ pool.hours_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
             {% endif %}
           </dd>
         {% endif %}
@@ -77,7 +77,7 @@
           <h3 class="h6 mb-1">
             Weekdays
             {% if pool.weekday_schedule_source_url %}
-              <a href="{{ pool.weekday_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              <a href="{{ pool.weekday_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
             {% endif %}
           </h3>
           <pre class="mb-3" style="font-size:.9em;white-space:pre-wrap">{{ pool.weekday_schedule }}</pre>
@@ -87,7 +87,7 @@
           <h3 class="h6 mb-1">
             Weekends
             {% if pool.weekend_schedule_source_url %}
-              <a href="{{ pool.weekend_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              <a href="{{ pool.weekend_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
             {% endif %}
           </h3>
           <pre class="mb-0" style="font-size:.9em;white-space:pre-wrap">{{ pool.weekend_schedule }}</pre>
@@ -105,7 +105,7 @@
             <div class="small text-muted">
               {{ change.date_from }}{% if change.date_from != change.date_to %} – {{ change.date_to }}{% endif %}
               {% if change.source_url %}
-                <a href="{{ change.source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+                <a href="{{ change.source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
               {% endif %}
             </div>
             <div>{{ change.description }}</div>
@@ -121,7 +121,7 @@
         <h2 class="h6 text-uppercase text-muted mb-2">
           Updates
           {% if pool.updates_source_url %}
-            <a href="{{ pool.updates_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            <a href="{{ pool.updates_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
           {% endif %}
         </h2>
         <p class="mb-0">{{ pool.updates }}</p>

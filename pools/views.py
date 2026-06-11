@@ -307,7 +307,10 @@ def submit(request):
         submission.parsed_hours = parsed_fields.get("hours") or ""
         submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
         submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
-        submission.parsed_notes = parsed_fields.get("notes") or ""
+        parsed_notes = parsed_fields.get("notes") or ""
+        if parsed_fields.get("stale_year_warning"):
+            parsed_notes = "WARNING: Source may be from a prior season — verify dates before applying.\n" + parsed_notes
+        submission.parsed_notes = parsed_notes
         submission.llm_confidence = parsed_fields.get("confidence", "")
         submission.save()
 

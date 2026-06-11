@@ -2,14 +2,23 @@ import base64
 import json
 import mimetypes
 import os
+from datetime import date
 from pathlib import Path
 
 import anthropic
 
-_SYSTEM = """You are a data extraction assistant for Philadelphia public swimming pools.
-Extract pool schedule information from the provided content and return ONLY valid JSON.
-Use null for fields you cannot determine. Dates must be YYYY-MM-DD format.
-Pool IDs come from the provided list; set pool_id to null if unsure."""
+
+def _system_prompt() -> str:
+    today = date.today()
+    return (
+        "You are a data extraction assistant for Philadelphia public swimming pools.\n"
+        "Extract pool schedule information from the provided content and return ONLY valid JSON.\n"
+        "Use null for fields you cannot determine. Dates must be YYYY-MM-DD format.\n"
+        "Pool IDs come from the provided list; set pool_id to null if unsure.\n"
+        f"Today's date is {today}. If a date in the content has no year, assume it is {today.year}.\n"
+        f"Set stale_year_warning to true if the content appears to be from a prior season "
+        f"(e.g. references {today.year - 1} or earlier dates as current)."
+    )
 
 _PROMPT_TEMPLATE = """Pool list (id: name):
 {pool_list}
@@ -26,7 +35,8 @@ Return JSON with exactly these fields:
   "weekday_schedule": "<detailed weekday periods, one per line, or null>",
   "weekend_schedule": "<detailed weekend periods, one per line, or null>",
   "notes": "<any other relevant info or null>",
-  "confidence": "<high|medium|low>"
+  "confidence": "<high|medium|low>",
+  "stale_year_warning": <true|false>
 }}"""
 
 _IMAGE_PROMPT = """Pool list (id: name):
@@ -44,7 +54,8 @@ Return JSON with exactly these fields:
   "weekday_schedule": "<detailed weekday periods, one per line, or null>",
   "weekend_schedule": "<detailed weekend periods, one per line, or null>",
   "notes": "<any other relevant info or null>",
-  "confidence": "<high|medium|low>"
+  "confidence": "<high|medium|low>",
+  "stale_year_warning": <true|false>
 }}"""
 
 
@@ -117,7 +128,7 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
     message = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=1024,
-        system=_SYSTEM,
+        system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text
@@ -136,7 +147,7 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
     message = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=4096,
-        system=_SYSTEM,
+        system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
     return _parse_list_response(message.content[0].text)
@@ -156,7 +167,7 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
     message = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=4096,
-        system=_SYSTEM,
+        system=_system_prompt(),
         messages=[{
             "role": "user",
             "content": [
@@ -185,7 +196,7 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
     message = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=1024,
-        system=_SYSTEM,
+        system=_system_prompt(),
         messages=[{
             "role": "user",
             "content": [
