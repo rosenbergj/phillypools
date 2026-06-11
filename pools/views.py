@@ -1,4 +1,3 @@
-import json
 from math import radians, sin, cos, sqrt, atan2
 
 from django.shortcuts import render, get_object_or_404, redirect
@@ -62,7 +61,7 @@ def index(request):
 
     neighborhoods = get_neighborhoods()
 
-    pools_geojson = json.dumps([
+    pools_geojson = [
         {
             "id": p.id,
             "name": p.name,
@@ -73,13 +72,13 @@ def index(request):
         }
         for p in pools
         if p.latitude and p.longitude
-    ])
+    ]
 
     return render(request, "pools/index.html", {
         "pools": pools,
         "pools_geojson": pools_geojson,
         "zip_query": zip_query,
-        "zip_center_json": json.dumps(list(zip_center) if zip_center else None),
+        "zip_center_json": list(zip_center) if zip_center else None,
         "zip_error": zip_error,
         "status_filter": status_filter,
         "neighborhood_filter": neighborhood_filter,
