@@ -63,7 +63,7 @@ class Command(BaseCommand):
             pool_type = POOL_TYPE_MAP.get(pool_type_raw, "outdoor")
 
             status_raw = (props.get("pool_status") or "").lower()
-            is_active = "active" in status_raw
+            is_active = "inactive" not in status_raw and "closed" not in status_raw
 
             notes = (props.get("comments") or "").strip()
 
