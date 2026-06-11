@@ -133,7 +133,7 @@ def index(request):
     elif status_filter == "active":
         pools = [p for p in pools if p.is_active]
     elif status_filter == "opening_soon":
-        pools = [p for p in pools if p.is_active and p.opening_date and p.opening_date > today]
+        pools = [p for p in pools if _pool_map_status(p, today) in ("open", "opening_soon")]
 
     neighborhoods = get_neighborhoods()
 
