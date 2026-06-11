@@ -16,6 +16,55 @@ def _haversine_miles(lat1, lon1, lat2, lon2):
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
+def _point_in_ring(lon, lat, ring):
+    """Ray-casting point-in-polygon. Coordinates are [lon, lat] pairs."""
+    inside = False
+    j = len(ring) - 1
+    for i, (xi, yi) in enumerate(ring):
+        xj, yj = ring[j]
+        if ((yi > lat) != (yj > lat)) and (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _point_to_segment_miles(lat, lon, alat, alon, blat, blon):
+    """Distance from (lat,lon) to the nearest point on segment (a)→(b)."""
+    dx, dy = blon - alon, blat - alat
+    if dx == 0 and dy == 0:
+        return _haversine_miles(lat, lon, alat, alon)
+    t = max(0.0, min(1.0, ((lon - alon) * dx + (lat - alat) * dy) / (dx * dx + dy * dy)))
+    return _haversine_miles(lat, lon, alat + t * dy, alon + t * dx)
+
+
+def _distance_to_geometry(lat, lon, geometry) -> float:
+    """
+    Returns 0 if (lat, lon) is inside the geometry, otherwise the distance
+    in miles to the nearest point on the boundary.
+    """
+    if geometry["type"] == "Polygon":
+        polys = [geometry["coordinates"]]
+    else:  # MultiPolygon
+        polys = geometry["coordinates"]
+
+    # Point-in-polygon: check outer ring of each polygon
+    for rings in polys:
+        if _point_in_ring(lon, lat, rings[0]):
+            return 0.0
+
+    # Minimum distance to any edge across all rings
+    min_dist = float("inf")
+    for rings in polys:
+        for ring in rings:
+            for i in range(len(ring) - 1):
+                alon, alat = ring[i]
+                blon, blat = ring[i + 1]
+                d = _point_to_segment_miles(lat, lon, alat, alon, blat, blon)
+                if d < min_dist:
+                    min_dist = d
+    return min_dist
+
+
 def index(request):
     pools = list(Pool.objects.filter(is_active=True))
 
@@ -47,9 +96,14 @@ def index(request):
     if zip_center:
         for pool in pools:
             if pool.latitude and pool.longitude:
-                pool.distance = _haversine_miles(
-                    zip_center[0], zip_center[1], pool.latitude, pool.longitude
-                )
+                if boundary_geometry:
+                    pool.distance = _distance_to_geometry(
+                        pool.latitude, pool.longitude, boundary_geometry
+                    )
+                else:
+                    pool.distance = _haversine_miles(
+                        zip_center[0], zip_center[1], pool.latitude, pool.longitude
+                    )
             else:
                 pool.distance = float("inf")
         pools.sort(key=lambda p: p.distance)
