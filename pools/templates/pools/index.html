@@ -39,7 +39,7 @@
     </div>
     <div class="col-sm-4 col-md-2">
       <label class="form-label small mb-1">Status</label>
-      <select name="status" class="form-select form-select-sm">
+      <select id="status-select" name="status" class="form-select form-select-sm">
         <option value="" {% if not status_filter %}selected{% endif %}>All</option>
         <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open today</option>
         <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
@@ -148,8 +148,12 @@
   document.getElementById('zip-input').addEventListener('input', () => {
     document.getElementById('neighborhood-select').value = '';
   });
-  document.getElementById('neighborhood-select').addEventListener('change', () => {
+  document.getElementById('neighborhood-select').addEventListener('change', (e) => {
     document.getElementById('zip-input').value = '';
+    e.target.form.submit();
+  });
+  document.getElementById('status-select').addEventListener('change', (e) => {
+    e.target.form.submit();
   });
 
   if (zipCenter) {
