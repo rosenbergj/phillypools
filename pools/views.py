@@ -161,7 +161,7 @@ def index(request):
         pools = [p for p in pools if _pool_map_status(p, today) in ("open", "opening_soon")]
 
     for pool in pools:
-        pool._label_text, pool._label_color, pool._label_bold = _pool_status_label(pool, today)
+        pool.label_text, pool.label_color, pool.label_bold = _pool_status_label(pool, today)
 
     neighborhoods = get_neighborhoods()
 
