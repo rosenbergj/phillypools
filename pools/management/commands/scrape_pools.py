@@ -101,3 +101,7 @@ class Command(BaseCommand):
                 f"\nDone. Created: {created}, Updated: {updated}, Skipped: {skipped}"
             )
         )
+
+        self.stdout.write("Assigning neighborhoods...")
+        from django.core.management import call_command
+        call_command("assign_neighborhoods")
