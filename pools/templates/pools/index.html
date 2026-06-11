@@ -9,7 +9,7 @@
     #map { height: 100%; }
     .list-col { height: calc(100vh - 56px); overflow-y: auto; }
   }
-  .pool-card { border-left: 3px solid transparent; }
+  .pool-card { border-left: 3px solid transparent; cursor: pointer; }
   .pool-card:hover { background-color: #f8f9fa; }
 </style>
 {% endblock %}
@@ -146,11 +146,15 @@
     });
   }
 
+  const markerById = {};
+
   poolsData.forEach(pool => {
     if (pool.lat && pool.lng) {
       const marker = L.marker([pool.lat, pool.lng], {icon: makeIcon(pool.status)})
         .addTo(map)
         .bindPopup(`<strong><a href="/pools/${pool.id}/">${pool.name}</a></strong><br><small>${pool.address}</small>`);
+
+      markerById[pool.id] = marker;
 
       marker.on('click', () => {
         const el = document.getElementById('pool-' + pool.id);
@@ -161,6 +165,22 @@
         }
       });
     }
+  });
+
+  document.querySelectorAll('.pool-card').forEach(card => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;
+      const poolId = parseInt(card.id.replace('pool-', ''));
+      const marker = markerById[poolId];
+      if (!marker) return;
+      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
+      marker.openPopup();
+      const mapEl = document.getElementById('map');
+      if (mapEl.getBoundingClientRect().bottom < 0) {
+        mapEl.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    });
   });
 
   document.getElementById('zip-input').addEventListener('input', () => {
