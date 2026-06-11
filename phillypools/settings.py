@@ -33,7 +33,7 @@ os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
 # Railway injects RAILWAY_PUBLIC_DOMAIN automatically
 _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
 if _railway_domain:
-    ALLOWED_HOSTS.append(_railway_domain)
+    ALLOWED_HOSTS.extend([_railway_domain, '127.0.0.1', 'localhost'])
     CSRF_TRUSTED_ORIGINS = [f'https://{_railway_domain}']
 
 # Trust Railway's HTTPS reverse proxy
