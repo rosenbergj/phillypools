@@ -68,6 +68,31 @@ def _distance_to_geometry(lat, lon, geometry) -> float | None:
     return min_dist
 
 
+def _pool_status_label(pool, today):
+    """Return (text, color, bold) for the list label, or (None, None, None)."""
+    if not pool.is_active:
+        return None, None, None
+    if pool.opening_date:
+        delta = (pool.opening_date - today).days
+        if delta == 0:
+            return "Opening today!", "#198754", True
+        if delta == 1:
+            return "Opening tomorrow!", "#fd7e14", True
+        if 2 <= delta <= 5:
+            return f"Opening in {delta} days", "#fd7e14", True
+        if delta > 5:
+            return f"Opening {pool.opening_date.strftime('%-m/%y')}", "#6c757d", False
+    if pool.closing_date:
+        delta = (pool.closing_date - today).days
+        if delta == 0:
+            return "Last day \U0001f622", "#dc3545", True
+        if delta == 1:
+            return "Closing tomorrow", "#fd7e14", True
+        if 2 <= delta <= 5:
+            return f"Closing in {delta} days", "#fd7e14", True
+    return None, None, None
+
+
 def _pool_map_status(pool, today):
     if not pool.is_active:
         return "inactive"
@@ -134,6 +159,9 @@ def index(request):
         pools = [p for p in pools if p.is_active]
     elif status_filter == "opening_soon":
         pools = [p for p in pools if _pool_map_status(p, today) in ("open", "opening_soon")]
+
+    for pool in pools:
+        pool._label_text, pool._label_color, pool._label_bold = _pool_status_label(pool, today)
 
     neighborhoods = get_neighborhoods()
 

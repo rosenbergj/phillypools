@@ -88,6 +88,9 @@
                 {% endif %}
               </div>
             </div>
+            {% if pool._label_text %}
+              <div class="small mt-1" style="color:{{ pool._label_color }}{% if pool._label_bold %};font-weight:600{% endif %}">{{ pool._label_text }}</div>
+            {% endif %}
             <div class="text-muted small">{{ pool.address }}</div>
             {% if pool.hours %}
               <div class="small mt-1">{{ pool.hours }}</div>
