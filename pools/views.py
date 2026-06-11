@@ -261,10 +261,10 @@ def submit(request):
         submission.parsed_pool = parsed_pool
         submission.parsed_opening_date = parsed_fields.get("opening_date")
         submission.parsed_closing_date = parsed_fields.get("closing_date")
-        submission.parsed_hours = parsed_fields.get("hours", "")
-        submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule", "")
-        submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule", "")
-        submission.parsed_notes = parsed_fields.get("notes", "")
+        submission.parsed_hours = parsed_fields.get("hours") or ""
+        submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
+        submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
+        submission.parsed_notes = parsed_fields.get("notes") or ""
         submission.llm_confidence = parsed_fields.get("confidence", "")
         submission.save()
 
