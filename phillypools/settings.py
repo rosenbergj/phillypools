@@ -132,14 +132,12 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 _r2_account_id = env('R2_ACCOUNT_ID', default='')
 if _r2_account_id:
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     AWS_ACCESS_KEY_ID = env('R2_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = env('R2_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = env('R2_BUCKET_NAME')
@@ -147,3 +145,12 @@ if _r2_account_id:
     AWS_S3_REGION_NAME = 'auto'
     AWS_DEFAULT_ACL = None
     AWS_S3_FILE_OVERWRITE = False
+    STORAGES = {
+        "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    }
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    }
