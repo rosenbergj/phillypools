@@ -29,6 +29,8 @@ DEBUG = env('DEBUG', default=True)
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=[])
 ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
 os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
+CLOUDFLARE_TURNSTILE_SITE_KEY = env('CLOUDFLARE_TURNSTILE_SITE_KEY', default='')
+CLOUDFLARE_TURNSTILE_SECRET_KEY = env('CLOUDFLARE_TURNSTILE_SECRET_KEY', default='')
 
 # Railway injects RAILWAY_PUBLIC_DOMAIN automatically
 _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')

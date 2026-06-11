@@ -53,8 +53,20 @@
                 placeholder="Anything that might help the moderator…">{{ submitter_note|default:'' }}</textarea>
     </div>
 
+    {% if turnstile_site_key %}
+      <div class="mb-3">
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}"></div>
+      </div>
+    {% endif %}
+
     <button type="submit" class="btn btn-primary">Submit</button>
     <a href="/" class="btn btn-link text-muted">Cancel</a>
   </form>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 {% endblock %}

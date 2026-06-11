@@ -170,6 +170,27 @@ def submit(request):
         pool_id = request.POST.get("pool_id", "").strip()
         uploaded_image = request.FILES.get("image")
 
+        # Verify Turnstile token if configured
+        from django.conf import settings as django_settings
+        turnstile_secret = django_settings.CLOUDFLARE_TURNSTILE_SECRET_KEY
+        if turnstile_secret:
+            token = request.POST.get("cf-turnstile-response", "")
+            import requests as http_requests
+            resp = http_requests.post(
+                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                data={"secret": turnstile_secret, "response": token},
+                timeout=5,
+            )
+            if not resp.json().get("success"):
+                return render(request, "pools/submit.html", {
+                    "pools": pools,
+                    "error": "Human verification failed. Please try again.",
+                    "form_url": url,
+                    "submitter_note": submitter_note,
+                    "preselected_pool_id": pool_id,
+                    "turnstile_site_key": django_settings.CLOUDFLARE_TURNSTILE_SITE_KEY,
+                })
+
         # Require either a URL or an image
         url_valid = url and (url.startswith("http://") or url.startswith("https://"))
         if not url_valid and not uploaded_image:
@@ -179,6 +200,7 @@ def submit(request):
                 "form_url": url,
                 "submitter_note": submitter_note,
                 "preselected_pool_id": pool_id,
+                "turnstile_site_key": django_settings.CLOUDFLARE_TURNSTILE_SITE_KEY,
             })
 
         parsed_pool = None
@@ -247,9 +269,11 @@ def submit(request):
 
         return redirect("submit_thanks")
 
+    from django.conf import settings as django_settings
     return render(request, "pools/submit.html", {
         "pools": pools,
         "preselected_pool_id": preselected_pool_id,
+        "turnstile_site_key": django_settings.CLOUDFLARE_TURNSTILE_SITE_KEY,
     })
 
 
