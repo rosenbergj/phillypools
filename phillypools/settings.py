@@ -12,20 +12,23 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+import environ
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, []),
+)
+environ.Env.read_env(BASE_DIR / '.env')
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+SECRET_KEY = env('SECRET_KEY', default='django-insecure-k+%g-asmx5#io(ald!#m+79+#x$1^pd=jlq!hxy1-i1xk#&3@a')
+DEBUG = env('DEBUG', default=True)
+ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=[])
+ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-k+%g-asmx5#io(ald!#m+79+#x$1^pd=jlq!hxy1-i1xk#&3@a'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+import os
+os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
 
 
 # Application definition
@@ -78,10 +81,7 @@ WSGI_APPLICATION = 'phillypools.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'),
 }
 
 
