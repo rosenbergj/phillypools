@@ -20,12 +20,12 @@
   <form method="get" class="row g-2 mb-3 align-items-end">
     <div class="col-sm-4 col-md-3">
       <label class="form-label small mb-1">Zip code</label>
-      <input type="text" name="zip" class="form-control form-control-sm" placeholder="e.g. 19143"
+      <input type="text" id="zip-input" name="zip" class="form-control form-control-sm" placeholder="e.g. 19143"
              value="{{ zip_query }}" maxlength="10">
     </div>
     <div class="col-sm-4 col-md-3">
       <label class="form-label small mb-1">Neighborhood</label>
-      <select name="neighborhood" class="form-select form-select-sm">
+      <select id="neighborhood-select" name="neighborhood" class="form-select form-select-sm">
         <option value="">All</option>
         {% for n in neighborhoods %}
           <option value="{{ n.name }}" {% if n.name == neighborhood_filter %}selected{% endif %}>{{ n.name }}</option>
@@ -138,6 +138,13 @@
         }
       });
     }
+  });
+
+  document.getElementById('zip-input').addEventListener('input', () => {
+    document.getElementById('neighborhood-select').value = '';
+  });
+  document.getElementById('neighborhood-select').addEventListener('change', () => {
+    document.getElementById('zip-input').value = '';
   });
 
   if (zipCenter) {
