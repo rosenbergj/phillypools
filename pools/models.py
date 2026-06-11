@@ -76,7 +76,8 @@ class Submission(models.Model):
         ("rejected", "Rejected"),
     ]
 
-    url = models.URLField()
+    url = models.URLField(blank=True)
+    uploaded_image = models.FileField(upload_to="submissions/", blank=True)
     submitter_note = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     raw_fetched_content = models.TextField(blank=True)

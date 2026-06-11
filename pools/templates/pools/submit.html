@@ -6,21 +6,31 @@
 <div class="container py-4" style="max-width: 640px">
   <h1 class="h3 mb-1">Submit an update</h1>
   <p class="text-muted mb-4">
-    Found a link with opening dates, hours, or other pool info? Share it here and
-    a moderator will review it.
+    Found a link with opening dates, hours, or other pool info? Or have a screenshot
+    (e.g. from an Instagram story)? Share it here and a moderator will review it.
   </p>
 
   {% if error %}
     <div class="alert alert-danger">{{ error }}</div>
   {% endif %}
 
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
 
     <div class="mb-3">
-      <label for="url" class="form-label">Link <span class="text-danger">*</span></label>
+      <label for="url" class="form-label">Link</label>
       <input type="url" id="url" name="url" class="form-control"
-             placeholder="https://..." value="{{ form_url|default:'' }}" required>
+             placeholder="https://..." value="{{ form_url|default:'' }}">
+      <div class="form-text">A link to a page with pool schedule info.</div>
+    </div>
+
+    <div class="mb-1 text-center text-muted small">— or —</div>
+
+    <div class="mb-3 mt-1">
+      <label for="image" class="form-label">Upload a screenshot</label>
+      <input type="file" id="image" name="image" class="form-control"
+             accept="image/*">
+      <div class="form-text">A screenshot of schedule info, e.g. from an Instagram story or flyer.</div>
     </div>
 
     <div class="mb-3">
@@ -34,7 +44,7 @@
           </option>
         {% endfor %}
       </select>
-      <div class="form-text">If the link is specifically about one pool, select it here.</div>
+      <div class="form-text">If this is specifically about one pool, select it here.</div>
     </div>
 
     <div class="mb-4">
