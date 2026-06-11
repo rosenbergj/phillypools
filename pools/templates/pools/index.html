@@ -41,9 +41,9 @@
       <label class="form-label small mb-1">Status</label>
       <select id="status-select" name="status" class="form-select form-select-sm">
         <option value="" {% if not status_filter %}selected{% endif %}>All</option>
-        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open today</option>
+        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open</option>
         <option value="opening_soon" {% if status_filter == "opening_soon" %}selected{% endif %}>Opening soon</option>
-        <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active (exclude won't-open)</option>
+        <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active this summer</option>
         <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
       </select>
     </div>
