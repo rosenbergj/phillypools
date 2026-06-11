@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 
 from pools.models import Pool
 
-DATA = Path(__file__).resolve().parents[3] / "data" / "neighborhoods.json"
+DATA = Path(__file__).resolve().parents[2] / "data" / "neighborhoods.json"
 
 
 def _point_in_ring(lon, lat, ring):
