@@ -4,8 +4,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 
 from pools.models import Pool, Submission
-from pools.services.geocoder import geocode_zip
-from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid
+from pools.services.geocoder import geocode_zip, get_zip_polygon
+from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 
 
 def _haversine_miles(lat1, lon1, lat2, lon2):
@@ -25,7 +25,8 @@ def index(request):
 
     zip_center = None
     zip_error = None
-    center_label = None  # shown next to distance e.g. "19143" or "West Philly"
+    center_label = None
+    boundary_geometry = None  # GeoJSON geometry to outline on the map
 
     # Determine sort center: zip takes priority, then neighborhood
     if zip_query:
@@ -33,6 +34,7 @@ def index(request):
         if coords:
             zip_center = coords
             center_label = zip_query
+            boundary_geometry = get_zip_polygon(zip_query)
         else:
             zip_error = f'Could not find zip code "{zip_query}".'
     elif neighborhood_filter:
@@ -40,6 +42,7 @@ def index(request):
         if coords:
             zip_center = coords
             center_label = neighborhood_filter
+            boundary_geometry = get_neighborhood_geometry(neighborhood_filter)
 
     if zip_center:
         for pool in pools:
@@ -79,6 +82,7 @@ def index(request):
         "pools_geojson": pools_geojson,
         "zip_query": zip_query,
         "zip_center_json": list(zip_center) if zip_center else None,
+        "boundary_geometry": boundary_geometry,
         "zip_error": zip_error,
         "status_filter": status_filter,
         "neighborhood_filter": neighborhood_filter,

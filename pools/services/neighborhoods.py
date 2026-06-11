@@ -19,3 +19,10 @@ def get_neighborhood_centroid(name: str) -> tuple[float, float] | None:
         if n["name"] == name:
             return (n["lat"], n["lng"])
     return None
+
+
+def get_neighborhood_geometry(name: str) -> dict | None:
+    for n in get_neighborhoods():
+        if n["name"] == name:
+            return n.get("geometry")
+    return None
