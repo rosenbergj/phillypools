@@ -138,7 +138,15 @@ class SubmissionAdmin(admin.ModelAdmin):
             path("<int:submission_id>/reparse/",
                  self.admin_site.admin_view(self.reparse_view),
                  name="pools_submission_reparse"),
+            path("<int:submission_id>/apply/",
+                 self.admin_site.admin_view(self.apply_view),
+                 name="pools_submission_apply"),
         ] + super().get_urls()
+
+    def apply_view(self, request, submission_id):
+        submission = get_object_or_404(Submission, pk=submission_id)
+        apply_to_pool(self, request, Submission.objects.filter(pk=submission_id))
+        return redirect(f"../{submission_id}/change/")
 
     def reparse_view(self, request, submission_id):
         submission = get_object_or_404(Submission, pk=submission_id)
