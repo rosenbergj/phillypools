@@ -1,3 +1,181 @@
 from django.contrib import admin
+from django.utils import timezone
+from django.utils.html import format_html
 
-# Register your models here.
+from pools.models import Pool, ScheduleChange, Submission
+
+
+@admin.register(Pool)
+class PoolAdmin(admin.ModelAdmin):
+    list_display = ["name", "pool_type", "neighborhood", "is_open_display", "opening_date", "closing_date", "is_active"]
+    list_filter = ["pool_type", "is_active", "neighborhood"]
+    search_fields = ["name", "address", "neighborhood"]
+    readonly_fields = ["last_updated"]
+
+    def is_open_display(self, obj):
+        v = obj.is_open
+        if v is True:
+            return "Open"
+        if v is False:
+            return "Closed"
+        return "?"
+    is_open_display.short_description = "Status"
+
+
+class ScheduleChangeInline(admin.TabularInline):
+    model = ScheduleChange
+    extra = 0
+
+
+PoolAdmin.inlines = [ScheduleChangeInline]
+
+
+def _source_url(submission):
+    """Return the best URL to use as a source attribution for this submission."""
+    return submission.url or ""
+
+
+def apply_to_pool(modeladmin, request, queryset):
+    applied = skipped = 0
+    for sub in queryset.select_related("parsed_pool"):
+        if not sub.parsed_pool:
+            skipped += 1
+            continue
+
+        pool = sub.parsed_pool
+        source = _source_url(sub)
+
+        if sub.parsed_opening_date:
+            pool.opening_date = sub.parsed_opening_date
+            pool.opening_date_source_url = source
+        if sub.parsed_closing_date:
+            pool.closing_date = sub.parsed_closing_date
+            pool.closing_date_source_url = source
+        if sub.parsed_hours:
+            pool.hours = sub.parsed_hours
+            pool.hours_source_url = source
+        if sub.parsed_weekday_schedule:
+            pool.weekday_schedule = sub.parsed_weekday_schedule
+            pool.weekday_schedule_source_url = source
+        if sub.parsed_weekend_schedule:
+            pool.weekend_schedule = sub.parsed_weekend_schedule
+            pool.weekend_schedule_source_url = source
+        if sub.parsed_notes:
+            pool.notes = sub.parsed_notes
+
+        pool.save()
+
+        sub.status = "approved"
+        sub.reviewed_at = timezone.now()
+        sub.save()
+        applied += 1
+
+    msg = f"Applied {applied} submission(s) to pool(s)."
+    if skipped:
+        msg += f" Skipped {skipped} with no linked pool."
+    modeladmin.message_user(request, msg)
+
+apply_to_pool.short_description = "Apply parsed data to linked pool"
+
+
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = ["short_source", "submitted_at", "parsed_pool", "llm_confidence", "status"]
+    list_filter = ["status", "llm_confidence"]
+    list_select_related = ["parsed_pool"]
+    actions = [apply_to_pool]
+    readonly_fields = [
+        "submitted_at",
+        "image_preview",
+        "llm_response_display",
+        "current_opening_date",
+        "current_closing_date",
+        "current_hours",
+        "current_weekday_schedule",
+        "current_weekend_schedule",
+        "current_notes",
+    ]
+    fieldsets = (
+        ("Submission", {
+            "fields": (
+                "submitted_at",
+                "url",
+                "uploaded_image",
+                "image_preview",
+                "submitter_note",
+            ),
+        }),
+        ("Parsed fields vs. current pool values", {
+            "description": "Left column: what the LLM extracted. Right column: what the pool currently has.",
+            "fields": (
+                ("parsed_pool", "llm_confidence"),
+                ("parsed_opening_date", "current_opening_date"),
+                ("parsed_closing_date", "current_closing_date"),
+                ("parsed_hours", "current_hours"),
+                ("parsed_weekday_schedule", "current_weekday_schedule"),
+                ("parsed_weekend_schedule", "current_weekend_schedule"),
+                ("parsed_notes", "current_notes"),
+            ),
+        }),
+        ("Review", {
+            "fields": ("status", "reviewed_at", "moderator_notes"),
+        }),
+        ("Raw LLM response", {
+            "classes": ("collapse",),
+            "fields": ("llm_response_display",),
+        }),
+    )
+
+    def short_source(self, obj):
+        if obj.url:
+            return obj.url[:60] + ("…" if len(obj.url) > 60 else "")
+        if obj.uploaded_image:
+            return f"[image] {obj.uploaded_image.name.split('/')[-1]}"
+        return "—"
+    short_source.short_description = "Source"
+
+    def image_preview(self, obj):
+        if obj.uploaded_image:
+            return format_html(
+                '<img src="{}" style="max-width:400px;max-height:300px;object-fit:contain">',
+                obj.uploaded_image.url,
+            )
+        return "—"
+    image_preview.short_description = "Image preview"
+
+    def llm_response_display(self, obj):
+        if obj.llm_response:
+            import json
+            return format_html("<pre style='white-space:pre-wrap'>{}</pre>",
+                               json.dumps(obj.llm_response, indent=2))
+        return "—"
+    llm_response_display.short_description = "Raw LLM response"
+
+    def _current(self, obj, field):
+        if obj.parsed_pool:
+            return getattr(obj.parsed_pool, field) or "—"
+        return "(no pool linked)"
+
+    def current_opening_date(self, obj):
+        return self._current(obj, "opening_date")
+    current_opening_date.short_description = "Current: opening date"
+
+    def current_closing_date(self, obj):
+        return self._current(obj, "closing_date")
+    current_closing_date.short_description = "Current: closing date"
+
+    def current_hours(self, obj):
+        return self._current(obj, "hours")
+    current_hours.short_description = "Current: hours"
+
+    def current_weekday_schedule(self, obj):
+        return self._current(obj, "weekday_schedule")
+    current_weekday_schedule.short_description = "Current: weekday schedule"
+
+    def current_weekend_schedule(self, obj):
+        return self._current(obj, "weekend_schedule")
+    current_weekend_schedule.short_description = "Current: weekend schedule"
+
+    def current_notes(self, obj):
+        return self._current(obj, "notes")
+    current_notes.short_description = "Current: notes"
