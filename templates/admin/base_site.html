@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% load i18n admin_extras %}
+
+{% block messages %}
+{% pending_submission_count as pending %}
+{% if pending %}
+<ul class="messagelist">
+  <li class="warning">
+    <a href="{% url 'admin:pools_submission_changelist' %}?status__exact=pending">
+      {{ pending }} pending submission{{ pending|pluralize }} awaiting review &rarr;
+    </a>
+  </li>
+</ul>
+{% endif %}
+{{ block.super }}
+{% endblock %}
