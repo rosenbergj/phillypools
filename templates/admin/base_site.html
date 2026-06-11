@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block messages %}
+{% if request.user.is_authenticated %}
 {% pending_submission_count as pending %}
 {% if pending %}
 <ul class="messagelist">
@@ -15,6 +16,7 @@
     </a>
   </li>
 </ul>
+{% endif %}
 {% endif %}
 {{ block.super }}
 {% endblock %}
