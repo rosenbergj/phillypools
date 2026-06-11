@@ -254,6 +254,15 @@ def submit(request):
                 "turnstile_site_key": django_settings.CLOUDFLARE_TURNSTILE_SITE_KEY,
             })
 
+        # Content moderation: check uploaded images before saving anything to storage.
+        # Silently drop flagged submissions — don't reveal to the submitter that they were caught.
+        if uploaded_image:
+            from pools.services.llm_parser import moderate_image
+            image_bytes_for_check = uploaded_image.read()
+            uploaded_image.seek(0)
+            if moderate_image(image_bytes_for_check, uploaded_image.name):
+                return redirect("submit_thanks")
+
         parsed_pool = None
         if pool_id:
             try:

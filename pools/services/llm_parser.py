@@ -59,6 +59,47 @@ Return JSON with exactly these fields:
 }}"""
 
 
+def moderate_image(image_bytes: bytes, image_name: str) -> bool:
+    """Return True if the image should be rejected (nudity or illegal content).
+    Fails open: returns False if the API call fails, so legitimate submissions
+    aren't blocked by a transient API outage."""
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    media_type, _ = mimetypes.guess_type(image_name)
+    if not media_type or not media_type.startswith("image/"):
+        media_type = "image/jpeg"
+
+    image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+    try:
+        message = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=64,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": image_data},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "Does this image contain nudity, explicit sexual content, or illegal content? "
+                            "People wearing swimsuits, swim trunks, bikinis, or similar swimming attire are NOT nudity — "
+                            "this is a pool scheduling app and swimwear is expected and fine. "
+                            'Reply with only JSON: {"flagged": true} or {"flagged": false}'
+                        ),
+                    },
+                ],
+            }],
+        )
+        result = json.loads(message.content[0].text.strip())
+        return bool(result.get("flagged"))
+    except Exception:
+        return False
+
+
 def _format_pool_list(pool_list: list[dict]) -> str:
     return "\n".join(f"{p['id']}: {p['name']}" for p in pool_list)
 
