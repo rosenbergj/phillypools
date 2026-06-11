@@ -1,0 +1,131 @@
+{% extends "pools/base.html" %}
+
+{% block title %}{{ pool.name }} — Philly Pools{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 720px">
+  <a href="/" class="text-muted small text-decoration-none">&larr; All pools</a>
+
+  <div class="d-flex align-items-center gap-2 mt-2 mb-1">
+    <h1 class="h3 mb-0">{{ pool.name }}</h1>
+    <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
+    {% if pool.is_open %}
+      <span class="badge bg-success">Open</span>
+    {% elif pool.is_open == False %}
+      <span class="badge bg-secondary">Closed</span>
+    {% endif %}
+  </div>
+
+  <p class="text-muted mb-3">
+    <a href="https://www.google.com/maps/search/?api=1&query={{ pool.address|urlencode }}"
+       target="_blank" rel="noopener" class="text-muted">{{ pool.address }}</a>
+    {% if pool.phone_number %}&nbsp;&middot;&nbsp;{{ pool.phone_number }}{% endif %}
+    {% if pool.official_website_url %}
+      &nbsp;&middot;&nbsp;<a href="{{ pool.official_website_url }}" target="_blank" rel="noopener">Official page</a>
+    {% endif %}
+  </p>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h6 text-uppercase text-muted mb-3">Season</h2>
+      <dl class="row mb-0">
+
+        <dt class="col-sm-4">Opens</dt>
+        <dd class="col-sm-8">
+          {% if pool.opening_date %}
+            {{ pool.opening_date }}
+            {% if pool.opening_date_source_url %}
+              <a href="{{ pool.opening_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            {% endif %}
+          {% else %}
+            <span class="text-muted">Unknown</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-4">Closes</dt>
+        <dd class="col-sm-8">
+          {% if pool.closing_date %}
+            {{ pool.closing_date }}
+            {% if pool.closing_date_source_url %}
+              <a href="{{ pool.closing_date_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            {% endif %}
+          {% else %}
+            <span class="text-muted">Unknown</span>
+          {% endif %}
+        </dd>
+
+        {% if pool.hours %}
+          <dt class="col-sm-4">Hours</dt>
+          <dd class="col-sm-8">
+            {{ pool.hours }}
+            {% if pool.hours_source_url %}
+              <a href="{{ pool.hours_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            {% endif %}
+          </dd>
+        {% endif %}
+
+      </dl>
+    </div>
+  </div>
+
+  {% if pool.weekday_schedule or pool.weekend_schedule %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-3">Schedule</h2>
+
+        {% if pool.weekday_schedule %}
+          <h3 class="h6 mb-1">
+            Weekdays
+            {% if pool.weekday_schedule_source_url %}
+              <a href="{{ pool.weekday_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            {% endif %}
+          </h3>
+          <pre class="mb-3" style="font-size:.9em;white-space:pre-wrap">{{ pool.weekday_schedule }}</pre>
+        {% endif %}
+
+        {% if pool.weekend_schedule %}
+          <h3 class="h6 mb-1">
+            Weekends
+            {% if pool.weekend_schedule_source_url %}
+              <a href="{{ pool.weekend_schedule_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+            {% endif %}
+          </h3>
+          <pre class="mb-0" style="font-size:.9em;white-space:pre-wrap">{{ pool.weekend_schedule }}</pre>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if schedule_changes %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-3">Schedule changes</h2>
+        {% for change in schedule_changes %}
+          <div class="mb-2 {% if not forloop.last %}pb-2 border-bottom{% endif %}">
+            <div class="small text-muted">
+              {{ change.date_from }}{% if change.date_from != change.date_to %} – {{ change.date_to }}{% endif %}
+              {% if change.source_url %}
+                <a href="{{ change.source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+              {% endif %}
+            </div>
+            <div>{{ change.description }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pool.notes %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-2">Notes</h2>
+        <p class="mb-0">{{ pool.notes }}</p>
+      </div>
+    </div>
+  {% endif %}
+
+  <a href="{% url 'submit' %}?pool={{ pool.pk }}" class="btn btn-outline-primary btn-sm">
+    Submit an update for this pool
+  </a>
+</div>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "pools/base.html" %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  #map { height: 400px; }
+  @media (min-width: 992px) {
+    .map-col { position: sticky; top: 56px; height: calc(100vh - 56px); }
+    #map { height: 100%; }
+    .list-col { height: calc(100vh - 56px); overflow-y: auto; }
+  }
+  .pool-card { border-left: 3px solid transparent; }
+  .pool-card:hover { background-color: #f8f9fa; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 pt-3">
+
+  <form method="get" class="row g-2 mb-3 align-items-end">
+    <div class="col-sm-4 col-md-3">
+      <label class="form-label small mb-1">Zip code</label>
+      <input type="text" name="zip" class="form-control form-control-sm" placeholder="e.g. 19143"
+             value="{{ zip_query }}" maxlength="10">
+    </div>
+    <div class="col-sm-4 col-md-3">
+      <label class="form-label small mb-1">Neighborhood / District</label>
+      <select name="neighborhood" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for n in neighborhoods %}
+          <option value="{{ n }}" {% if n == neighborhood_filter %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-4 col-md-2">
+      <label class="form-label small mb-1">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open now</option>
+        <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
+      {% if zip_query or status_filter or neighborhood_filter %}
+        <a href="/" class="btn btn-outline-secondary btn-sm ms-1">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if zip_error %}
+    <div class="alert alert-warning py-2 small">{{ zip_error }}</div>
+  {% endif %}
+
+  <div class="row g-0">
+    <div class="col-lg-6 map-col pe-lg-2 mb-3 mb-lg-0">
+      <div id="map"></div>
+    </div>
+    <div class="col-lg-6 list-col ps-lg-2">
+      {% if pools %}
+        <p class="text-muted small mb-2">
+          {{ pools|length }} pool{{ pools|length|pluralize }}
+          {% if show_distance %}sorted by distance from {{ zip_query }}{% endif %}
+        </p>
+        {% for pool in pools %}
+          <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded">
+            <div class="d-flex justify-content-between align-items-start">
+              <a href="{% url 'pool_detail' pool.pk %}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>
+              <div class="d-flex gap-2 align-items-center">
+                {% if show_distance and pool.distance is not None %}
+                  <span class="text-muted small">{{ pool.distance|floatformat:1 }} mi</span>
+                {% endif %}
+                {% if pool.is_open %}
+                  <span class="badge bg-success">Open</span>
+                {% elif pool.is_open == False %}
+                  <span class="badge bg-secondary">Closed</span>
+                {% else %}
+                  <span class="badge bg-light text-muted border">?</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="text-muted small">{{ pool.address }}</div>
+            {% if pool.hours %}
+              <div class="small mt-1">{{ pool.hours }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-muted">No pools match your filters.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{{ pools_geojson|json_script:"pools-data" }}
+{{ zip_center_json|json_script:"zip-center" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const poolsData = JSON.parse(document.getElementById('pools-data').textContent);
+  const zipCenter = JSON.parse(document.getElementById('zip-center').textContent);
+
+  const map = L.map('map').setView([39.9526, -75.1652], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(map);
+
+  function makeIcon(isOpen) {
+    const color = isOpen === true ? '#198754' : isOpen === false ? '#fd7e14' : '#adb5bd';
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:13px;height:13px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+      iconSize: [13, 13],
+      iconAnchor: [6, 6],
+      popupAnchor: [0, -8],
+    });
+  }
+
+  poolsData.forEach(pool => {
+    if (pool.lat && pool.lng) {
+      const marker = L.marker([pool.lat, pool.lng], {icon: makeIcon(pool.is_open)})
+        .addTo(map)
+        .bindPopup(`<strong><a href="/pools/${pool.id}/">${pool.name}</a></strong><br><small>${pool.address}</small>`);
+
+      marker.on('click', () => {
+        const el = document.getElementById('pool-' + pool.id);
+        if (el) {
+          el.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+          el.classList.add('highlighted');
+          setTimeout(() => el.classList.remove('highlighted'), 2000);
+        }
+      });
+    }
+  });
+
+  if (zipCenter) {
+    map.setView([zipCenter[0], zipCenter[1]], 13);
+    L.circle([zipCenter[0], zipCenter[1]], {
+      radius: 400, color: '#0d6efd', weight: 2, fillOpacity: 0.08,
+    }).addTo(map);
+  }
+</script>
+{% endblock %}
