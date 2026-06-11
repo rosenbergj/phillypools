@@ -143,6 +143,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         submission = get_object_or_404(Submission, pk=submission_id)
 
         if request.method == "POST" and request.POST.get("action") == "apply":
+            # Apply selected pool updates
             source = submission.url or ""
             applied = 0
             for pool_id in request.POST.getlist("pool_ids"):
@@ -170,7 +171,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             messages.success(request, f"Applied updates to {applied} pool(s).")
             return redirect(f"../../{submission_id}/change/")
 
-        # POST without action=apply: run the LLM
+        # GET or POST without action=apply: run the LLM
         results = []
         error = None
         pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
