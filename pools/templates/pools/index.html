@@ -174,8 +174,12 @@
       const poolId = parseInt(card.id.replace('pool-', ''));
       const marker = markerById[poolId];
       if (!marker) return;
+      if (boundaryLayer) boundaryLayer.setStyle({opacity: 0, fillOpacity: 0});
       map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
-      marker.openPopup();
+      map.once('moveend', () => {
+        if (boundaryLayer) boundaryLayer.setStyle({opacity: 1, fillOpacity: 0.08});
+        marker.openPopup();
+      });
       const mapEl = document.getElementById('map');
       if (mapEl.getBoundingClientRect().bottom < 0) {
         mapEl.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -194,12 +198,13 @@
     e.target.form.submit();
   });
 
+  let boundaryLayer = null;
   if (zipCenter) {
     if (boundaryGeometry) {
-      const layer = L.geoJSON({type: 'Feature', geometry: boundaryGeometry}, {
+      boundaryLayer = L.geoJSON({type: 'Feature', geometry: boundaryGeometry}, {
         style: {color: '#0d6efd', weight: 2, fillOpacity: 0.08, fillColor: '#0d6efd'},
       }).addTo(map);
-      map.fitBounds(layer.getBounds(), {maxZoom: 14});
+      map.fitBounds(boundaryLayer.getBounds(), {maxZoom: 14});
     } else {
       map.setView([zipCenter[0], zipCenter[1]], 13);
     }
