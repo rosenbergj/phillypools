@@ -73,19 +73,21 @@
           <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded">
             <div class="d-flex justify-content-between align-items-start">
               <a href="{% url 'pool_detail' pool.pk %}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>
-              <div class="d-flex gap-2 align-items-center">
+              <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
                 {% if show_distance and pool.distance is not None %}
-                  <span class="text-muted small">{{ pool.distance|floatformat:1 }} mi</span>
+                  <span class="text-muted small" style="min-width:3rem;text-align:right">{{ pool.distance|floatformat:1 }} mi</span>
                 {% endif %}
-                {% if not pool.is_active %}
-                  <span class="badge" style="background:#842029">Won't open</span>
-                {% elif pool.is_open %}
-                  <span class="badge bg-success">Open</span>
-                {% elif pool.is_open == False %}
-                  <span class="badge bg-secondary">Closed</span>
-                {% else %}
-                  <span class="badge bg-light text-muted border">?</span>
-                {% endif %}
+                <div style="min-width:5.5rem;text-align:center">
+                  {% if not pool.is_active %}
+                    <span class="badge" style="background:#842029">Won't open</span>
+                  {% elif pool.is_open %}
+                    <span class="badge bg-success">Open</span>
+                  {% elif pool.is_open == False %}
+                    <span class="badge bg-secondary">Closed</span>
+                  {% else %}
+                    <span class="badge bg-light text-muted border">?</span>
+                  {% endif %}
+                </div>
               </div>
             </div>
             {% if pool.label_text %}
