@@ -9,6 +9,7 @@ class Pool(models.Model):
         ("indoor", "Indoor"),
     ]
 
+    ppr_amenity_id = models.CharField(max_length=50, unique=True, blank=True, help_text="Stable ID from OpenDataPhilly; used for idempotent imports")
     name = models.CharField(max_length=200)
     address = models.CharField(max_length=300)
     latitude = models.FloatField(null=True, blank=True)
