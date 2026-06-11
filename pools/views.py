@@ -37,15 +37,18 @@ def _point_to_segment_miles(lat, lon, alat, alon, blat, blon):
     return _haversine_miles(lat, lon, alat + t * dy, alon + t * dx)
 
 
-def _distance_to_geometry(lat, lon, geometry) -> float:
+def _distance_to_geometry(lat, lon, geometry) -> float | None:
     """
-    Returns 0 if (lat, lon) is inside the geometry, otherwise the distance
-    in miles to the nearest point on the boundary.
+    Returns 0 if (lat, lon) is inside the geometry, the distance in miles to
+    the nearest boundary point if outside, or None if geometry is not a polygon.
     """
-    if geometry["type"] == "Polygon":
+    geom_type = geometry.get("type")
+    if geom_type == "Polygon":
         polys = [geometry["coordinates"]]
-    else:  # MultiPolygon
+    elif geom_type == "MultiPolygon":
         polys = geometry["coordinates"]
+    else:
+        return None  # Point, LineString, etc. — caller falls back to centroid
 
     # Point-in-polygon: check outer ring of each polygon
     for rings in polys:
@@ -97,8 +100,9 @@ def index(request):
         for pool in pools:
             if pool.latitude and pool.longitude:
                 if boundary_geometry:
-                    pool.distance = _distance_to_geometry(
-                        pool.latitude, pool.longitude, boundary_geometry
+                    d = _distance_to_geometry(pool.latitude, pool.longitude, boundary_geometry)
+                    pool.distance = d if d is not None else _haversine_miles(
+                        zip_center[0], zip_center[1], pool.latitude, pool.longitude
                     )
                 else:
                     pool.distance = _haversine_miles(
