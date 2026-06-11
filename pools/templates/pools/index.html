@@ -17,6 +17,11 @@
 {% block content %}
 <div class="container-fluid px-3 pt-3">
 
+  <div class="alert alert-info py-2 mb-3 small">
+    Schedule info here is crowd-sourced — it's only as current as what people share.
+    Know something we don't? <a href="{% url 'submit' %}" class="alert-link">Submit an update.</a>
+  </div>
+
   <form method="get" class="row g-2 mb-3 align-items-end">
     <div class="col-sm-4 col-md-3">
       <label class="form-label small mb-1">Zip code</label>
