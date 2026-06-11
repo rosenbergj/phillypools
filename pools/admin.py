@@ -144,7 +144,6 @@ class SubmissionAdmin(admin.ModelAdmin):
         ] + super().get_urls()
 
     def apply_view(self, request, submission_id):
-        submission = get_object_or_404(Submission, pk=submission_id)
         apply_to_pool(self, request, Submission.objects.filter(pk=submission_id))
         return redirect(f"../../{submission_id}/change/")
 
