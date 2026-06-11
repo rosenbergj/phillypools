@@ -40,7 +40,10 @@ INSTALLED_APPS = [
     'pools',
 ]
 
+ALLOWED_CIDR_NETS = ['192.168.0.0/22']
+
 MIDDLEWARE = [
+    'allow_cidr.middleware.AllowCIDRMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
