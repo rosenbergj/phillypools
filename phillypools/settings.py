@@ -22,13 +22,22 @@ env = environ.Env(
 )
 environ.Env.read_env(BASE_DIR / '.env')
 
+import os
+
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-k+%g-asmx5#io(ald!#m+79+#x$1^pd=jlq!hxy1-i1xk#&3@a')
 DEBUG = env('DEBUG', default=True)
 ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=[])
 ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
-
-import os
 os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
+
+# Railway injects RAILWAY_PUBLIC_DOMAIN automatically
+_railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+if _railway_domain:
+    ALLOWED_HOSTS.append(_railway_domain)
+    CSRF_TRUSTED_ORIGINS = [f'https://{_railway_domain}']
+
+# Trust Railway's HTTPS reverse proxy
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
