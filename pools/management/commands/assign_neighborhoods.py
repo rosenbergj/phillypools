@@ -38,7 +38,7 @@ class Command(BaseCommand):
             hoods = json.load(f)
 
         updated = unmatched = 0
-        for pool in Pool.objects.filter(is_active=True, latitude__isnull=False):
+        for pool in Pool.objects.filter(latitude__isnull=False):
             name = find_neighborhood(pool.latitude, pool.longitude, hoods)
             pool.neighborhood = name
             pool.save(update_fields=["neighborhood"])

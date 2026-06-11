@@ -46,9 +46,11 @@ class Pool(models.Model):
     def is_open(self):
         from datetime import date
         today = date.today()
-        if self.opening_date and self.closing_date:
-            return self.opening_date <= today <= self.closing_date
-        return None  # unknown
+        if not self.is_active:
+            return False
+        if self.opening_date and self.opening_date <= today:
+            return not self.closing_date or self.closing_date >= today
+        return None  # no opening date, or opening date in the future
 
 
 class ScheduleChange(models.Model):

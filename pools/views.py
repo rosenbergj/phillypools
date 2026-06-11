@@ -68,8 +68,19 @@ def _distance_to_geometry(lat, lon, geometry) -> float | None:
     return min_dist
 
 
+def _pool_map_status(pool, today):
+    if not pool.is_active:
+        return "inactive"
+    if pool.opening_date and pool.opening_date <= today:
+        if not pool.closing_date or pool.closing_date >= today:
+            return "open"
+    if pool.opening_date and pool.opening_date > today:
+        return "opening_soon"
+    return "no_date"
+
+
 def index(request):
-    pools = list(Pool.objects.filter(is_active=True))
+    pools = list(Pool.objects.all())
 
     zip_query = request.GET.get("zip", "").strip()
     status_filter = request.GET.get("status", "")
@@ -116,9 +127,13 @@ def index(request):
 
     today = timezone.localdate()
     if status_filter == "open":
-        pools = [p for p in pools if p.opening_date and p.closing_date and p.opening_date <= today <= p.closing_date]
+        pools = [p for p in pools if _pool_map_status(p, today) == "open"]
     elif status_filter == "closed":
-        pools = [p for p in pools if not (p.opening_date and p.closing_date and p.opening_date <= today <= p.closing_date)]
+        pools = [p for p in pools if _pool_map_status(p, today) not in ("open",)]
+    elif status_filter == "active":
+        pools = [p for p in pools if p.is_active]
+    elif status_filter == "opening_soon":
+        pools = [p for p in pools if p.is_active and p.opening_date and p.opening_date > today]
 
     neighborhoods = get_neighborhoods()
 
@@ -128,7 +143,7 @@ def index(request):
             "name": p.name,
             "lat": p.latitude,
             "lng": p.longitude,
-            "is_open": p.is_open,
+            "status": _pool_map_status(p, today),
             "address": p.address,
         }
         for p in pools

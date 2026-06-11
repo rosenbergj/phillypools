@@ -14,6 +14,7 @@ from pools.models import Pool, ScheduleChange, Submission
 class PoolAdmin(admin.ModelAdmin):
     list_display = ["name", "pool_type", "neighborhood", "is_open_display", "opening_date", "closing_date", "is_active"]
     list_filter = ["pool_type", "is_active", "neighborhood"]
+    list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
     readonly_fields = ["last_updated"]
 
