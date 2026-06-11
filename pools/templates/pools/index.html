@@ -24,11 +24,11 @@
              value="{{ zip_query }}" maxlength="10">
     </div>
     <div class="col-sm-4 col-md-3">
-      <label class="form-label small mb-1">Neighborhood / District</label>
+      <label class="form-label small mb-1">Neighborhood</label>
       <select name="neighborhood" class="form-select form-select-sm">
         <option value="">All</option>
         {% for n in neighborhoods %}
-          <option value="{{ n }}" {% if n == neighborhood_filter %}selected{% endif %}>{{ n }}</option>
+          <option value="{{ n.name }}" {% if n.name == neighborhood_filter %}selected{% endif %}>{{ n.name }}</option>
         {% endfor %}
       </select>
     </div>
@@ -36,7 +36,7 @@
       <label class="form-label small mb-1">Status</label>
       <select name="status" class="form-select form-select-sm">
         <option value="" {% if not status_filter %}selected{% endif %}>All</option>
-        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open now</option>
+        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open today</option>
         <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
       </select>
     </div>
@@ -60,7 +60,7 @@
       {% if pools %}
         <p class="text-muted small mb-2">
           {{ pools|length }} pool{{ pools|length|pluralize }}
-          {% if show_distance %}sorted by distance from {{ zip_query }}{% endif %}
+          {% if show_distance %}sorted by distance from {{ center_label }}{% endif %}
         </p>
         {% for pool in pools %}
           <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded">
@@ -104,9 +104,10 @@
   const zipCenter = JSON.parse(document.getElementById('zip-center').textContent);
 
   const map = L.map('map').setView([39.9526, -75.1652], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
   }).addTo(map);
 
   function makeIcon(isOpen) {
