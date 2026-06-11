@@ -243,8 +243,9 @@ def submit(request):
         elif uploaded_image and submission.uploaded_image:
             try:
                 from pools.services.llm_parser import parse_image_submission
-                image_path = submission.uploaded_image.path
-                parsed_fields = parse_image_submission(image_path, pool_list)
+                image_bytes = submission.uploaded_image.read()
+                image_name = submission.uploaded_image.name
+                parsed_fields = parse_image_submission(image_bytes, image_name, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception:
                 pass

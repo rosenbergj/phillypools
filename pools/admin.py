@@ -188,7 +188,7 @@ class SubmissionAdmin(admin.ModelAdmin):
                 results = parse_all_pools(fetch_url(submission.url), pool_list)
             elif submission.uploaded_image:
                 from pools.services.llm_parser import parse_all_pools_image
-                results = parse_all_pools_image(submission.uploaded_image.path, pool_list)
+                results = parse_all_pools_image(submission.uploaded_image.read(), submission.uploaded_image.name, pool_list)
             else:
                 error = "This submission has no URL or image to parse."
         except Exception as e:

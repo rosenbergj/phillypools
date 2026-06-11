@@ -142,17 +142,15 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
     return _parse_list_response(message.content[0].text)
 
 
-def parse_all_pools_image(image_path: str, pool_list: list[dict]) -> list[dict]:
+def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[dict]) -> list[dict]:
     """Extract schedule info for every pool mentioned in an image."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    path = Path(image_path)
-    media_type, _ = mimetypes.guess_type(str(path))
+    media_type, _ = mimetypes.guess_type(image_name)
     if not media_type or not media_type.startswith("image/"):
         media_type = "image/jpeg"
 
-    with open(path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
+    image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _ALL_POOLS_IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
     message = client.messages.create(
@@ -173,17 +171,15 @@ def parse_all_pools_image(image_path: str, pool_list: list[dict]) -> list[dict]:
     return _parse_list_response(message.content[0].text)
 
 
-def parse_image_submission(image_path: str, pool_list: list[dict]) -> dict:
+def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[dict]) -> dict:
     """Parse an uploaded image (e.g. screenshot) for pool schedule info."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    path = Path(image_path)
-    media_type, _ = mimetypes.guess_type(str(path))
+    media_type, _ = mimetypes.guess_type(image_name)
     if not media_type or not media_type.startswith("image/"):
         media_type = "image/jpeg"
 
-    with open(path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
+    image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
     message = client.messages.create(
