@@ -16,6 +16,7 @@ class Pool(models.Model):
     longitude = models.FloatField(null=True, blank=True)
     neighborhood = models.CharField(max_length=100, blank=True)
     official_website_url = models.URLField(blank=True)
+    social_media_url = models.URLField(blank=True, help_text="Instagram, Facebook, etc.")
     phone_number = models.CharField(max_length=20, blank=True)
     pool_type = models.CharField(max_length=20, choices=POOL_TYPE_CHOICES, default="outdoor")
 
