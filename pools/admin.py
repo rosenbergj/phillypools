@@ -1,4 +1,9 @@
-from django.contrib import admin
+from datetime import date
+
+from django.contrib import admin, messages
+from django.shortcuts import get_object_or_404, redirect
+from django.template.response import TemplateResponse
+from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -80,6 +85,7 @@ apply_to_pool.short_description = "Apply parsed data to linked pool"
 
 @admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):
+    change_form_template = "admin/pools/submission_change_form.html"
     list_display = ["short_source", "submitted_at", "parsed_pool", "llm_confidence", "status"]
     list_filter = ["status", "llm_confidence"]
     list_select_related = ["parsed_pool"]
@@ -125,6 +131,75 @@ class SubmissionAdmin(admin.ModelAdmin):
             "fields": ("llm_response_display",),
         }),
     )
+
+    def get_urls(self):
+        return [
+            path("<int:submission_id>/reparse/",
+                 self.admin_site.admin_view(self.reparse_view),
+                 name="pools_submission_reparse"),
+        ] + super().get_urls()
+
+    def reparse_view(self, request, submission_id):
+        submission = get_object_or_404(Submission, pk=submission_id)
+
+        if request.method == "POST" and request.POST.get("action") == "apply":
+            source = submission.url or ""
+            applied = 0
+            for pool_id in request.POST.getlist("pool_ids"):
+                try:
+                    pool = Pool.objects.get(pk=pool_id)
+                    opening = request.POST.get(f"opening_date_{pool_id}")
+                    closing = request.POST.get(f"closing_date_{pool_id}")
+                    hours = request.POST.get(f"hours_{pool_id}", "")
+                    notes = request.POST.get(f"notes_{pool_id}", "")
+                    if opening:
+                        pool.opening_date = date.fromisoformat(opening)
+                        pool.opening_date_source_url = source
+                    if closing:
+                        pool.closing_date = date.fromisoformat(closing)
+                        pool.closing_date_source_url = source
+                    if hours:
+                        pool.hours = hours
+                        pool.hours_source_url = source
+                    if notes:
+                        pool.notes = notes
+                    pool.save()
+                    applied += 1
+                except (Pool.DoesNotExist, ValueError):
+                    pass
+            messages.success(request, f"Applied updates to {applied} pool(s).")
+            return redirect(f"../../{submission_id}/change/")
+
+        # POST without action=apply: run the LLM
+        results = []
+        error = None
+        pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
+        try:
+            if submission.url:
+                from pools.services.url_fetcher import fetch_url
+                from pools.services.llm_parser import parse_all_pools
+                results = parse_all_pools(fetch_url(submission.url), pool_list)
+            elif submission.uploaded_image:
+                from pools.services.llm_parser import parse_all_pools_image
+                results = parse_all_pools_image(submission.uploaded_image.path, pool_list)
+            else:
+                error = "This submission has no URL or image to parse."
+        except Exception as e:
+            error = str(e)
+
+        # Attach matched Pool objects
+        pool_by_id = {p.id: p for p in Pool.objects.filter(is_active=True)}
+        for r in results:
+            r["pool_obj"] = pool_by_id.get(r.get("pool_id"))
+
+        return TemplateResponse(request, "admin/pools/submission_reparse.html", {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "submission": submission,
+            "results": results,
+            "error": error,
+            "title": "Re-parse for all pools",
+        })
 
     def short_source(self, obj):
         if obj.url:

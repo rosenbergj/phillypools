@@ -1,0 +1,102 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Re-parse — {{ submission }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:pools_submission_changelist' %}">Submissions</a> &rsaquo;
+  <a href="{% url 'admin:pools_submission_change' submission.pk %}">{{ submission }}</a> &rsaquo;
+  Re-parse for all pools
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Re-parse: {{ submission }}</h1>
+
+{% if error %}
+  <p class="errornote">{{ error }}</p>
+{% elif not results %}
+  <p>The LLM found no pool schedule information in this source.</p>
+{% else %}
+  <p>Found <strong>{{ results|length }}</strong> pool{{ results|length|pluralize }}.
+     Check the ones you want to apply, edit the fields if needed, then click <em>Apply selected</em>.</p>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="apply">
+
+    <table>
+      <thead>
+        <tr>
+          <th>Apply?</th>
+          <th>Pool (as named in source)</th>
+          <th>Opening date</th>
+          <th>Closing date</th>
+          <th>Hours</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr>
+          <td style="text-align:center">
+            {% if r.pool_obj %}
+              <input type="checkbox" name="pool_ids" value="{{ r.pool_obj.pk }}" checked>
+            {% else %}
+              <span title="No matching pool found">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <a href="{% url 'admin:pools_pool_change' r.pool_obj.pk %}" target="_blank">{{ r.pool_obj.name }}</a>
+              {% if r.pool_name and r.pool_name != r.pool_obj.name %}
+                <br><small class="help">(source said: &ldquo;{{ r.pool_name }}&rdquo;)</small>
+              {% endif %}
+            {% else %}
+              <em class="help">{{ r.pool_name|default:"Unknown" }} — not matched</em>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <input type="text" name="opening_date_{{ r.pool_obj.pk }}"
+                     value="{{ r.opening_date|default:'' }}" placeholder="YYYY-MM-DD" size="12">
+            {% else %}{{ r.opening_date|default:"" }}{% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <input type="text" name="closing_date_{{ r.pool_obj.pk }}"
+                     value="{{ r.closing_date|default:'' }}" placeholder="YYYY-MM-DD" size="12">
+            {% else %}{{ r.closing_date|default:"" }}{% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <input type="text" name="hours_{{ r.pool_obj.pk }}"
+                     value="{{ r.hours|default:'' }}" size="20">
+            {% else %}{{ r.hours|default:"" }}{% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <input type="text" name="notes_{{ r.pool_obj.pk }}"
+                     value="{{ r.notes|default:'' }}" size="24">
+            {% else %}{{ r.notes|default:"" }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="submit-row" style="margin-top:1em">
+      <input type="submit" value="Apply selected" class="default">
+      <a href="{% url 'admin:pools_submission_change' submission.pk %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+{% endif %}
+
+{% if not error %}
+  <p style="margin-top:2em">
+    <a href="{% url 'admin:pools_submission_change' submission.pk %}">&larr; Back to submission</a>
+  </p>
+{% endif %}
+{% endblock %}

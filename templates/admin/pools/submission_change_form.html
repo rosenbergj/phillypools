@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+{{ block.super }}
+<div class="submit-row">
+  <form method="post" action="reparse/">
+    {% csrf_token %}
+    <input type="submit" value="Re-parse for all pools →"
+           title="Run LLM on this source to extract every pool mentioned">
+  </form>
+</div>
+{% endblock %}
