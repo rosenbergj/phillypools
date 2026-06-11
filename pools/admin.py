@@ -168,6 +168,10 @@ class SubmissionAdmin(admin.ModelAdmin):
                     applied += 1
                 except (Pool.DoesNotExist, ValueError):
                     pass
+            if applied:
+                submission.status = "approved"
+                submission.reviewed_at = timezone.now()
+                submission.save()
             messages.success(request, f"Applied updates to {applied} pool(s).")
             return redirect(f"../../{submission_id}/change/")
 
