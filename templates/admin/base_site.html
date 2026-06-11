@@ -1,5 +1,9 @@
 {% extends "admin/base.html" %}
-{% load i18n admin_extras %}
+{% load i18n admin_extras static %}
+
+{% block extrahead %}
+<link rel="icon" type="image/png" href="{% static 'favicon-admin.png' %}">
+{% endblock %}
 
 {% block messages %}
 {% pending_submission_count as pending %}
