@@ -66,7 +66,8 @@ def apply_to_pool(modeladmin, request, queryset):
             pool.weekend_schedule = sub.parsed_weekend_schedule
             pool.weekend_schedule_source_url = source
         if sub.parsed_notes:
-            pool.notes = sub.parsed_notes
+            pool.updates = sub.parsed_notes
+            pool.updates_source_url = source
 
         pool.save()
 
@@ -99,7 +100,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         "current_hours",
         "current_weekday_schedule",
         "current_weekend_schedule",
-        "current_notes",
+        "current_updates",
     ]
     fieldsets = (
         ("Submission", {
@@ -112,7 +113,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             ),
         }),
         ("Parsed fields vs. current pool values", {
-            "description": "Left column: what the LLM extracted. Right column: what the pool currently has.",
+            "description": "Left column: what the LLM extracted. Right column: what the pool currently has. Parsed notes → Updates field.",
             "fields": (
                 ("parsed_pool", "llm_confidence"),
                 ("parsed_opening_date", "current_opening_date"),
@@ -120,7 +121,7 @@ class SubmissionAdmin(admin.ModelAdmin):
                 ("parsed_hours", "current_hours"),
                 ("parsed_weekday_schedule", "current_weekday_schedule"),
                 ("parsed_weekend_schedule", "current_weekend_schedule"),
-                ("parsed_notes", "current_notes"),
+                ("parsed_notes", "current_updates"),
             ),
         }),
         ("Review", {
@@ -163,7 +164,8 @@ class SubmissionAdmin(admin.ModelAdmin):
                         pool.hours = hours
                         pool.hours_source_url = source
                     if notes:
-                        pool.notes = notes
+                        pool.updates = notes
+                        pool.updates_source_url = source
                     pool.save()
                     applied += 1
                 except (Pool.DoesNotExist, ValueError):
@@ -256,6 +258,6 @@ class SubmissionAdmin(admin.ModelAdmin):
         return self._current(obj, "weekend_schedule")
     current_weekend_schedule.short_description = "Current: weekend schedule"
 
-    def current_notes(self, obj):
-        return self._current(obj, "notes")
-    current_notes.short_description = "Current: notes"
+    def current_updates(self, obj):
+        return self._current(obj, "updates")
+    current_updates.short_description = "Current: updates"

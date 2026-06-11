@@ -115,6 +115,20 @@
     </div>
   {% endif %}
 
+  {% if pool.updates %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-2">
+          Updates
+          {% if pool.updates_source_url %}
+            <a href="{{ pool.updates_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">↗</a>
+          {% endif %}
+        </h2>
+        <p class="mb-0">{{ pool.updates }}</p>
+      </div>
+    </div>
+  {% endif %}
+
   {% if pool.notes %}
     <div class="card mb-4">
       <div class="card-body">

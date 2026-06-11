@@ -30,7 +30,9 @@ class Pool(models.Model):
     weekend_schedule = models.TextField(blank=True)
     weekend_schedule_source_url = models.URLField(blank=True)
 
-    notes = models.TextField(blank=True)
+    notes = models.TextField(blank=True, help_text="Permanent info about this pool (facilities, accessibility, etc.)")
+    updates = models.TextField(blank=True, help_text="Current-season updates from submissions or announcements")
+    updates_source_url = models.URLField(blank=True)
     is_active = models.BooleanField(default=True)
     last_updated = models.DateTimeField(auto_now=True)
 
