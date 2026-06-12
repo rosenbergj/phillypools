@@ -8,24 +8,43 @@ from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
 
+from django.db.models import Q
+
 from pools.models import Pool, PoolSeasonHistory, ScheduleChange, Submission
+
+
+class PoolStatusFilter(admin.SimpleListFilter):
+    title = "status"
+    parameter_name = "status"
+
+    def lookups(self, request, model_admin):
+        return [("open", "Open"), ("closed", "Closed")]
+
+    def queryset(self, request, queryset):
+        today = date.today()
+        open_qs = queryset.filter(
+            is_active=True,
+            opening_date__lte=today,
+        ).filter(Q(closing_date__isnull=True) | Q(closing_date__gte=today))
+        if self.value() == "open":
+            return open_qs
+        if self.value() == "closed":
+            return queryset.exclude(pk__in=open_qs)
+        return queryset
 
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
     list_display = ["name", "neighborhood", "social_media_display", "is_open_display", "opening_date_display", "closing_date_display", "is_active"]
-    list_filter = ["is_active", "neighborhood"]
+    list_filter = [PoolStatusFilter, "is_active", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
     readonly_fields = ["last_updated"]
 
     def is_open_display(self, obj):
-        v = obj.is_open
-        if v is True:
+        if obj.is_open is True:
             return "Open"
-        if v is False:
-            return "Closed"
-        return "?"
+        return "Closed"
     is_open_display.short_description = "Status"
 
     def opening_date_display(self, obj):
