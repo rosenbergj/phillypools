@@ -176,6 +176,7 @@ def index(request):
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
             "weekday_schedule": p.weekday_schedule or None,
             "weekend_schedule": p.weekend_schedule or None,
+            "social_media_url": p.social_media_url or None,
         }
         for p in pools
         if p.latitude and p.longitude
