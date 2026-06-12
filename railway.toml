@@ -6,8 +6,8 @@ startCommand = "python manage.py migrate --noinput && gunicorn phillypools.wsgi 
 healthcheckPath = "/"
 healthcheckTimeout = 30
 
-["URL watcher".build]
+[url-watcher.build]
 buildCommand = "echo ok"
 
-["URL watcher".deploy]
+[url-watcher.deploy]
 startCommand = "python manage.py check_pool_schedule"
