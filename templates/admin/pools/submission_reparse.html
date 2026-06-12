@@ -34,7 +34,6 @@
           <th>Pool (as named in source)</th>
           <th>Opening date</th>
           <th>Closing date</th>
-          <th>Hours</th>
           <th>Notes</th>
         </tr>
       </thead>
@@ -69,12 +68,6 @@
               <input type="text" name="closing_date_{{ r.pool_obj.pk }}"
                      value="{{ r.closing_date|default:'' }}" placeholder="YYYY-MM-DD" size="12">
             {% else %}{{ r.closing_date|default:"" }}{% endif %}
-          </td>
-          <td>
-            {% if r.pool_obj %}
-              <input type="text" name="hours_{{ r.pool_obj.pk }}"
-                     value="{{ r.hours|default:'' }}" size="20">
-            {% else %}{{ r.hours|default:"" }}{% endif %}
           </td>
           <td>
             {% if r.pool_obj %}

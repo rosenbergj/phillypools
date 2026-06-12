@@ -57,9 +57,6 @@ def apply_to_pool(modeladmin, request, queryset):
         if sub.parsed_closing_date:
             pool.closing_date = sub.parsed_closing_date
             pool.closing_date_source_url = source
-        if sub.parsed_hours:
-            pool.hours = sub.parsed_hours
-            pool.hours_source_url = source
         if sub.parsed_weekday_schedule:
             pool.weekday_schedule = sub.parsed_weekday_schedule
             pool.weekday_schedule_source_url = source
@@ -98,7 +95,6 @@ class SubmissionAdmin(admin.ModelAdmin):
         "llm_response_display",
         "current_opening_date",
         "current_closing_date",
-        "current_hours",
         "current_weekday_schedule",
         "current_weekend_schedule",
         "current_updates",
@@ -119,7 +115,6 @@ class SubmissionAdmin(admin.ModelAdmin):
                 ("parsed_pool", "llm_confidence"),
                 ("parsed_opening_date", "current_opening_date"),
                 ("parsed_closing_date", "current_closing_date"),
-                ("parsed_hours", "current_hours"),
                 ("parsed_weekday_schedule", "current_weekday_schedule"),
                 ("parsed_weekend_schedule", "current_weekend_schedule"),
                 ("parsed_notes", "current_updates"),
@@ -160,7 +155,6 @@ class SubmissionAdmin(admin.ModelAdmin):
                     pool = Pool.objects.get(pk=pool_id)
                     opening = request.POST.get(f"opening_date_{pool_id}")
                     closing = request.POST.get(f"closing_date_{pool_id}")
-                    hours = request.POST.get(f"hours_{pool_id}", "")
                     notes = request.POST.get(f"notes_{pool_id}", "")
                     if opening:
                         pool.opening_date = date.fromisoformat(opening)
@@ -168,9 +162,6 @@ class SubmissionAdmin(admin.ModelAdmin):
                     if closing:
                         pool.closing_date = date.fromisoformat(closing)
                         pool.closing_date_source_url = source
-                    if hours:
-                        pool.hours = hours
-                        pool.hours_source_url = source
                     if notes:
                         pool.updates = notes
                         pool.updates_source_url = source
@@ -253,10 +244,6 @@ class SubmissionAdmin(admin.ModelAdmin):
     def current_closing_date(self, obj):
         return self._current(obj, "closing_date")
     current_closing_date.short_description = "Current: closing date"
-
-    def current_hours(self, obj):
-        return self._current(obj, "hours")
-    current_hours.short_description = "Current: hours"
 
     def current_weekday_schedule(self, obj):
         return self._current(obj, "weekday_schedule")

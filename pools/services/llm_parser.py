@@ -31,7 +31,6 @@ Return JSON with exactly these fields:
   "pool_id": <integer or null>,
   "opening_date": "<YYYY-MM-DD or null>",
   "closing_date": "<YYYY-MM-DD or null>",
-  "hours": "<short summary like '11am-7pm daily' or null>",
   "weekday_schedule": "<detailed weekday periods, one per line, or null>",
   "weekend_schedule": "<detailed weekend periods, one per line, or null>",
   "notes": "<any other relevant info or null>",
@@ -50,7 +49,6 @@ Return JSON with exactly these fields:
   "pool_id": <integer or null>,
   "opening_date": "<YYYY-MM-DD or null>",
   "closing_date": "<YYYY-MM-DD or null>",
-  "hours": "<short summary like '11am-7pm daily' or null>",
   "weekday_schedule": "<detailed weekday periods, one per line, or null>",
   "weekend_schedule": "<detailed weekend periods, one per line, or null>",
   "notes": "<any other relevant info or null>",
@@ -118,7 +116,6 @@ Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "hours": "<short summary or null>",
     "notes": "<any other relevant info or null>"
   }}
 ]
@@ -135,7 +132,6 @@ mentioned with schedule info. Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "hours": "<short summary or null>",
     "notes": "<any other relevant info or null>"
   }}
 ]

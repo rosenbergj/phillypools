@@ -173,6 +173,9 @@ def index(request):
             "lng": p.longitude,
             "status": _pool_map_status(p, today),
             "address": p.address,
+            "opening_date": p.opening_date.isoformat() if p.opening_date else None,
+            "weekday_schedule": p.weekday_schedule or None,
+            "weekend_schedule": p.weekend_schedule or None,
         }
         for p in pools
         if p.latitude and p.longitude
@@ -321,7 +324,6 @@ def submit(request):
         submission.parsed_pool = parsed_pool
         submission.parsed_opening_date = parsed_fields.get("opening_date")
         submission.parsed_closing_date = parsed_fields.get("closing_date")
-        submission.parsed_hours = parsed_fields.get("hours") or ""
         submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
         submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
         parsed_notes = parsed_fields.get("notes") or ""

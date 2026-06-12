@@ -96,9 +96,6 @@
               <div class="small" style="color:{{ pool.label_color }}{% if pool.label_bold %};font-weight:600{% endif %}">{{ pool.label_text }}</div>
             {% endif %}
             <div class="text-muted small">{{ pool.address }}</div>
-            {% if pool.hours %}
-              <div class="small mt-1">{{ pool.hours }}</div>
-            {% endif %}
           </div>
         {% endfor %}
       {% else %}
@@ -135,6 +132,36 @@
     inactive: '#842029',
   };
 
+  function escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function makePopupContent(pool) {
+    const today = new Date();
+    const dow = today.getDay(); // 0=Sun, 6=Sat
+    const isWeekend = dow === 0 || dow === 6 ||
+                      (today.getMonth() === 6 && today.getDate() === 4); // July 4
+
+    let statusLine = '';
+    if (pool.status === 'open') {
+      const schedule = isWeekend ? (pool.weekend_schedule || pool.weekday_schedule)
+                                 : (pool.weekday_schedule || pool.weekend_schedule);
+      if (schedule) {
+        const lines = schedule.trim().split('\n').slice(0, 3).map(escHtml).join('<br>');
+        statusLine = `<br><small>${lines}</small>`;
+      } else {
+        statusLine = '<br><small>Open today</small>';
+      }
+    } else if (pool.status === 'opening_soon' && pool.opening_date) {
+      const [year, month, day] = pool.opening_date.split('-').map(Number);
+      const d = new Date(year, month - 1, day);
+      const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+      statusLine = `<br><small>Opening ${dayName} ${month}/${day}</small>`;
+    }
+
+    return `<strong><a href="/pools/${pool.id}/">${escHtml(pool.name)}</a></strong><br><small>${escHtml(pool.address)}</small>${statusLine}`;
+  }
+
   function makeIcon(status) {
     const color = STATUS_COLORS[status] || '#adb5bd';
     return L.divIcon({
@@ -152,7 +179,7 @@
     if (pool.lat && pool.lng) {
       const marker = L.marker([pool.lat, pool.lng], {icon: makeIcon(pool.status)})
         .addTo(map)
-        .bindPopup(`<strong><a href="/pools/${pool.id}/">${pool.name}</a></strong><br><small>${pool.address}</small>`);
+        .bindPopup(() => makePopupContent(pool));
 
       markerById[pool.id] = marker;
 
@@ -185,6 +212,27 @@
         mapEl.scrollIntoView({behavior: 'smooth', block: 'start'});
       }
     });
+  });
+
+  // Save pool ID to sessionStorage when navigating to a detail page,
+  // so we can restore the highlight if the user comes back.
+  document.querySelectorAll('.pool-card a').forEach(link => {
+    link.addEventListener('click', () => {
+      const card = link.closest('.pool-card');
+      if (card) sessionStorage.setItem('selectedPoolId', card.id.replace('pool-', ''));
+    });
+  });
+
+  // Restore selection on back navigation (handles both normal load and bfcache).
+  window.addEventListener('pageshow', () => {
+    const poolId = sessionStorage.getItem('selectedPoolId');
+    if (!poolId) return;
+    sessionStorage.removeItem('selectedPoolId');
+    const card = document.getElementById('pool-' + poolId);
+    if (!card) return;
+    card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    card.classList.add('highlighted');
+    setTimeout(() => card.classList.remove('highlighted'), 2000);
   });
 
   document.getElementById('zip-input').addEventListener('input', () => {
