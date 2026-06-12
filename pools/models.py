@@ -106,6 +106,18 @@ class MonitoredPage(models.Model):
     last_checked = models.DateTimeField(null=True, blank=True)
     last_changed = models.DateTimeField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            try:
+                old = MonitoredPage.objects.get(pk=self.pk)
+                if old.url != self.url:
+                    self.content_hash = ""
+                    self.last_checked = None
+                    self.last_changed = None
+            except MonitoredPage.DoesNotExist:
+                pass
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.url
 

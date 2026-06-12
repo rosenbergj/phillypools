@@ -387,12 +387,9 @@ class SubmissionAdmin(admin.ModelAdmin):
 @admin.register(MonitoredPage)
 class MonitoredPageAdmin(admin.ModelAdmin):
     list_display = ["url", "last_checked", "last_changed", "has_hash"]
-    readonly_fields = ["url", "content_hash", "last_checked", "last_changed"]
+    readonly_fields = ["content_hash", "last_checked", "last_changed"]
 
     def has_hash(self, obj):
         return bool(obj.content_hash)
     has_hash.short_description = "Initialized"
     has_hash.boolean = True
-
-    def has_add_permission(self, request):
-        return False

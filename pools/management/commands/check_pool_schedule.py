@@ -1,5 +1,4 @@
 import hashlib
-import os
 
 import requests
 from bs4 import BeautifulSoup
@@ -28,12 +27,12 @@ class Command(BaseCommand):
     help = "Check monitored pages for content changes and create submissions when they change."
 
     def handle(self, *args, **options):
-        url = os.environ.get("POOL_SCHEDULE_URL", "").strip()
-        if not url:
-            self.stderr.write("POOL_SCHEDULE_URL is not set — nothing to check.")
+        pages = list(MonitoredPage.objects.all())
+        if not pages:
+            self.stderr.write("No monitored pages in database — add one via admin.")
             return
-        page, _ = MonitoredPage.objects.get_or_create(url=url)
-        self._check(page)
+        for page in pages:
+            self._check(page)
 
     def _check(self, page):
         try:
