@@ -140,7 +140,7 @@
     const today = new Date();
     const dow = today.getDay(); // 0=Sun, 6=Sat
     const isWeekend = dow === 0 || dow === 6 ||
-                      (today.getMonth() === 6 && today.getDate() === 4); // July 4
+                      (today.getMonth() === 6 && today.getDate() === 4); // July 4 (getMonth is 0-indexed: 0=Jan, 6=Jul)
 
     let statusLine = '';
     if (pool.status === 'open') {
