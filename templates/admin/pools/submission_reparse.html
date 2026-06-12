@@ -53,6 +53,9 @@
               {% if r.pool_name and r.pool_name != r.pool_obj.name %}
                 <br><small class="help">(source said: &ldquo;{{ r.pool_name }}&rdquo;)</small>
               {% endif %}
+              {% if not r.pool_obj.is_active %}
+                <br><small style="color:#c0392b">Inactive — will be set to active if opening date is applied</small>
+              {% endif %}
             {% else %}
               <em class="help">{{ r.pool_name|default:"Unknown" }} — not matched</em>
             {% endif %}
@@ -61,18 +64,31 @@
             {% if r.pool_obj %}
               <input type="text" name="opening_date_{{ r.pool_obj.pk }}"
                      value="{{ r.opening_date|default:'' }}" placeholder="YYYY-MM-DD" size="12">
+              {% if r.pool_obj.opening_date %}
+                <br><small class="help">Current: {{ r.pool_obj.opening_date }}</small>
+              {% else %}
+                <br><small class="help">Current: none</small>
+              {% endif %}
             {% else %}{{ r.opening_date|default:"" }}{% endif %}
           </td>
           <td>
             {% if r.pool_obj %}
               <input type="text" name="closing_date_{{ r.pool_obj.pk }}"
                      value="{{ r.closing_date|default:'' }}" placeholder="YYYY-MM-DD" size="12">
+              {% if r.pool_obj.closing_date %}
+                <br><small class="help">Current: {{ r.pool_obj.closing_date }}</small>
+              {% else %}
+                <br><small class="help">Current: none</small>
+              {% endif %}
             {% else %}{{ r.closing_date|default:"" }}{% endif %}
           </td>
           <td>
             {% if r.pool_obj %}
               <input type="text" name="notes_{{ r.pool_obj.pk }}"
                      value="{{ r.notes|default:'' }}" size="24">
+              {% if r.pool_obj.updates %}
+                <br><small class="help">Current: {{ r.pool_obj.updates|truncatechars:60 }}</small>
+              {% endif %}
             {% else %}{{ r.notes|default:"" }}{% endif %}
           </td>
         </tr>
