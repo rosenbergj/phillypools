@@ -99,6 +99,17 @@ class ScheduleChange(models.Model):
         return f"{self.pool.name}: {self.date_from} – {self.date_to}"
 
 
+class MonitoredPage(models.Model):
+    """A URL whose main content is periodically checked for changes."""
+    url = models.URLField(unique=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+    last_checked = models.DateTimeField(null=True, blank=True)
+    last_changed = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.url
+
+
 class Submission(models.Model):
     CONFIDENCE_CHOICES = [
         ("high", "High"),
