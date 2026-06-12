@@ -139,6 +139,12 @@ class SubmissionAdmin(admin.ModelAdmin):
                  name="pools_submission_apply"),
         ] + super().get_urls()
 
+    def response_change(self, request, obj):
+        if "_apply" in request.POST:
+            apply_to_pool(self, request, Submission.objects.filter(pk=obj.pk))
+            return redirect(request.path)
+        return super().response_change(request, obj)
+
     def apply_view(self, request, submission_id):
         apply_to_pool(self, request, Submission.objects.filter(pk=submission_id))
         return redirect(f"../../{submission_id}/change/")

@@ -3,11 +3,9 @@
 {% block submit_buttons_bottom %}
 {{ block.super }}
 <div class="submit-row">
-  <a href="{% url 'admin:pools_submission_apply' original.pk %}"
-     class="button default"
-     title="Apply the parsed fields above to the linked pool">
-    Apply to pool &rarr;
-  </a>
+  <input type="submit" name="_apply" value="Apply to pool →"
+         class="default"
+         title="Apply the parsed fields above to the linked pool">
   <a href="{% url 'admin:pools_submission_reparse' original.pk %}"
      class="button"
      title="Run LLM on this source to extract every pool mentioned">
