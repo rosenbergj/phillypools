@@ -207,7 +207,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         from pools.services.llm_parser import parse_submission, parse_image_submission
         from pools.services.url_fetcher import fetch_url
 
-        pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
+        pool_list = list(Pool.objects.all().values("id", "name"))
         raw_content = ""
         llm_response = None
         parsed_fields = {}
@@ -292,7 +292,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         # GET or POST without action=apply: run the LLM
         results = []
         error = None
-        pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
+        pool_list = list(Pool.objects.all().values("id", "name"))
         try:
             if submission.url:
                 from pools.services.url_fetcher import fetch_url
@@ -307,7 +307,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             error = str(e)
 
         # Attach matched Pool objects
-        pool_by_id = {p.id: p for p in Pool.objects.filter(is_active=True)}
+        pool_by_id = {p.id: p for p in Pool.objects.all()}
         for r in results:
             r["pool_obj"] = pool_by_id.get(r.get("pool_id"))
 

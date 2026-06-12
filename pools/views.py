@@ -232,7 +232,7 @@ def pool_detail(request, pk):
 
 
 def submit(request):
-    pools = Pool.objects.filter(is_active=True).order_by("name")
+    pools = Pool.objects.all().order_by("name")
     preselected_pool_id = request.GET.get("pool", "")
 
     if request.method == "POST":
@@ -301,7 +301,7 @@ def submit(request):
         raw_content = ""
         llm_response = None
         parsed_fields = {}
-        pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
+        pool_list = list(Pool.objects.all().values("id", "name"))
 
         # Build a Submission instance so we can save the image via Django's storage
         submission = Submission(
