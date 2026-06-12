@@ -97,6 +97,7 @@ def _source_url(submission):
 
 def apply_to_pool(modeladmin, request, queryset):
     applied = skipped = 0
+    reactivated = []
     for sub in queryset.select_related("parsed_pool"):
         if not sub.parsed_pool:
             skipped += 1
@@ -108,6 +109,9 @@ def apply_to_pool(modeladmin, request, queryset):
         if sub.parsed_opening_date:
             pool.opening_date = sub.parsed_opening_date
             pool.opening_date_source_url = source
+            if not pool.is_active:
+                pool.is_active = True
+                reactivated.append(pool.name)
         if sub.parsed_closing_date:
             pool.closing_date = sub.parsed_closing_date
             pool.closing_date_source_url = source
@@ -129,6 +133,8 @@ def apply_to_pool(modeladmin, request, queryset):
         applied += 1
 
     msg = f"Applied {applied} submission(s) to pool(s)."
+    if reactivated:
+        msg += f" Set to active: {', '.join(reactivated)}."
     if skipped:
         msg += f" Skipped {skipped} with no linked pool."
     modeladmin.message_user(request, msg)
@@ -263,6 +269,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             # Apply selected pool updates
             source = submission.url or ""
             applied = 0
+            reactivated = []
             for pool_id in request.POST.getlist("pool_ids"):
                 try:
                     pool = Pool.objects.get(pk=pool_id)
@@ -272,6 +279,9 @@ class SubmissionAdmin(admin.ModelAdmin):
                     if opening:
                         pool.opening_date = date.fromisoformat(opening)
                         pool.opening_date_source_url = source
+                        if not pool.is_active:
+                            pool.is_active = True
+                            reactivated.append(pool.name)
                     if closing:
                         pool.closing_date = date.fromisoformat(closing)
                         pool.closing_date_source_url = source
@@ -286,7 +296,10 @@ class SubmissionAdmin(admin.ModelAdmin):
                 submission.status = "approved"
                 submission.reviewed_at = timezone.now()
                 submission.save()
-            messages.success(request, f"Applied updates to {applied} pool(s).")
+            msg = f"Applied updates to {applied} pool(s)."
+            if reactivated:
+                msg += f" Set to active: {', '.join(reactivated)}."
+            messages.success(request, msg)
             return redirect(f"../../{submission_id}/change/")
 
         # GET or POST without action=apply: run the LLM
