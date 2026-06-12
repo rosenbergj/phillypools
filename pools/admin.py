@@ -13,8 +13,8 @@ from pools.models import Pool, PoolSeasonHistory, ScheduleChange, Submission
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ["name", "pool_type", "neighborhood", "social_media_display", "is_open_display", "opening_date", "closing_date", "is_active"]
-    list_filter = ["pool_type", "is_active", "neighborhood"]
+    list_display = ["name", "neighborhood", "social_media_display", "is_open_display", "opening_date_display", "closing_date_display", "is_active"]
+    list_filter = ["is_active", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
     readonly_fields = ["last_updated"]
@@ -27,6 +27,16 @@ class PoolAdmin(admin.ModelAdmin):
             return "Closed"
         return "?"
     is_open_display.short_description = "Status"
+
+    def opening_date_display(self, obj):
+        return obj.opening_date.strftime("%b %-d") if obj.opening_date else "—"
+    opening_date_display.short_description = "Opens"
+    opening_date_display.admin_order_field = "opening_date"
+
+    def closing_date_display(self, obj):
+        return obj.closing_date.strftime("%b %-d") if obj.closing_date else "—"
+    closing_date_display.short_description = "Closes"
+    closing_date_display.admin_order_field = "closing_date"
 
     def social_media_display(self, obj):
         url = obj.social_media_url
