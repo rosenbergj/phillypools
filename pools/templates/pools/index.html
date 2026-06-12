@@ -109,6 +109,7 @@
 {{ pools_geojson|json_script:"pools-data" }}
 {{ zip_center_json|json_script:"zip-center" }}
 {{ boundary_geometry|json_script:"boundary-geometry" }}
+{{ philly_boundary|json_script:"philly-boundary" }}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -117,12 +118,22 @@
   const poolsData = JSON.parse(document.getElementById('pools-data').textContent);
   const zipCenter = JSON.parse(document.getElementById('zip-center').textContent);
   const boundaryGeometry = JSON.parse(document.getElementById('boundary-geometry').textContent);
+  const phillyBoundary = JSON.parse(document.getElementById('philly-boundary').textContent);
 
   const map = L.map('map').setView([39.9526, -75.1652], 12);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     subdomains: 'abcd',
     maxZoom: 20,
+  }).addTo(map);
+
+  // Inverse polygon mask: shade areas outside Philadelphia city limits
+  const worldRing = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
+  L.geoJSON({
+    type: 'Feature',
+    geometry: {type: 'Polygon', coordinates: [worldRing, phillyBoundary.coordinates[0]]},
+  }, {
+    style: {fillColor: '#666', fillOpacity: 0.15, stroke: false},
   }).addTo(map);
 
   const STATUS_COLORS = {

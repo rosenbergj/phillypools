@@ -1,4 +1,6 @@
+import json
 from math import radians, sin, cos, sqrt, atan2
+from pathlib import Path
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
@@ -6,6 +8,10 @@ from django.utils import timezone
 from pools.models import Pool, Submission
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
+
+_PHILLY_BOUNDARY = json.loads(
+    (Path(__file__).parent.parent / "static" / "philly_boundary.json").read_text()
+)
 
 
 def _haversine_miles(lat1, lon1, lat2, lon2):
@@ -210,6 +216,7 @@ def index(request):
         "zip_query": zip_query,
         "zip_center_json": list(zip_center) if zip_center else None,
         "boundary_geometry": boundary_geometry,
+        "philly_boundary": _PHILLY_BOUNDARY,
         "zip_error": zip_error,
         "status_filter": status_filter,
         "neighborhood_filter": neighborhood_filter,
