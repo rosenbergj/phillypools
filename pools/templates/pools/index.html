@@ -151,8 +151,11 @@
   function makePopupContent(pool) {
     const today = new Date();
     const dow = today.getDay(); // 0=Sun, 6=Sat
+    const m = today.getMonth(), d = today.getDate(); // getMonth is 0-indexed: 0=Jan, 6=Jul
     const isWeekend = dow === 0 || dow === 6 ||
-                      (today.getMonth() === 6 && today.getDate() === 4); // July 4 (getMonth is 0-indexed: 0=Jan, 6=Jul)
+                      (m === 6 && d === 4) ||                // July 4
+                      (m === 6 && d === 3 && dow === 5) ||   // Fri Jul 3 when Jul 4 is Saturday
+                      (m === 6 && d === 5 && dow === 1);     // Mon Jul 5 when Jul 4 is Sunday
 
     let statusLine = '';
     if (pool.status === 'open') {
