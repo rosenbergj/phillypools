@@ -60,7 +60,11 @@ Return JSON with exactly these fields:
 def moderate_image(image_bytes: bytes, image_name: str) -> bool:
     """Return True if the image should be rejected (nudity or illegal content).
     Fails open: returns False if the API call fails, so legitimate submissions
-    aren't blocked by a transient API outage."""
+    aren't blocked by a transient API outage.
+    Files named FLAGME_* are always rejected — useful for testing the flow."""
+    if os.path.basename(image_name).startswith("FLAGME_"):
+        return True
+
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
     media_type, _ = mimetypes.guess_type(image_name)
