@@ -1,13 +1,16 @@
 {% extends "admin/change_form.html" %}
 
 {% block submit_buttons_bottom %}
-{{ block.super }}
 <div class="submit-row">
+  <input type="submit" value="Save and return to queue">
+  <input type="submit" name="_continue" value="Save and continue editing">
   <input type="submit" name="_apply" value="Apply to pool →"
          class="default"
+         style="text-transform:none"
          title="Apply the parsed fields above to the linked pool">
   <a href="{% url 'admin:pools_submission_reparse' original.pk %}"
      class="button"
+     style="display:inline-block;padding:10px 15px;background:#79aec8;color:#fff;text-decoration:none;border-radius:4px;cursor:pointer"
      title="Run LLM on this source to extract every pool mentioned">
     Re-parse for all pools &rarr;
   </a>
