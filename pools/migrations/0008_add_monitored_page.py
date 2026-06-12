@@ -1,13 +1,6 @@
 from django.db import migrations, models
 
 
-def seed_monitored_page(apps, schema_editor):
-    MonitoredPage = apps.get_model("pools", "MonitoredPage")
-    MonitoredPage.objects.create(
-        url="https://www.phila.gov/2026-06-09-philadelphia-2026-public-pool-opening-schedule/",
-    )
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -25,5 +18,4 @@ class Migration(migrations.Migration):
                 ("last_changed", models.DateTimeField(blank=True, null=True)),
             ],
         ),
-        migrations.RunPython(seed_monitored_page, migrations.RunPython.noop),
     ]
