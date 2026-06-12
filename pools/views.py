@@ -81,7 +81,7 @@ def _pool_status_label(pool, today):
         if 2 <= delta <= 5:
             return f"Opening in {delta} days", "#fd7e14", True
         if delta > 5:
-            return f"Opening {pool.opening_date.strftime('%-m/%y')}", "#6c757d", False
+            return f"Opening {pool.opening_date.strftime('%a %-m/%-d')}", "#6c757d", False
     if pool.closing_date:
         delta = (pool.closing_date - today).days
         if delta == 0:
