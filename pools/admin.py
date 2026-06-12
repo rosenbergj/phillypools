@@ -156,7 +156,59 @@ class SubmissionAdmin(admin.ModelAdmin):
         if "_apply" in request.POST:
             apply_to_pool(self, request, Submission.objects.filter(pk=obj.pk))
             return redirect(request.path)
+        if "_reparse" in request.POST:
+            self._run_reparse(request, obj)
+            return redirect(request.path)
         return super().response_change(request, obj)
+
+    def _run_reparse(self, request, submission):
+        from pools.services.llm_parser import parse_submission, parse_image_submission
+        from pools.services.url_fetcher import fetch_url
+
+        pool_list = list(Pool.objects.filter(is_active=True).values("id", "name"))
+        raw_content = ""
+        llm_response = None
+        parsed_fields = {}
+
+        if submission.url:
+            try:
+                raw_content = fetch_url(submission.url)
+            except Exception:
+                pass
+            try:
+                parsed_fields = parse_submission(raw_content, pool_list)
+                llm_response = parsed_fields.pop("_raw", None)
+            except Exception as e:
+                llm_response = {"error": str(e)}
+        elif submission.uploaded_image:
+            try:
+                image_bytes = submission.uploaded_image.read()
+                parsed_fields = parse_image_submission(image_bytes, submission.uploaded_image.name, pool_list)
+                llm_response = parsed_fields.pop("_raw", None)
+            except Exception as e:
+                llm_response = {"error": str(e)}
+        else:
+            self.message_user(request, "This submission has no URL or image to parse.", level=messages.WARNING)
+            return
+
+        submission.raw_fetched_content = raw_content
+        submission.llm_response = llm_response
+        if not submission.parsed_pool and parsed_fields.get("pool_id"):
+            try:
+                submission.parsed_pool = Pool.objects.get(pk=parsed_fields["pool_id"])
+            except Pool.DoesNotExist:
+                pass
+        submission.parsed_opening_date = parsed_fields.get("opening_date")
+        submission.parsed_closing_date = parsed_fields.get("closing_date")
+        submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
+        submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
+        parsed_notes = parsed_fields.get("notes") or ""
+        if parsed_fields.get("stale_year_warning"):
+            parsed_notes = "WARNING: Source may be from a prior season — verify dates before applying.\n" + parsed_notes
+        submission.parsed_notes = parsed_notes
+        submission.llm_confidence = parsed_fields.get("confidence") or ""
+        submission.save()
+        self.message_user(request, "Re-parsed with LLM.")
 
     def apply_view(self, request, submission_id):
         apply_to_pool(self, request, Submission.objects.filter(pk=submission_id))
