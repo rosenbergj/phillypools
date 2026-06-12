@@ -11,10 +11,12 @@
     <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
     {% if not pool.is_active %}
       <span class="badge" style="background:#842029">Won't open</span>
-    {% elif pool.is_open %}
+    {% elif pool.map_status == "open" %}
       <span class="badge bg-success">Open</span>
-    {% elif pool.is_open == False %}
+    {% elif pool.map_status == "closed" %}
       <span class="badge bg-secondary">Closed</span>
+    {% elif pool.map_status == "opening_soon" %}
+      <span class="badge" style="background:#fd7e14">Soon</span>
     {% endif %}
   </div>
   {% if not pool.is_active %}

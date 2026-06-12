@@ -96,10 +96,13 @@ def _pool_status_label(pool, today):
 def _pool_map_status(pool, today):
     if not pool.is_active:
         return "inactive"
-    if pool.opening_date and pool.opening_date <= today:
-        if not pool.closing_date or pool.closing_date >= today:
-            return "open"
-    if pool.opening_date and pool.opening_date > today:
+    if pool.opening_date:
+        if pool.opening_date.year < today.year:
+            return "no_date"  # prior-season data — treat as TBD
+        if pool.opening_date <= today:
+            if not pool.closing_date or pool.closing_date >= today:
+                return "open"
+            return "closed"  # closed this season
         return "opening_soon"
     return "no_date"
 
@@ -161,6 +164,7 @@ def index(request):
         pools = [p for p in pools if _pool_map_status(p, today) in ("open", "opening_soon")]
 
     for pool in pools:
+        pool.map_status = _pool_map_status(pool, today)
         pool.label_text, pool.label_color, pool.label_bold = _pool_status_label(pool, today)
 
     neighborhoods = get_neighborhoods()
@@ -200,6 +204,7 @@ def index(request):
 def pool_detail(request, pk):
     pool = get_object_or_404(Pool, pk=pk)
     today = timezone.localdate()
+    pool.map_status = _pool_map_status(pool, today)
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
     return render(request, "pools/detail.html", {
         "pool": pool,

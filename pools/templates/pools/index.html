@@ -80,11 +80,11 @@
                 <div style="min-width:5.5rem;text-align:center">
                   {% if not pool.is_active %}
                     <span class="badge" style="background:#842029">Won't open</span>
-                  {% elif pool.is_open %}
+                  {% elif pool.map_status == "open" %}
                     <span class="badge bg-success">Open</span>
-                  {% elif pool.is_open == False %}
+                  {% elif pool.map_status == "closed" %}
                     <span class="badge bg-secondary">Closed</span>
-                  {% elif pool.opening_date %}
+                  {% elif pool.map_status == "opening_soon" %}
                     <span class="badge" style="background:#fd7e14">Soon</span>
                   {% else %}
                     <span class="badge bg-secondary">TBD</span>
@@ -128,6 +128,7 @@
   const STATUS_COLORS = {
     open: '#198754',
     opening_soon: '#fd7e14',
+    closed: '#adb5bd',
     no_date: '#adb5bd',
     inactive: '#842029',
   };
