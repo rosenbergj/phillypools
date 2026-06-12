@@ -93,6 +93,24 @@ def _pool_status_label(pool, today):
     return None, None, None
 
 
+def _season_duration(pool, today):
+    """Return e.g. '7 weeks, 3 days' if both dates exist and are from the current year."""
+    if not (pool.opening_date and pool.closing_date
+            and pool.opening_date.year == today.year
+            and pool.closing_date.year == today.year):
+        return None
+    total = (pool.closing_date - pool.opening_date).days + 1
+    if total <= 0:
+        return None
+    weeks, days = divmod(total, 7)
+    parts = []
+    if weeks:
+        parts.append(f"{weeks} week{'s' if weeks != 1 else ''}")
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    return ", ".join(parts)
+
+
 def _pool_map_status(pool, today):
     if not pool.is_active:
         return "inactive"
@@ -209,6 +227,7 @@ def pool_detail(request, pk):
     return render(request, "pools/detail.html", {
         "pool": pool,
         "schedule_changes": schedule_changes,
+        "season_duration": _season_duration(pool, today),
     })
 
 
