@@ -10,7 +10,7 @@ from django.utils.html import format_html
 
 from django.db.models import Q
 
-from pools.models import Pool, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import MonitoredPage, Pool, PoolSeasonHistory, ScheduleChange, Submission
 
 
 class PoolStatusFilter(admin.SimpleListFilter):
@@ -382,3 +382,17 @@ class SubmissionAdmin(admin.ModelAdmin):
     def current_updates(self, obj):
         return self._current(obj, "updates")
     current_updates.short_description = "Current: updates"
+
+
+@admin.register(MonitoredPage)
+class MonitoredPageAdmin(admin.ModelAdmin):
+    list_display = ["url", "last_checked", "last_changed", "has_hash"]
+    readonly_fields = ["url", "content_hash", "last_checked", "last_changed"]
+
+    def has_hash(self, obj):
+        return bool(obj.content_hash)
+    has_hash.short_description = "Initialized"
+    has_hash.boolean = True
+
+    def has_add_permission(self, request):
+        return False
