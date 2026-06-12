@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.contrib import admin, messages
+from django.contrib.admin import ShowFacets
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -96,6 +97,7 @@ apply_to_pool.short_description = "Apply parsed data to linked pool"
 @admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):
     change_form_template = "admin/pools/submission_change_form.html"
+    show_facets = ShowFacets.ALWAYS
     list_display = ["short_source", "submitted_at", "parsed_pool", "llm_confidence", "status"]
     list_filter = ["status", "llm_confidence"]
     list_select_related = ["parsed_pool"]
