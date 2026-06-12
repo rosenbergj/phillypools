@@ -9,12 +9,17 @@
   <div class="d-flex align-items-center gap-2 mt-2 mb-1">
     <h1 class="h3 mb-0">{{ pool.name }}</h1>
     <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
-    {% if pool.is_open %}
+    {% if not pool.is_active %}
+      <span class="badge" style="background:#842029">Won't open</span>
+    {% elif pool.is_open %}
       <span class="badge bg-success">Open</span>
     {% elif pool.is_open == False %}
       <span class="badge bg-secondary">Closed</span>
     {% endif %}
   </div>
+  {% if not pool.is_active %}
+    <div class="alert alert-secondary py-2 mb-3 small">This pool is not expected to open this season.</div>
+  {% endif %}
 
   <p class="text-muted mb-3">
     <a href="https://www.google.com/maps/search/?api=1&query={{ pool.address|urlencode }}"

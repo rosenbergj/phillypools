@@ -197,7 +197,7 @@ def index(request):
 
 
 def pool_detail(request, pk):
-    pool = get_object_or_404(Pool, pk=pk, is_active=True)
+    pool = get_object_or_404(Pool, pk=pk)
     today = timezone.localdate()
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
     return render(request, "pools/detail.html", {
