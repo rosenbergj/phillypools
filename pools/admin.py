@@ -13,7 +13,7 @@ from pools.models import Pool, PoolSeasonHistory, ScheduleChange, Submission
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ["name", "pool_type", "neighborhood", "is_open_display", "opening_date", "closing_date", "is_active"]
+    list_display = ["name", "pool_type", "neighborhood", "social_media_display", "is_open_display", "opening_date", "closing_date", "is_active"]
     list_filter = ["pool_type", "is_active", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
@@ -27,6 +27,19 @@ class PoolAdmin(admin.ModelAdmin):
             return "Closed"
         return "?"
     is_open_display.short_description = "Status"
+
+    def social_media_display(self, obj):
+        url = obj.social_media_url
+        if not url:
+            return "-"
+        if "facebook.com" in url:
+            label = "FB"
+        elif "instagram.com" in url:
+            label = "Insta"
+        else:
+            label = "other"
+        return format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', url, label)
+    social_media_display.short_description = "Social"
 
 
 class ScheduleChangeInline(admin.TabularInline):
