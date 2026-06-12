@@ -1,4 +1,5 @@
 import requests
+from datetime import date
 from django.core.management.base import BaseCommand
 from pools.models import Pool
 
@@ -34,6 +35,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Found {len(features)} features.")
 
         created = updated = skipped = 0
+        seen_amenity_ids = set()
 
         for feature in features:
             props = feature.get("properties", {})
@@ -44,6 +46,8 @@ class Command(BaseCommand):
                 self.stderr.write(f"Skipping feature with no ppr_amenity_id: {props.get('pool_name')}")
                 skipped += 1
                 continue
+
+            seen_amenity_ids.add(amenity_id)
 
             name = (
                 props.get("official_name")
@@ -65,7 +69,7 @@ class Command(BaseCommand):
             status_raw = (props.get("pool_status") or "").lower()
             is_active = "inactive" not in status_raw and "closed" not in status_raw
 
-            notes = (props.get("comments") or "").strip()
+            city_comment = (props.get("comments") or "").strip()
 
             neighborhood = (
                 props.get("ppr_ops_district")
@@ -81,7 +85,6 @@ class Command(BaseCommand):
                 "neighborhood": neighborhood,
                 "pool_type": pool_type,
                 "is_active": is_active,
-                "notes": notes,
             }
 
             pool, was_created = Pool.objects.update_or_create(
@@ -90,9 +93,16 @@ class Command(BaseCommand):
             )
 
             if was_created:
+                pool.notes = city_comment
+                pool.save(update_fields=["notes"])
                 created += 1
                 self.stdout.write(f"  Created: {name}")
             else:
+                # Append city comment only if it's new information
+                if city_comment and city_comment not in (pool.notes or ""):
+                    today_str = date.today().strftime("%m/%d/%Y")
+                    pool.notes = (pool.notes + "\n" if pool.notes else "") + f"{today_str} update: {city_comment}"
+                    pool.save(update_fields=["notes"])
                 updated += 1
                 self.stdout.write(f"  Updated: {name}")
 
@@ -101,6 +111,17 @@ class Command(BaseCommand):
                 f"\nDone. Created: {created}, Updated: {updated}, Skipped: {skipped}"
             )
         )
+
+        # Warn about pools in the DB that are no longer in the feed
+        stale = Pool.objects.exclude(ppr_amenity_id="").exclude(ppr_amenity_id__in=seen_amenity_ids)
+        if stale.exists():
+            self.stdout.write(self.style.WARNING(
+                "\nPools in DB not found in current feed — review manually:"
+            ))
+            for p in stale:
+                self.stdout.write(f"  {p.name} (id={p.pk}, ppr_amenity_id={p.ppr_amenity_id})")
+        else:
+            self.stdout.write("All DB pools accounted for in feed.")
 
         self.stdout.write("Assigning neighborhoods...")
         from django.core.management import call_command
