@@ -7,7 +7,7 @@ from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
 
-from pools.models import Pool, ScheduleChange, Submission
+from pools.models import Pool, PoolSeasonHistory, ScheduleChange, Submission
 
 
 @admin.register(Pool)
@@ -33,7 +33,18 @@ class ScheduleChangeInline(admin.TabularInline):
     extra = 0
 
 
-PoolAdmin.inlines = [ScheduleChangeInline]
+class PoolSeasonHistoryInline(admin.TabularInline):
+    model = PoolSeasonHistory
+    extra = 0
+    readonly_fields = ["year", "opening_date", "closing_date"]
+    can_delete = False
+    ordering = ["-year"]
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+PoolAdmin.inlines = [ScheduleChangeInline, PoolSeasonHistoryInline]
 
 
 def _source_url(submission):

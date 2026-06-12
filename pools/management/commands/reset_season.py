@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from pools.models import Pool, ScheduleChange
+from pools.models import Pool, PoolSeasonHistory, ScheduleChange, _upsert_season_history
 
 
 class Command(BaseCommand):
@@ -39,6 +39,21 @@ class Command(BaseCommand):
                 "weekday_schedule", "weekday_schedule_source_url",
                 "weekend_schedule", "weekend_schedule_source_url",
             ]
+
+        # Persist season history before clearing (idempotent — uses update_or_create)
+        history_count = 0
+        for pool in pools:
+            if pool.opening_date or pool.closing_date:
+                history_count += 1
+                self.stdout.write(
+                    f"  {prefix}Saving history for {pool.name}: "
+                    + (f"opens {pool.opening_date}" if pool.opening_date else "")
+                    + (" / " if pool.opening_date and pool.closing_date else "")
+                    + (f"closes {pool.closing_date}" if pool.closing_date else "")
+                )
+                if not dry_run:
+                    _upsert_season_history(pool)
+        self.stdout.write(f"\n{prefix}Saved/verified history for {history_count} pool(s).\n")
 
         cleared_pools = 0
         for pool in pools:

@@ -41,6 +41,10 @@ class Pool(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        _upsert_season_history(self)
+
     @property
     def is_open(self):
         from datetime import date
@@ -50,6 +54,34 @@ class Pool(models.Model):
         if self.opening_date and self.opening_date <= today:
             return not self.closing_date or self.closing_date >= today
         return None  # no opening date, or opening date in the future
+
+
+def _upsert_season_history(pool):
+    """Update PoolSeasonHistory whenever opening_date or closing_date is set on a pool."""
+    dates_by_year = {}
+    if pool.opening_date:
+        dates_by_year.setdefault(pool.opening_date.year, {})["opening_date"] = pool.opening_date
+    if pool.closing_date:
+        dates_by_year.setdefault(pool.closing_date.year, {})["closing_date"] = pool.closing_date
+    for year, fields in dates_by_year.items():
+        obj, _ = PoolSeasonHistory.objects.get_or_create(pool=pool, year=year)
+        for field, value in fields.items():
+            setattr(obj, field, value)
+        obj.save(update_fields=list(fields.keys()))
+
+
+class PoolSeasonHistory(models.Model):
+    pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="season_history")
+    year = models.IntegerField()
+    opening_date = models.DateField(null=True, blank=True)
+    closing_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["year"]
+        unique_together = [("pool", "year")]
+
+    def __str__(self):
+        return f"{self.pool.name} {self.year}"
 
 
 class ScheduleChange(models.Model):
