@@ -169,7 +169,10 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text
-    result = _parse_response(raw)
+    try:
+        result = _parse_response(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {"_raw": raw}
     result["_raw"] = raw
     return result
 
@@ -250,6 +253,9 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
         }],
     )
     raw = message.content[0].text
-    result = _parse_response(raw)
+    try:
+        result = _parse_response(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {"_raw": raw}
     result["_raw"] = raw
     return result

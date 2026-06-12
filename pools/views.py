@@ -325,8 +325,8 @@ def submit(request):
                 from pools.services.llm_parser import parse_submission
                 parsed_fields = parse_submission(raw_content, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
-            except Exception:
-                pass
+            except Exception as e:
+                llm_response = {"error": str(e)}
 
         elif uploaded_image and submission.uploaded_image:
             try:
@@ -335,8 +335,8 @@ def submit(request):
                 image_name = submission.uploaded_image.name
                 parsed_fields = parse_image_submission(image_bytes, image_name, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
-            except Exception:
-                pass
+            except Exception as e:
+                llm_response = {"error": str(e)}
 
         if not parsed_pool and parsed_fields.get("pool_id"):
             try:
