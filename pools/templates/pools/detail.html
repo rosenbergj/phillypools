@@ -27,8 +27,8 @@
     <a href="https://www.google.com/maps/search/?api=1&query={{ pool.address|urlencode }}"
        target="_blank" rel="noopener" class="text-muted">{{ pool.address }}</a>
     {% if pool.phone_number %}&nbsp;&middot;&nbsp;{{ pool.phone_number }}{% endif %}
-    {% if pool.official_website_url %}
-      &nbsp;&middot;&nbsp;<a href="{{ pool.official_website_url }}" target="_blank" rel="noopener">Official page</a>
+    {% if pool.phillypublicpools_url %}
+      &nbsp;&middot;&nbsp;<a href="{{ pool.phillypublicpools_url }}" target="_blank" rel="noopener">phillypublicpools.com guide</a>
     {% endif %}
     {% if pool.social_media_url %}
       &nbsp;&middot;&nbsp;<a href="{{ pool.social_media_url }}" target="_blank" rel="noopener">Social media</a>
