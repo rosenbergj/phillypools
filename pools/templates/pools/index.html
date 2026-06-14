@@ -159,11 +159,15 @@
 
     let statusLine = '';
     if (pool.status === 'open') {
-      const schedule = isWeekend ? (pool.weekend_schedule || pool.weekday_schedule)
-                                 : (pool.weekday_schedule || pool.weekend_schedule);
+      const schedule = isWeekend ? pool.weekend_schedule : pool.weekday_schedule;
       if (schedule) {
-        const lines = schedule.trim().split('\n').slice(0, 3).map(escHtml).join('<br>');
-        statusLine = `<br><small>${lines}</small>`;
+        const allLines = schedule.trim().split('\n');
+        const truncate = allLines.length > 6;
+        const lines = allLines.slice(0, truncate ? 5 : allLines.length).map(escHtml).join('<br>');
+        const truncated = truncate
+          ? `<br><a href="/pools/${pool.id}/">more details</a>`
+          : '';
+        statusLine = `<br><small>${lines}${truncated}</small>`;
       } else {
         statusLine = '<br><small>Open today</small>';
       }
