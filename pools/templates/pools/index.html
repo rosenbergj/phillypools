@@ -181,7 +181,9 @@
 
     const socialLine = pool.social_media_url
       ? `<br><small><a href="${escHtml(pool.social_media_url)}" target="_blank" rel="noopener">Social media</a></small>`
-      : '';
+      : pool.phillypublicpools_url
+        ? `<br><small><a href="${escHtml(pool.phillypublicpools_url)}" target="_blank" rel="noopener">phillypublicpools.com guide</a></small>`
+        : '';
     return `<strong><a href="/pools/${pool.id}/">${escHtml(pool.name)}</a></strong><br><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}`;
   }
 
