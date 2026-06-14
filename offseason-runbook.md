@@ -52,13 +52,13 @@ From the Railway dashboard, copy every env var from both the **web service** and
 
 ### 5. Deploy the offseason page to Cloudflare Pages
 
-If not already set up as a Cloudflare Pages project, create one pointing at the `offseason/` directory (via `wrangler pages deploy offseason/` or the Cloudflare dashboard → Pages → upload `offseason/`).
+If not already set up as a Cloudflare Pages project, create one pointing at the `offseason/` directory (via `wrangler pages deploy offseason/` or the Cloudflare dashboard → Pages → upload `offseason/`). Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Pages project.
 
 If it was set up last offseason, no redeployment is needed unless you changed `offseason/index.html`. You can preview it via the Cloudflare Pages URL before switching DNS in the next step.
 
 ### 6. Switch DNS to Cloudflare Pages
 
-In your DNS provider, update the `phillypools.app` record to point to the Cloudflare Pages URL instead of the Railway-provided domain. Verify the offseason page loads correctly.
+In your DNS provider, update both the `phillypools.app` and `www.phillypools.app` records to point to the Cloudflare Pages URL instead of the Railway-provided domain. Verify the offseason page loads correctly on both.
 
 ### 7. Delete the Railway project
 
@@ -94,9 +94,10 @@ R2_ACCESS_KEY_ID=<from your saved backup>
 R2_SECRET_ACCESS_KEY=<from your saved backup>
 R2_BUCKET_NAME=<from your saved backup>
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+ALLOWED_HOSTS=*
 ```
 
-Use Railway's cross-service reference syntax (`${{ServiceName.VAR_NAME}}`) for `DATABASE_URL` rather than a hardcoded connection string — this way it stays correct if Railway rotates credentials. Check your saved env var notes to see which other variables were also set as cross-service references (rather than literal values) and replicate that.
+Use Railway's cross-service reference syntax (`${{ServiceName.VAR_NAME}}`) for `DATABASE_URL` rather than a hardcoded connection string — this way it stays correct if Railway rotates credentials. At the time this runbook was written, `DATABASE_URL` was the only cross-service reference on the web service, but check your saved env var notes to confirm nothing else was added since.
 
 `RAILWAY_PUBLIC_DOMAIN` is injected automatically — don't set it manually.
 
@@ -131,7 +132,7 @@ Follow `season-setup.md` from the beginning.
 
 ### 7. Switch DNS back to Railway
 
-Add `phillypools.app` as a custom domain on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update your DNS record to point to the Railway-provided CNAME. Verify the live app loads correctly.
+Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
 
 ### 8. Set up monitored pages
 
