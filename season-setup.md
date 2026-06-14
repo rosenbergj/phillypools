@@ -1,6 +1,8 @@
 # New Season Setup
 
-**Not urgent.** Pools with prior-season dates automatically show "TBD" on January 1 — the site is never in a broken state. Do this whenever it's convenient before the first 2027 submissions start arriving.
+> **If the Railway project was taken down last offseason:** follow `offseason-runbook.md` Part 2 first. It will direct you back here at step 6.
+
+**Not urgent.** Pools with prior-season dates automatically show "TBD" on January 1 — the site is never in a broken state. Do this whenever it's convenient before the first submissions for the new season start arriving.
 
 ---
 
