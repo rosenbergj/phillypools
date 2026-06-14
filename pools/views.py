@@ -1,4 +1,5 @@
 import json
+import logging
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
@@ -8,6 +9,38 @@ from django.utils import timezone
 from pools.models import Pool, Submission
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
+
+logger = logging.getLogger(__name__)
+
+# Leading bytes that identify common image formats.
+_IMAGE_MAGIC = [
+    b"\xff\xd8\xff",            # JPEG
+    b"\x89PNG\r\n\x1a\n",       # PNG
+    b"GIF87a",                  # GIF
+    b"GIF89a",                  # GIF
+    b"BM",                      # BMP
+    b"II\x2a\x00",              # TIFF (little-endian)
+    b"MM\x00\x2a",              # TIFF (big-endian)
+]
+_WEBP_RIFF = b"RIFF"
+_WEBP_MARKER = b"WEBP"
+
+
+def _is_image_bytes(data: bytes) -> bool:
+    for magic in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return True
+    # WebP: RIFF????WEBP
+    if data[:4] == _WEBP_RIFF and data[8:12] == _WEBP_MARKER:
+        return True
+    return False
+
+
+def _get_client_ip(request) -> str:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "unknown")
 
 _PHILLY_BOUNDARY = json.loads(
     (Path(__file__).parent.parent / "static" / "philly_boundary.json").read_text()
@@ -295,7 +328,18 @@ def submit(request):
             from pools.services.llm_parser import moderate_image
             image_bytes_for_check = uploaded_image.read()
             uploaded_image.seek(0)
+            ip = _get_client_ip(request)
+            if not _is_image_bytes(image_bytes_for_check):
+                logger.warning(
+                    "Rejected non-image upload: filename=%r ip=%s",
+                    uploaded_image.name, ip,
+                )
+                return redirect("submit_thanks")
             if moderate_image(image_bytes_for_check, uploaded_image.name):
+                logger.warning(
+                    "Rejected image flagged by moderation: filename=%r ip=%s",
+                    uploaded_image.name, ip,
+                )
                 return redirect("submit_thanks")
 
         parsed_pool = None
