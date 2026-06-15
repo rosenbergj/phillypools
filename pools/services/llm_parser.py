@@ -20,19 +20,30 @@ def _system_prompt() -> str:
         f"(e.g. references {today.year - 1} or earlier dates as current)."
     )
 
+_SCHEDULE_INSTRUCTIONS = """\
+For weekday_schedule and weekend_schedule, summarize into compact time blocks, one per line.
+Format each line as: "H–H Activity" using an en-dash (e.g. "11–1 Camp Swim" or "1–4 Open Swim").
+Use 12-hour times without am/pm unless needed for clarity.
+Note per-day variations in parentheses after the activity (e.g. "4–5 Swim Lessons (Wed-Thu) / Swim Team (Mon, Tues, Fri)").
+Omit any "pool closed" or "no activity" blocks at the start or end of the day — those are implied by the hours listed.
+Do include a "closed" block only if there is a gap of more than 10 minutes in the middle of an otherwise active day (e.g. closed 12–1 between two sessions).
+If weekday and weekend schedules are identical, still fill in both fields."""
+
 _PROMPT_TEMPLATE = """Pool list (id: name):
 {pool_list}
 
 Content to analyze:
 {content}
 
+{schedule_instructions}
+
 Return JSON with exactly these fields:
 {{
   "pool_id": <integer or null>,
   "opening_date": "<YYYY-MM-DD or null>",
   "closing_date": "<YYYY-MM-DD or null>",
-  "weekday_schedule": "<detailed weekday periods, one per line, or null>",
-  "weekend_schedule": "<detailed weekend periods, one per line, or null>",
+  "weekday_schedule": "<summarized weekday time blocks, one per line, or null>",
+  "weekend_schedule": "<summarized weekend time blocks, one per line, or null>",
   "notes": "<any other relevant info or null>",
   "confidence": "<high|medium|low>",
   "stale_year_warning": <true|false>
@@ -44,13 +55,15 @@ _IMAGE_PROMPT = """Pool list (id: name):
 The image above is a screenshot (e.g. from Instagram or a website) with Philadelphia pool schedule information.
 OCR the text in the image and extract pool schedule data.
 
+{schedule_instructions}
+
 Return JSON with exactly these fields:
 {{
   "pool_id": <integer or null>,
   "opening_date": "<YYYY-MM-DD or null>",
   "closing_date": "<YYYY-MM-DD or null>",
-  "weekday_schedule": "<detailed weekday periods, one per line, or null>",
-  "weekend_schedule": "<detailed weekend periods, one per line, or null>",
+  "weekday_schedule": "<summarized weekday time blocks, one per line, or null>",
+  "weekend_schedule": "<summarized weekend time blocks, one per line, or null>",
   "notes": "<any other relevant info or null>",
   "confidence": "<high|medium|low>",
   "stale_year_warning": <true|false>
@@ -185,6 +198,7 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
     prompt = _PROMPT_TEMPLATE.format(
         pool_list=_format_pool_list(pool_list),
         content=text[:8000],
+        schedule_instructions=_SCHEDULE_INSTRUCTIONS,
     )
     message = client.messages.create(
         model="claude-haiku-4-5",
@@ -256,7 +270,10 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
 
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    prompt = _IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
+    prompt = _IMAGE_PROMPT.format(
+        pool_list=_format_pool_list(pool_list),
+        schedule_instructions=_SCHEDULE_INSTRUCTIONS,
+    )
     message = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=1024,
