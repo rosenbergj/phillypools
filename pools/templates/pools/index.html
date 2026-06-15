@@ -62,6 +62,10 @@
   <div class="row g-0">
     <div class="col-lg-6 map-col pe-lg-2 mb-3 mb-lg-0">
       <div id="map"></div>
+      <div class="form-check mt-1 small">
+        <input class="form-check-input" type="checkbox" id="map-pick-neighborhood">
+        <label class="form-check-label text-muted" for="map-pick-neighborhood">If selected, clicking map picks neighborhood</label>
+      </div>
     </div>
     <div class="col-lg-6 list-col ps-lg-2">
       {% if pools %}
@@ -199,6 +203,7 @@
   }
 
   const markerById = {};
+  let markerWasClicked = false;
 
   poolsData.forEach(pool => {
     if (pool.lat && pool.lng) {
@@ -209,6 +214,7 @@
       markerById[pool.id] = marker;
 
       marker.on('click', () => {
+        markerWasClicked = true;
         const el = document.getElementById('pool-' + pool.id);
         if (el) {
           el.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -282,5 +288,18 @@
       map.setView([zipCenter[0], zipCenter[1]], 13);
     }
   }
+
+  map.on('click', async (e) => {
+    if (markerWasClicked) { markerWasClicked = false; return; }
+    if (!document.getElementById('map-pick-neighborhood').checked) return;
+    const { lat, lng } = e.latlng;
+    const resp = await fetch(`/neighborhood-at/?lat=${lat}&lng=${lng}`);
+    const data = await resp.json();
+    if (!data.neighborhood) return;
+    const sel = document.getElementById('neighborhood-select');
+    sel.value = data.neighborhood;
+    document.getElementById('zip-input').value = '';
+    sel.form.submit();
+  });
 </script>
 {% endblock %}

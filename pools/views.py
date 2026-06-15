@@ -3,6 +3,7 @@ import logging
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
+from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 
@@ -258,6 +259,28 @@ def index(request):
         "show_distance": bool(zip_center),
         "center_label": center_label,
     })
+
+
+def neighborhood_at(request):
+    try:
+        lat = float(request.GET["lat"])
+        lng = float(request.GET["lng"])
+    except (KeyError, ValueError):
+        return JsonResponse({"neighborhood": None})
+    for n in get_neighborhoods():
+        geometry = n.get("geometry")
+        if not geometry:
+            continue
+        geom_type = geometry["type"]
+        coords = geometry["coordinates"]
+        if geom_type == "Polygon":
+            if _point_in_ring(lng, lat, coords[0]):
+                return JsonResponse({"neighborhood": n["name"]})
+        elif geom_type == "MultiPolygon":
+            for polygon in coords:
+                if _point_in_ring(lng, lat, polygon[0]):
+                    return JsonResponse({"neighborhood": n["name"]})
+    return JsonResponse({"neighborhood": None})
 
 
 def pool_detail(request, pk):
