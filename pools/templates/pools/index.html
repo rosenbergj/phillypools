@@ -115,6 +115,7 @@
 {% block extra_scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+  const isAdmin = {{ request.user.is_staff|yesno:"true,false" }};
   const poolsData = JSON.parse(document.getElementById('pools-data').textContent);
   const zipCenter = JSON.parse(document.getElementById('zip-center').textContent);
   const boundaryGeometry = JSON.parse(document.getElementById('boundary-geometry').textContent);
@@ -181,7 +182,8 @@
       : pool.phillypublicpools_url
         ? `<br><small><a href="${escHtml(pool.phillypublicpools_url)}" target="_blank" rel="noopener">phillypublicpools.com guide</a></small>`
         : '';
-    return `<strong><a href="/pools/${pool.id}/">${escHtml(pool.name)}</a></strong><br><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}`;
+    const adminLine = isAdmin ? `<br><small><a href="/admin/pools/pool/${pool.id}/change/">Edit in admin</a></small>` : '';
+    return `<strong><a href="/pools/${pool.id}/">${escHtml(pool.name)}</a></strong><br><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}${adminLine}`;
   }
 
   function makeIcon(status) {

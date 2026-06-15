@@ -153,5 +153,8 @@
   <a href="{% url 'submit' %}?pool={{ pool.pk }}" class="btn btn-outline-primary btn-sm">
     Submit an update for this pool
   </a>
+  {% if request.user.is_staff %}
+    <a href="{% url 'admin:pools_pool_change' pool.pk %}" class="btn btn-outline-secondary btn-sm ms-2">Edit in admin</a>
+  {% endif %}
 </div>
 {% endblock %}
