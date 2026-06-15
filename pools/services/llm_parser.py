@@ -102,8 +102,28 @@ def moderate_image(image_bytes: bytes, image_name: str) -> bool:
         return False
 
 
+def build_pool_list() -> list[dict]:
+    """Build the pool list (with alternate names) to pass to LLM parse functions."""
+    from pools.models import Pool
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "alternate_names": [a.name for a in p.alternate_names.all()],
+        }
+        for p in Pool.objects.prefetch_related("alternate_names").all()
+    ]
+
+
 def _format_pool_list(pool_list: list[dict]) -> str:
-    return "\n".join(f"{p['id']}: {p['name']}" for p in pool_list)
+    lines = []
+    for p in pool_list:
+        line = f"{p['id']}: {p['name']}"
+        alts = p.get("alternate_names", [])
+        if alts:
+            line += f" (also known as: {', '.join(alts)})"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 _ALL_POOLS_PROMPT = """Pool list (id: name):

@@ -99,6 +99,17 @@ class ScheduleChange(models.Model):
         return f"{self.pool.name}: {self.date_from} – {self.date_to}"
 
 
+class PoolAlternateName(models.Model):
+    pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="alternate_names")
+    name = models.CharField(max_length=200, help_text="Nickname or abbreviation used in community sources (e.g. 'MARC Pool')")
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.pool.name})"
+
+
 class MonitoredPage(models.Model):
     """A URL whose main content is periodically checked for changes."""
     url = models.URLField(unique=True)

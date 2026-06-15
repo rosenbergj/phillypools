@@ -10,7 +10,7 @@ from django.utils.html import format_html
 
 from django.db.models import Q
 
-from pools.models import MonitoredPage, Pool, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import MonitoredPage, Pool, PoolAlternateName, PoolSeasonHistory, ScheduleChange, Submission
 
 
 class PoolStatusFilter(admin.SimpleListFilter):
@@ -71,6 +71,13 @@ class PoolAdmin(admin.ModelAdmin):
     social_media_display.short_description = "Social"
 
 
+class PoolAlternateNameInline(admin.TabularInline):
+    model = PoolAlternateName
+    extra = 1
+    verbose_name = "Alternate name"
+    verbose_name_plural = "Alternate names"
+
+
 class ScheduleChangeInline(admin.TabularInline):
     model = ScheduleChange
     extra = 0
@@ -87,7 +94,7 @@ class PoolSeasonHistoryInline(admin.TabularInline):
         return False
 
 
-PoolAdmin.inlines = [ScheduleChangeInline, PoolSeasonHistoryInline]
+PoolAdmin.inlines = [PoolAlternateNameInline, ScheduleChangeInline, PoolSeasonHistoryInline]
 
 
 def _source_url(submission):
@@ -219,10 +226,10 @@ class SubmissionAdmin(admin.ModelAdmin):
         return super().response_change(request, obj)
 
     def _run_reparse(self, request, submission):
-        from pools.services.llm_parser import parse_submission, parse_image_submission
+        from pools.services.llm_parser import parse_submission, parse_image_submission, build_pool_list
         from pools.services.url_fetcher import fetch_url
 
-        pool_list = list(Pool.objects.all().values("id", "name"))
+        pool_list = build_pool_list()
         raw_content = ""
         llm_response = None
         parsed_fields = {}
@@ -314,7 +321,8 @@ class SubmissionAdmin(admin.ModelAdmin):
         # GET or POST without action=apply: run the LLM
         results = []
         error = None
-        pool_list = list(Pool.objects.all().values("id", "name"))
+        from pools.services.llm_parser import build_pool_list
+        pool_list = build_pool_list()
         try:
             if submission.url:
                 from pools.services.url_fetcher import fetch_url

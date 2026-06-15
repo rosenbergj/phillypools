@@ -431,7 +431,8 @@ def submit(request):
         raw_content = ""
         llm_response = None
         parsed_fields = {}
-        pool_list = list(Pool.objects.all().values("id", "name"))
+        from pools.services.llm_parser import build_pool_list
+        pool_list = build_pool_list()
 
         # Build a Submission instance so we can save the image via Django's storage
         submission = Submission(
