@@ -289,6 +289,10 @@
     }
   }
 
+  const mapPickCb = document.getElementById('map-pick-neighborhood');
+  if (localStorage.getItem('mapPickNeighborhood') === 'true') mapPickCb.checked = true;
+  mapPickCb.addEventListener('change', () => localStorage.setItem('mapPickNeighborhood', mapPickCb.checked));
+
   map.on('click', async (e) => {
     if (markerWasClicked) { markerWasClicked = false; return; }
     if (!document.getElementById('map-pick-neighborhood').checked) return;
