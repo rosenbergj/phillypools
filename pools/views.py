@@ -165,19 +165,14 @@ def _pool_map_status(pool, today):
     return "no_date"
 
 
-def index(request):
+def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter: str) -> dict:
+    """Filter, sort, and annotate pools. Shared by index and pools_json."""
     pools = list(Pool.objects.all())
-
-    zip_query = request.GET.get("zip", "").strip()
-    status_filter = request.GET.get("status", "")
-    neighborhood_filter = request.GET.get("neighborhood", "")
-
     zip_center = None
     zip_error = None
     center_label = None
-    boundary_geometry = None  # GeoJSON geometry to outline on the map
+    boundary_geometry = None
 
-    # Determine sort center: zip takes priority, then neighborhood
     if zip_query:
         coords = geocode_zip(zip_query)
         if coords:
@@ -225,7 +220,24 @@ def index(request):
         pool.map_status = _pool_map_status(pool, today)
         pool.label_text, pool.label_color, pool.label_bold = _pool_status_label(pool, today)
 
-    neighborhoods = get_neighborhoods()
+    return {
+        "pools": pools,
+        "zip_center": zip_center,
+        "zip_error": zip_error,
+        "center_label": center_label,
+        "boundary_geometry": boundary_geometry,
+        "show_distance": bool(zip_center),
+    }
+
+
+def index(request):
+    zip_query = request.GET.get("zip", "").strip()
+    status_filter = request.GET.get("status", "")
+    neighborhood_filter = request.GET.get("neighborhood", "")
+
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter)
+    pools = ctx["pools"]
+    zip_center = ctx["zip_center"]
 
     pools_geojson = [
         {
@@ -233,7 +245,7 @@ def index(request):
             "name": p.name,
             "lat": p.latitude,
             "lng": p.longitude,
-            "status": _pool_map_status(p, today),
+            "status": p.map_status,
             "address": p.address,
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
             "weekday_schedule": p.weekday_schedule or None,
@@ -250,14 +262,57 @@ def index(request):
         "pools_geojson": pools_geojson,
         "zip_query": zip_query,
         "zip_center_json": list(zip_center) if zip_center else None,
-        "boundary_geometry": boundary_geometry,
+        "boundary_geometry": ctx["boundary_geometry"],
         "philly_boundary": _PHILLY_BOUNDARY,
-        "zip_error": zip_error,
+        "zip_error": ctx["zip_error"],
         "status_filter": status_filter,
         "neighborhood_filter": neighborhood_filter,
-        "neighborhoods": neighborhoods,
-        "show_distance": bool(zip_center),
-        "center_label": center_label,
+        "neighborhoods": get_neighborhoods(),
+        "show_distance": ctx["show_distance"],
+        "center_label": ctx["center_label"],
+    })
+
+
+def pools_json(request):
+    zip_query = request.GET.get("zip", "").strip()
+    status_filter = request.GET.get("status", "")
+    neighborhood_filter = request.GET.get("neighborhood", "")
+
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter)
+    pools = ctx["pools"]
+
+    pools_list = []
+    for p in pools:
+        dist = getattr(p, "distance", None)
+        pools_list.append({
+            "id": p.id,
+            "name": p.name,
+            "address": p.address,
+            "lat": p.latitude,
+            "lng": p.longitude,
+            "status": p.map_status,
+            "is_active": p.is_active,
+            "label_text": p.label_text,
+            "label_color": p.label_color,
+            "label_bold": p.label_bold,
+            "distance": None if (dist is None or dist == float("inf")) else dist,
+            "opening_date": p.opening_date.isoformat() if p.opening_date else None,
+            "weekday_schedule": p.weekday_schedule or None,
+            "weekend_schedule": p.weekend_schedule or None,
+            "social_media_url": p.social_media_url or None,
+            "phillypublicpools_url": p.phillypublicpools_url or None,
+        })
+
+    return JsonResponse({
+        "pools": pools_list,
+        "show_distance": ctx["show_distance"],
+        "center_label": ctx["center_label"],
+        "zip_error": ctx["zip_error"],
+        "zip_center": list(ctx["zip_center"]) if ctx["zip_center"] else None,
+        "boundary_geometry": ctx["boundary_geometry"],
+        "neighborhood_filter": neighborhood_filter,
+        "zip_query": zip_query,
+        "status_filter": status_filter,
     })
 
 

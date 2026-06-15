@@ -49,15 +49,11 @@
     </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      {% if zip_query or status_filter or neighborhood_filter %}
-        <a href="/" class="btn btn-outline-secondary btn-sm ms-1">Clear</a>
-      {% endif %}
+      <a href="/" class="btn btn-outline-secondary btn-sm ms-1{% if not zip_query and not status_filter and not neighborhood_filter %} d-none{% endif %}" id="clear-btn">Clear</a>
     </div>
   </form>
 
-  {% if zip_error %}
-    <div class="alert alert-warning py-2 small">{{ zip_error }}</div>
-  {% endif %}
+  <div id="zip-error-container">{% if zip_error %}<div class="alert alert-warning py-2 small">{{ zip_error }}</div>{% endif %}</div>
 
   <div class="row g-0">
     <div class="col-lg-6 map-col pe-lg-2 mb-3 mb-lg-0">
@@ -131,7 +127,6 @@
     maxZoom: 20,
   }).addTo(map);
 
-  // Inverse polygon mask: shade areas outside Philadelphia city limits
   const worldRing = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
   L.geoJSON({
     type: 'Feature',
@@ -154,13 +149,13 @@
 
   function makePopupContent(pool) {
     const today = new Date();
-    const dow = today.getDay(); // 0=Sun, 6=Sat
-    const m = today.getMonth() + 1, d = today.getDate(); // getMonth is 0-indexed, so +1 to make it human-readable
+    const dow = today.getDay();
+    const m = today.getMonth() + 1, d = today.getDate();
     const isWeekend = dow === 0 || dow === 6 ||
-                      (m === 6 && d === 19) ||               // Juneteenth (June 19)
-                      (m === 7 && d === 4) ||                // July 4
-                      (m === 7 && d === 3 && dow === 5) ||   // Fri Jul 3 when Jul 4 is Saturday
-                      (m === 7 && d === 5 && dow === 1);     // Mon Jul 5 when Jul 4 is Sunday
+                      (m === 6 && d === 19) ||
+                      (m === 7 && d === 4) ||
+                      (m === 7 && d === 3 && dow === 5) ||
+                      (m === 7 && d === 5 && dow === 1);
 
     let statusLine = '';
     if (pool.status === 'open') {
@@ -169,9 +164,7 @@
         const allLines = schedule.trim().split('\n');
         const truncate = allLines.length > 6;
         const lines = allLines.slice(0, truncate ? 5 : allLines.length).map(escHtml).join('<br>');
-        const truncated = truncate
-          ? `<br><a href="/pools/${pool.id}/">more details</a>`
-          : '';
+        const truncated = truncate ? `<br><a href="/pools/${pool.id}/">more details</a>` : '';
         statusLine = `<br><small>${lines}${truncated}</small>`;
       } else {
         statusLine = '<br><small>Open today</small>';
@@ -205,14 +198,15 @@
   const markerById = {};
   let markerWasClicked = false;
 
-  poolsData.forEach(pool => {
-    if (pool.lat && pool.lng) {
+  function renderMarkers(pools) {
+    Object.values(markerById).forEach(m => map.removeLayer(m));
+    for (const k in markerById) delete markerById[k];
+    pools.forEach(pool => {
+      if (!pool.lat || !pool.lng) return;
       const marker = L.marker([pool.lat, pool.lng], {icon: makeIcon(pool.status)})
         .addTo(map)
         .bindPopup(() => makePopupContent(pool));
-
       markerById[pool.id] = marker;
-
       marker.on('click', () => {
         markerWasClicked = true;
         const el = document.getElementById('pool-' + pool.id);
@@ -222,39 +216,126 @@
           setTimeout(() => el.classList.remove('highlighted'), 2000);
         }
       });
+    });
+  }
+
+  let boundaryLayer = null;
+
+  function renderBoundary(geometry, center) {
+    if (boundaryLayer) { map.removeLayer(boundaryLayer); boundaryLayer = null; }
+    if (!center) return;
+    if (geometry) {
+      boundaryLayer = L.geoJSON({type: 'Feature', geometry}, {
+        style: {color: '#0d6efd', weight: 2, fillOpacity: 0.08, fillColor: '#0d6efd'},
+      }).addTo(map);
+      map.fitBounds(boundaryLayer.getBounds(), {maxZoom: 14});
+    } else {
+      map.setView([center[0], center[1]], 13);
     }
-  });
+  }
 
-  document.querySelectorAll('.pool-card').forEach(card => {
-    card.style.cursor = 'pointer';
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('a')) return;
-      const poolId = parseInt(card.id.replace('pool-', ''));
-      const marker = markerById[poolId];
-      if (!marker) return;
-      if (boundaryLayer) boundaryLayer.setStyle({opacity: 0, fillOpacity: 0});
-      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
-      map.once('moveend', () => {
-        if (boundaryLayer) boundaryLayer.setStyle({opacity: 1, fillOpacity: 0.08});
-        marker.openPopup();
+  function renderPoolCard(pool, showDistance) {
+    let badge;
+    if (!pool.is_active) {
+      badge = `<span class="badge" style="background:#842029">Won't open</span>`;
+    } else if (pool.status === 'open') {
+      badge = `<span class="badge bg-success">Open</span>`;
+    } else if (pool.status === 'closed') {
+      badge = `<span class="badge bg-secondary">Closed</span>`;
+    } else if (pool.status === 'opening_soon') {
+      badge = `<span class="badge" style="background:#fd7e14">Soon</span>`;
+    } else {
+      badge = `<span class="badge bg-secondary">TBD</span>`;
+    }
+    const distHtml = showDistance && pool.distance != null
+      ? `<span class="text-muted small" style="min-width:3rem;text-align:right">${pool.distance.toFixed(1)} mi</span>`
+      : '';
+    const labelHtml = pool.label_text
+      ? `<div class="small" style="color:${escHtml(pool.label_color)}${pool.label_bold ? ';font-weight:600' : ''}">${escHtml(pool.label_text)}</div>`
+      : '';
+    return `<div id="pool-${pool.id}" class="pool-card p-2 mb-1 rounded">
+      <div class="d-flex justify-content-between align-items-start">
+        <a href="/pools/${pool.id}/" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>
+        <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
+          ${distHtml}
+          <div style="min-width:5.5rem;text-align:center">${badge}</div>
+        </div>
+      </div>
+      ${labelHtml}
+      <div class="text-muted small">${escHtml(pool.address)}</div>
+    </div>`;
+  }
+
+  function attachCardListeners() {
+    document.querySelectorAll('.pool-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
+        const poolId = parseInt(card.id.replace('pool-', ''));
+        const marker = markerById[poolId];
+        if (!marker) return;
+        if (boundaryLayer) boundaryLayer.setStyle({opacity: 0, fillOpacity: 0});
+        map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
+        map.once('moveend', () => {
+          if (boundaryLayer) boundaryLayer.setStyle({opacity: 1, fillOpacity: 0.08});
+          marker.openPopup();
+        });
+        const mapEl = document.getElementById('map');
+        if (mapEl.getBoundingClientRect().bottom < 0) {
+          mapEl.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }
       });
-      const mapEl = document.getElementById('map');
-      if (mapEl.getBoundingClientRect().bottom < 0) {
-        mapEl.scrollIntoView({behavior: 'smooth', block: 'start'});
-      }
     });
-  });
 
-  // Save pool ID to sessionStorage when navigating to a detail page,
-  // so we can restore the highlight if the user comes back.
-  document.querySelectorAll('.pool-card a').forEach(link => {
-    link.addEventListener('click', () => {
-      const card = link.closest('.pool-card');
-      if (card) sessionStorage.setItem('selectedPoolId', card.id.replace('pool-', ''));
+    document.querySelectorAll('.pool-card a').forEach(link => {
+      link.addEventListener('click', () => {
+        const card = link.closest('.pool-card');
+        if (card) sessionStorage.setItem('selectedPoolId', card.id.replace('pool-', ''));
+      });
     });
-  });
+  }
 
-  // Restore selection on back navigation (handles both normal load and bfcache).
+  function renderPoolList(data) {
+    document.getElementById('zip-error-container').innerHTML = data.zip_error
+      ? `<div class="alert alert-warning py-2 small mb-3">${escHtml(data.zip_error)}</div>`
+      : '';
+    document.getElementById('clear-btn').classList.toggle(
+      'd-none', !(data.zip_query || data.status_filter || data.neighborhood_filter)
+    );
+
+    const col = document.querySelector('.list-col');
+    if (!data.pools.length) {
+      col.innerHTML = '<p class="text-muted">No pools match your filters.</p>';
+      return;
+    }
+    const n = data.pools.length;
+    const distLabel = data.show_distance ? ` sorted by distance from ${escHtml(data.center_label)}` : '';
+    let html = `<p class="text-muted small mb-2">${n} pool${n === 1 ? '' : 's'}${distLabel}</p>`;
+    for (const pool of data.pools) html += renderPoolCard(pool, data.show_distance);
+    col.innerHTML = html;
+    attachCardListeners();
+  }
+
+  async function fetchAndRender() {
+    const zip = document.getElementById('zip-input').value.trim();
+    const neighborhood = document.getElementById('neighborhood-select').value;
+    const status = document.getElementById('status-select').value;
+    const params = new URLSearchParams();
+    if (zip) params.set('zip', zip);
+    if (neighborhood) params.set('neighborhood', neighborhood);
+    if (status) params.set('status', status);
+    history.pushState({}, '', params.toString() ? '?' + params.toString() : location.pathname);
+    const resp = await fetch('/pools-json/?' + params.toString());
+    const data = await resp.json();
+    renderPoolList(data);
+    renderMarkers(data.pools);
+    renderBoundary(data.boundary_geometry, data.zip_center);
+  }
+
+  renderMarkers(poolsData);
+  renderBoundary(boundaryGeometry, zipCenter);
+  attachCardListeners();
+
   window.addEventListener('pageshow', () => {
     const poolId = sessionStorage.getItem('selectedPoolId');
     if (!poolId) return;
@@ -266,28 +347,26 @@
     setTimeout(() => card.classList.remove('highlighted'), 2000);
   });
 
+  window.addEventListener('popstate', () => {
+    const params = new URLSearchParams(location.search);
+    document.getElementById('zip-input').value = params.get('zip') || '';
+    document.getElementById('neighborhood-select').value = params.get('neighborhood') || '';
+    document.getElementById('status-select').value = params.get('status') || '';
+    fetchAndRender();
+  });
+
   document.getElementById('zip-input').addEventListener('input', () => {
     document.getElementById('neighborhood-select').value = '';
   });
-  document.getElementById('neighborhood-select').addEventListener('change', (e) => {
+  document.getElementById('neighborhood-select').addEventListener('change', () => {
     document.getElementById('zip-input').value = '';
-    e.target.form.submit();
+    fetchAndRender();
   });
-  document.getElementById('status-select').addEventListener('change', (e) => {
-    e.target.form.submit();
+  document.getElementById('status-select').addEventListener('change', fetchAndRender);
+  document.querySelector('form[method="get"]').addEventListener('submit', (e) => {
+    e.preventDefault();
+    fetchAndRender();
   });
-
-  let boundaryLayer = null;
-  if (zipCenter) {
-    if (boundaryGeometry) {
-      boundaryLayer = L.geoJSON({type: 'Feature', geometry: boundaryGeometry}, {
-        style: {color: '#0d6efd', weight: 2, fillOpacity: 0.08, fillColor: '#0d6efd'},
-      }).addTo(map);
-      map.fitBounds(boundaryLayer.getBounds(), {maxZoom: 14});
-    } else {
-      map.setView([zipCenter[0], zipCenter[1]], 13);
-    }
-  }
 
   const mapPickCb = document.getElementById('map-pick-neighborhood');
   if (localStorage.getItem('mapPickNeighborhood') === 'true') mapPickCb.checked = true;
@@ -295,15 +374,14 @@
 
   map.on('click', async (e) => {
     if (markerWasClicked) { markerWasClicked = false; return; }
-    if (!document.getElementById('map-pick-neighborhood').checked) return;
+    if (!mapPickCb.checked) return;
     const { lat, lng } = e.latlng;
     const resp = await fetch(`/neighborhood-at/?lat=${lat}&lng=${lng}`);
     const data = await resp.json();
     if (!data.neighborhood) return;
-    const sel = document.getElementById('neighborhood-select');
-    sel.value = data.neighborhood;
+    document.getElementById('neighborhood-select').value = data.neighborhood;
     document.getElementById('zip-input').value = '';
-    sel.form.submit();
+    fetchAndRender();
   });
 </script>
 {% endblock %}
