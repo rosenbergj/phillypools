@@ -198,7 +198,16 @@ class SubmissionAdmin(admin.ModelAdmin):
             path("<int:submission_id>/apply/",
                  self.admin_site.admin_view(self.apply_view),
                  name="pools_submission_apply"),
+            path("pending-count/",
+                 self.admin_site.admin_view(self.pending_count_view),
+                 name="pools_submission_pending_count"),
         ] + super().get_urls()
+
+    def pending_count_view(self, request):
+        from django.http import JsonResponse
+        pending = Submission.objects.filter(status="pending")
+        latest_id = pending.order_by("-submitted_at").values_list("id", flat=True).first()
+        return JsonResponse({"count": pending.count(), "latest_id": latest_id})
 
     def response_change(self, request, obj):
         if "_apply" in request.POST:

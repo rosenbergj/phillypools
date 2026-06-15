@@ -3,6 +3,51 @@
 
 {% block extrahead %}
 <link rel="icon" type="image/png" href="{% static 'favicon-admin.png' %}">
+{% if request.user.is_authenticated %}
+<script>
+(function () {
+  var ENDPOINT = "{% url 'admin:pools_submission_pending_count' %}";
+  var ICON = "{% static 'favicon-admin.png' %}";
+  var STORAGE_KEY = "phillypools_latest_submission_id";
+  var POLL_MS = 30000;
+
+  async function poll() {
+    try {
+      var resp = await fetch(ENDPOINT, { credentials: "same-origin" });
+      if (!resp.ok) return;
+      var data = await resp.json();
+      var latestId = data.latest_id || 0;
+      var lastSeen = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
+      if (lastSeen === 0) {
+        // First visit: record current state silently, no notification.
+        localStorage.setItem(STORAGE_KEY, latestId);
+      } else if (latestId > lastSeen) {
+        localStorage.setItem(STORAGE_KEY, latestId);
+        if (Notification.permission === "granted") {
+          var count = data.count;
+          new Notification("New submission — Philly Pools", {
+            body: count + " pending submission" + (count !== 1 ? "s" : "") + " awaiting review",
+            icon: ICON,
+            tag: "phillypools-submission",
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function init() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+    await poll();
+    setInterval(poll, POLL_MS);
+  }
+
+  init();
+})();
+</script>
+{% endif %}
 {% endblock %}
 
 {% block messages %}
