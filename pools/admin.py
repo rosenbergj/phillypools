@@ -10,7 +10,7 @@ from django.utils.html import format_html
 
 from django.db.models import Q
 
-from pools.models import MonitoredPage, Pool, PoolAlternateName, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
 
 
 class PoolStatusFilter(admin.SimpleListFilter):
@@ -399,6 +399,16 @@ class SubmissionAdmin(admin.ModelAdmin):
     def current_updates(self, obj):
         return self._current(obj, "updates")
     current_updates.short_description = "Current: updates"
+
+
+@admin.register(PoolLike)
+class PoolLikeAdmin(admin.ModelAdmin):
+    list_display = ["pool", "year", "voter_id", "ip_address", "created_at"]
+    list_filter = ["year", "pool"]
+    readonly_fields = ["pool", "voter_id", "ip_address", "year", "created_at"]
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(MonitoredPage)

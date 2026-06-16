@@ -1,5 +1,7 @@
 import json
 import logging
+import secrets
+from datetime import timedelta
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
@@ -7,11 +9,16 @@ from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 
-from pools.models import Pool, Submission
+from pools.models import Pool, PoolLike, Submission
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 
 logger = logging.getLogger(__name__)
+
+LIKE_COOKIE_NAME = "voter_id"
+LIKE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 5  # 5 years
+LIKE_RATE_LIMIT_WINDOW = timedelta(hours=1)
+LIKE_RATE_LIMIT_MAX = 30  # new likes per IP per window, across all pools
 
 # Leading bytes that identify common image formats.
 _IMAGE_MAGIC = [
@@ -165,7 +172,23 @@ def _pool_map_status(pool, today):
     return "no_date"
 
 
-def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter: str) -> dict:
+def _annotate_likes(pools, voter_id: str, year: int):
+    from django.db.models import Count
+
+    like_counts = dict(
+        PoolLike.objects.filter(year=year).values("pool_id").annotate(c=Count("id")).values_list("pool_id", "c")
+    )
+    liked_pool_ids = set()
+    if voter_id:
+        liked_pool_ids = set(
+            PoolLike.objects.filter(year=year, voter_id=voter_id).values_list("pool_id", flat=True)
+        )
+    for pool in pools:
+        pool.like_count = like_counts.get(pool.id, 0)
+        pool.user_liked = pool.id in liked_pool_ids
+
+
+def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter: str, voter_id: str = "") -> dict:
     """Filter, sort, and annotate pools. Shared by index and pools_json."""
     pools = list(Pool.objects.all())
     zip_center = None
@@ -220,6 +243,8 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
         pool.map_status = _pool_map_status(pool, today)
         pool.label_text, pool.label_color, pool.label_bold = _pool_status_label(pool, today)
 
+    _annotate_likes(pools, voter_id, today.year)
+
     return {
         "pools": pools,
         "zip_center": zip_center,
@@ -235,7 +260,8 @@ def index(request):
     status_filter = request.GET.get("status", "")
     neighborhood_filter = request.GET.get("neighborhood", "")
 
-    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter)
+    voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id)
     pools = ctx["pools"]
     zip_center = ctx["zip_center"]
 
@@ -252,6 +278,8 @@ def index(request):
             "weekend_schedule": p.weekend_schedule or None,
             "social_media_url": p.social_media_url or None,
             "phillypublicpools_url": p.phillypublicpools_url or None,
+            "like_count": p.like_count,
+            "user_liked": p.user_liked,
         }
         for p in pools
         if p.latitude and p.longitude
@@ -278,7 +306,8 @@ def pools_json(request):
     status_filter = request.GET.get("status", "")
     neighborhood_filter = request.GET.get("neighborhood", "")
 
-    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter)
+    voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id)
     pools = ctx["pools"]
 
     pools_list = []
@@ -301,6 +330,8 @@ def pools_json(request):
             "weekend_schedule": p.weekend_schedule or None,
             "social_media_url": p.social_media_url or None,
             "phillypublicpools_url": p.phillypublicpools_url or None,
+            "like_count": p.like_count,
+            "user_liked": p.user_liked,
         })
 
     return JsonResponse({
@@ -343,11 +374,50 @@ def pool_detail(request, pk):
     today = timezone.localdate()
     pool.map_status = _pool_map_status(pool, today)
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
+    voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
+    year = today.year
     return render(request, "pools/detail.html", {
         "pool": pool,
         "schedule_changes": schedule_changes,
         "season_duration": _season_duration(pool, today),
+        "like_count": pool.likes.filter(year=year).count(),
+        "total_like_count": pool.likes.count(),
+        "user_liked": bool(voter_id) and pool.likes.filter(voter_id=voter_id, year=year).exists(),
     })
+
+
+def toggle_like(request, pk):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    pool = get_object_or_404(Pool, pk=pk)
+    voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
+    is_new_voter = not voter_id
+    if is_new_voter:
+        voter_id = secrets.token_hex(16)
+    year = timezone.localdate().year
+
+    existing = PoolLike.objects.filter(pool=pool, voter_id=voter_id, year=year).first()
+    if existing:
+        existing.delete()
+        liked = False
+    else:
+        ip = _get_client_ip(request)
+        recent_count = PoolLike.objects.filter(
+            ip_address=ip, created_at__gte=timezone.now() - LIKE_RATE_LIMIT_WINDOW
+        ).count()
+        if recent_count >= LIKE_RATE_LIMIT_MAX:
+            return JsonResponse({"error": "Too many likes, please slow down."}, status=429)
+        PoolLike.objects.create(pool=pool, voter_id=voter_id, ip_address=ip, year=year)
+        liked = True
+
+    response = JsonResponse({"liked": liked, "like_count": pool.likes.filter(year=year).count()})
+    if is_new_voter:
+        response.set_cookie(
+            LIKE_COOKIE_NAME, voter_id,
+            max_age=LIKE_COOKIE_MAX_AGE, samesite="Lax", httponly=True,
+        )
+    return response
 
 
 def submit(request):

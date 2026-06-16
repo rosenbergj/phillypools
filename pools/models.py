@@ -84,6 +84,26 @@ class PoolSeasonHistory(models.Model):
         return f"{self.pool.name} {self.year}"
 
 
+class PoolLike(models.Model):
+    """
+    An anonymous like, deduplicated by a random voter_id stored in a cookie.
+    Scoped to a season `year` (rather than being a single per-pool/voter row) so a
+    future season can let people like pools again, while keeping prior years' likes
+    around for an all-time count.
+    """
+    pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="likes")
+    voter_id = models.CharField(max_length=40, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Used only for abuse-rate limiting")
+    year = models.IntegerField(help_text="Season year this like was cast in")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("pool", "voter_id", "year")]
+
+    def __str__(self):
+        return f"Like on {self.pool.name} ({self.year})"
+
+
 class ScheduleChange(models.Model):
     pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="schedule_changes")
     date_from = models.DateField()

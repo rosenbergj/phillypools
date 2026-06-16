@@ -18,6 +18,12 @@
     {% elif pool.map_status == "opening_soon" %}
       <span class="badge" style="background:#fd7e14">Soon</span>
     {% endif %}
+    <button type="button" id="like-btn"
+            class="btn btn-sm {% if user_liked %}btn-primary{% else %}btn-outline-primary{% endif %} ms-auto"
+            data-pool-id="{{ pool.pk }}" data-liked="{{ user_liked|yesno:'true,false' }}">
+      <span id="like-icon">{% if user_liked %}&#9829;{% else %}&#9825;{% endif %}</span>
+      <span id="like-count">{{ like_count }}</span>
+    </button>
   </div>
   {% if not pool.is_active %}
     <div class="alert alert-secondary py-2 mb-3 small">This pool is not expected to open this season.</div>
@@ -157,4 +163,32 @@
     <a href="{% url 'admin:pools_pool_change' pool.pk %}" class="btn btn-outline-secondary btn-sm ms-2">Edit in admin</a>
   {% endif %}
 </div>
+
+{% csrf_token %}
+<script>
+  (function () {
+    const btn = document.getElementById('like-btn');
+    const icon = document.getElementById('like-icon');
+    const count = document.getElementById('like-count');
+    const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const resp = await fetch(`/pools/${btn.dataset.poolId}/like/`, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfToken },
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        count.textContent = data.like_count;
+        icon.innerHTML = data.liked ? '&#9829;' : '&#9825;';
+        btn.classList.toggle('btn-primary', data.liked);
+        btn.classList.toggle('btn-outline-primary', !data.liked);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>
 {% endblock %}
