@@ -32,6 +32,10 @@ _IMAGE_MAGIC = [
 ]
 _WEBP_RIFF = b"RIFF"
 _WEBP_MARKER = b"WEBP"
+# AVIF/HEIF/HEIC use ISOBMFF: bytes 4-7 are "ftyp", bytes 8-11 are the brand.
+# Wix CDN serves enc_avif content with a .jpg filename, so brand-check is needed.
+_FTYP_MARKER = b"ftyp"
+_AVIF_BRANDS = {b"avif", b"avis", b"mif1", b"miaf", b"heic", b"heix", b"hevc", b"hevx"}
 
 
 def _is_image_bytes(data: bytes) -> bool:
@@ -40,6 +44,9 @@ def _is_image_bytes(data: bytes) -> bool:
             return True
     # WebP: RIFF????WEBP
     if data[:4] == _WEBP_RIFF and data[8:12] == _WEBP_MARKER:
+        return True
+    # AVIF/HEIF/HEIC: ????ftyp<brand>
+    if len(data) >= 12 and data[4:8] == _FTYP_MARKER and data[8:12] in _AVIF_BRANDS:
         return True
     return False
 
