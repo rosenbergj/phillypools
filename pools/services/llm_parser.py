@@ -1,11 +1,31 @@
 import base64
+import io
 import json
-import mimetypes
 import os
 from datetime import date
 from pathlib import Path
 
 import anthropic
+from PIL import Image
+
+
+# Formats Claude's vision API accepts directly.
+_CLAUDE_SUPPORTED = {"JPEG": "image/jpeg", "PNG": "image/png", "GIF": "image/gif", "WEBP": "image/webp"}
+
+
+def _prepare_image_for_claude(image_bytes: bytes) -> tuple[bytes, str]:
+    """Return (bytes, media_type) suitable for the Claude vision API.
+
+    Detects format from bytes (not filename). Converts unsupported formats
+    (e.g. AVIF, HEIF) to JPEG so they can be sent to Claude.
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    fmt = img.format or "JPEG"
+    if fmt in _CLAUDE_SUPPORTED:
+        return image_bytes, _CLAUDE_SUPPORTED[fmt]
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=92)
+    return buf.getvalue(), "image/jpeg"
 
 
 def _system_prompt() -> str:
@@ -80,10 +100,7 @@ def moderate_image(image_bytes: bytes, image_name: str) -> bool:
 
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    media_type, _ = mimetypes.guess_type(image_name)
-    if not media_type or not media_type.startswith("image/"):
-        media_type = "image/jpeg"
-
+    image_bytes, media_type = _prepare_image_for_claude(image_bytes)
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     try:
@@ -235,10 +252,7 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
     """Extract schedule info for every pool mentioned in an image."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    media_type, _ = mimetypes.guess_type(image_name)
-    if not media_type or not media_type.startswith("image/"):
-        media_type = "image/jpeg"
-
+    image_bytes, media_type = _prepare_image_for_claude(image_bytes)
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _ALL_POOLS_IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
@@ -264,10 +278,7 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
     """Parse an uploaded image (e.g. screenshot) for pool schedule info."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    media_type, _ = mimetypes.guess_type(image_name)
-    if not media_type or not media_type.startswith("image/"):
-        media_type = "image/jpeg"
-
+    image_bytes, media_type = _prepare_image_for_claude(image_bytes)
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _IMAGE_PROMPT.format(
