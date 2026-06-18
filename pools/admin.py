@@ -105,6 +105,7 @@ def _source_url(submission):
 def apply_to_pool(modeladmin, request, queryset):
     applied = skipped = 0
     reactivated = []
+    date_warnings = []
     for sub in queryset.select_related("parsed_pool"):
         if not sub.parsed_pool:
             skipped += 1
@@ -114,12 +115,20 @@ def apply_to_pool(modeladmin, request, queryset):
         source = _source_url(sub)
 
         if sub.parsed_opening_date:
+            if pool.opening_date and pool.opening_date != sub.parsed_opening_date:
+                date_warnings.append(
+                    f"{pool.name}: opening date changed from {pool.opening_date} to {sub.parsed_opening_date}"
+                )
             pool.opening_date = sub.parsed_opening_date
             pool.opening_date_source_url = source
             if not pool.is_active:
                 pool.is_active = True
                 reactivated.append(pool.name)
         if sub.parsed_closing_date:
+            if pool.closing_date and pool.closing_date != sub.parsed_closing_date:
+                date_warnings.append(
+                    f"{pool.name}: closing date changed from {pool.closing_date} to {sub.parsed_closing_date}"
+                )
             pool.closing_date = sub.parsed_closing_date
             pool.closing_date_source_url = source
         if sub.parsed_weekday_schedule:
@@ -145,6 +154,8 @@ def apply_to_pool(modeladmin, request, queryset):
     if skipped:
         msg += f" Skipped {skipped} with no linked pool."
     modeladmin.message_user(request, msg)
+    for warning in date_warnings:
+        modeladmin.message_user(request, f"Date overwrite: {warning}", level=messages.WARNING)
 
 apply_to_pool.short_description = "Apply parsed data to linked pool"
 
@@ -286,6 +297,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             source = submission.url or ""
             applied = 0
             reactivated = []
+            date_warnings = []
             for pool_id in request.POST.getlist("pool_ids"):
                 try:
                     pool = Pool.objects.get(pk=pool_id)
@@ -293,13 +305,23 @@ class SubmissionAdmin(admin.ModelAdmin):
                     closing = request.POST.get(f"closing_date_{pool_id}")
                     notes = request.POST.get(f"notes_{pool_id}", "")
                     if opening:
-                        pool.opening_date = date.fromisoformat(opening)
+                        new_opening = date.fromisoformat(opening)
+                        if pool.opening_date and pool.opening_date != new_opening:
+                            date_warnings.append(
+                                f"{pool.name}: opening date changed from {pool.opening_date} to {new_opening}"
+                            )
+                        pool.opening_date = new_opening
                         pool.opening_date_source_url = source
                         if not pool.is_active:
                             pool.is_active = True
                             reactivated.append(pool.name)
                     if closing:
-                        pool.closing_date = date.fromisoformat(closing)
+                        new_closing = date.fromisoformat(closing)
+                        if pool.closing_date and pool.closing_date != new_closing:
+                            date_warnings.append(
+                                f"{pool.name}: closing date changed from {pool.closing_date} to {new_closing}"
+                            )
+                        pool.closing_date = new_closing
                         pool.closing_date_source_url = source
                     if notes:
                         pool.updates = notes
@@ -316,6 +338,8 @@ class SubmissionAdmin(admin.ModelAdmin):
             if reactivated:
                 msg += f" Set to active: {', '.join(reactivated)}."
             messages.success(request, msg)
+            for warning in date_warnings:
+                messages.warning(request, f"Date overwrite: {warning}")
             return redirect(f"../../{submission_id}/change/")
 
         # GET or POST without action=apply: run the LLM

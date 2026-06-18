@@ -171,7 +171,7 @@ Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "notes": "<any other relevant info or null>"
+    "notes": "<any other relevant info excluding address information, or null>"
   }}
 ]
 Return [] if no pool schedule info is found."""
@@ -187,7 +187,7 @@ mentioned with schedule info. Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "notes": "<any other relevant info or null>"
+    "notes": "<any other relevant info excluding address information, or null>"
   }}
 ]
 Return [] if no pool schedule info is found."""
