@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from django.db.models import Q
 
@@ -172,6 +172,7 @@ class SubmissionAdmin(admin.ModelAdmin):
         "submitted_at",
         "image_preview",
         "llm_response_display",
+        "date_overwrite_warning",
         "current_opening_date",
         "current_closing_date",
         "current_weekday_schedule",
@@ -192,6 +193,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             "description": "Left column: what the LLM extracted. Right column: what the pool currently has. Parsed notes → Updates field.",
             "fields": (
                 ("parsed_pool", "llm_confidence"),
+                "date_overwrite_warning",
                 ("parsed_opening_date", "current_opening_date"),
                 ("parsed_closing_date", "current_closing_date"),
                 ("parsed_weekday_schedule", "current_weekday_schedule"),
@@ -404,25 +406,47 @@ class SubmissionAdmin(admin.ModelAdmin):
             return getattr(obj.parsed_pool, field) or "—"
         return "(no pool linked)"
 
+    def date_overwrite_warning(self, obj):
+        if not obj.parsed_pool:
+            return ""
+        pool = obj.parsed_pool
+        warnings = []
+        if obj.parsed_opening_date and pool.opening_date and pool.opening_date != obj.parsed_opening_date:
+            warnings.append(
+                f"Opening date will change from {pool.opening_date} to {obj.parsed_opening_date}"
+            )
+        if obj.parsed_closing_date and pool.closing_date and pool.closing_date != obj.parsed_closing_date:
+            warnings.append(
+                f"Closing date will change from {pool.closing_date} to {obj.parsed_closing_date}"
+            )
+        if not warnings:
+            return ""
+        items = format_html_join("", "<li>{}</li>", ((w,) for w in warnings))
+        return format_html(
+            '<ul style="margin:0;padding-left:1.2em;color:#c0392b;font-weight:bold">{}</ul>',
+            items,
+        )
+    date_overwrite_warning.short_description = "Date overwrite warning"
+
     def current_opening_date(self, obj):
         return self._current(obj, "opening_date")
-    current_opening_date.short_description = "Current: opening date"
+    current_opening_date.short_description = "Current opening date"
 
     def current_closing_date(self, obj):
         return self._current(obj, "closing_date")
-    current_closing_date.short_description = "Current: closing date"
+    current_closing_date.short_description = "Current closing date"
 
     def current_weekday_schedule(self, obj):
         return self._current(obj, "weekday_schedule")
-    current_weekday_schedule.short_description = "Current: weekday schedule"
+    current_weekday_schedule.short_description = "Current weekday schedule"
 
     def current_weekend_schedule(self, obj):
         return self._current(obj, "weekend_schedule")
-    current_weekend_schedule.short_description = "Current: weekend schedule"
+    current_weekend_schedule.short_description = "Current weekend schedule"
 
     def current_updates(self, obj):
         return self._current(obj, "updates")
-    current_updates.short_description = "Current: updates"
+    current_updates.short_description = "Current updates"
 
 
 @admin.register(PoolLike)
