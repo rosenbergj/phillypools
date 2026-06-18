@@ -9,9 +9,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--dry-run",
+            "--apply",
             action="store_true",
-            help="Show what would be cleared without making changes",
+            help="Write changes to the database (default is dry run)",
         )
         parser.add_argument(
             "--clear-schedules",
@@ -20,7 +20,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        dry_run = options["dry_run"]
+        dry_run = not options["apply"]
         clear_schedules = options["clear_schedules"]
         today = timezone.localdate()
 
@@ -85,7 +85,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING("\nDry run — no changes made. Re-run without --dry-run to apply.")
+                self.style.WARNING("\nDry run — no changes made. Re-run with --apply to write.")
             )
         else:
             self.stdout.write(self.style.SUCCESS("\nDone."))

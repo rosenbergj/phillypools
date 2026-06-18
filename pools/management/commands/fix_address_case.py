@@ -28,11 +28,11 @@ class Command(BaseCommand):
     help = 'Convert pool addresses from ALL CAPS to Title Case'
 
     def add_arguments(self, parser):
-        parser.add_argument('--dry-run', action='store_true',
-                            help='Print changes without saving them')
+        parser.add_argument('--apply', action='store_true',
+                            help='Write changes to the database (default is dry run)')
 
     def handle(self, *args, **options):
-        dry_run = options['dry_run']
+        dry_run = not options['apply']
         updated = 0
         for pool in Pool.objects.all():
             fixed = titlecase_address(pool.address)
@@ -43,4 +43,6 @@ class Command(BaseCommand):
                     pool.save(update_fields=['address'])
                 updated += 1
         label = 'Would update' if dry_run else 'Updated'
-        self.stdout.write(self.style.SUCCESS(f'Done. {label} {updated} pool(s).'))
+        self.stdout.write(self.style.SUCCESS(f'{label} {updated} pool(s).'))
+        if dry_run:
+            self.stdout.write(self.style.WARNING('Dry run — re-run with --apply to write.'))
