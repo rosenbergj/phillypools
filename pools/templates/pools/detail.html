@@ -142,7 +142,7 @@
             <a href="{{ pool.updates_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
           {% endif %}
         </h2>
-        <p class="mb-0">{{ pool.updates }}</p>
+        <p class="mb-0">{{ pool.updates|linebreaksbr }}</p>
       </div>
     </div>
   {% endif %}
