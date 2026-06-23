@@ -362,10 +362,22 @@ class SubmissionAdmin(admin.ModelAdmin):
         except Exception as e:
             error = str(e)
 
-        # Attach matched Pool objects
+        # Attach matched Pool objects and compute default checkbox state
         pool_by_id = {p.id: p for p in Pool.objects.all()}
         for r in results:
-            r["pool_obj"] = pool_by_id.get(r.get("pool_id"))
+            pool_obj = pool_by_id.get(r.get("pool_id"))
+            r["pool_obj"] = pool_obj
+            default_checked = True
+            if pool_obj:
+                parsed_opening = r.get("opening_date")
+                parsed_closing = r.get("closing_date")
+                if parsed_opening and pool_obj.opening_date and pool_obj.opening_date.isoformat() == parsed_opening:
+                    default_checked = False
+                if parsed_closing and pool_obj.closing_date and pool_obj.closing_date.isoformat() == parsed_closing:
+                    default_checked = False
+                if not pool_obj.is_active and not parsed_opening:
+                    default_checked = False
+            r["default_checked"] = default_checked
 
         return TemplateResponse(request, "admin/pools/submission_reparse.html", {
             **self.admin_site.each_context(request),
