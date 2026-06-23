@@ -1,12 +1,15 @@
 import base64
 import io
 import json
+import logging
 import os
 from datetime import date
 from pathlib import Path
 
 import anthropic
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 # Formats Claude's vision API accepts directly.
@@ -213,7 +216,11 @@ def _parse_list_response(response_text: str) -> list:
     if text.startswith("```"):
         lines = text.split("\n")
         text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-    result = json.loads(text)
+        text = text.strip()
+    start = text.find("[")
+    if start == -1:
+        return []
+    result, _ = json.JSONDecoder().raw_decode(text, start)
     return result if isinstance(result, list) else []
 
 
@@ -253,7 +260,12 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
-    return _parse_list_response(message.content[0].text)
+    raw = message.content[0].text
+    try:
+        return _parse_list_response(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("parse_all_pools JSON error: %s\nRaw response:\n%s", e, raw)
+        raise json.JSONDecodeError(f"{e.msg} — raw response snippet: {raw[:300]!r}", e.doc, e.pos) from e
 
 
 def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[dict]) -> list[dict]:
@@ -279,7 +291,12 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
             ],
         }],
     )
-    return _parse_list_response(message.content[0].text)
+    raw = message.content[0].text
+    try:
+        return _parse_list_response(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("parse_all_pools_image JSON error: %s\nRaw response:\n%s", e, raw)
+        raise json.JSONDecodeError(f"{e.msg} — raw response snippet: {raw[:300]!r}", e.doc, e.pos) from e
 
 
 def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[dict]) -> dict:
