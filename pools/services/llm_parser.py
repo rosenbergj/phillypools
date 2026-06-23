@@ -54,7 +54,7 @@ Omit any "pool closed" or "no activity" blocks at the start or end of the day �
 Do include a "closed" block only if there is a gap of more than 10 minutes in the middle of an otherwise active day (e.g. closed 12–1 between two sessions).
 If weekday and weekend schedules are identical, still fill in both fields."""
 
-_PROMPT_TEMPLATE = """Pool list (id: name):
+_PROMPT_TEMPLATE = """Pool list (id: name — address):
 {pool_list}
 
 Content to analyze:
@@ -74,7 +74,7 @@ Return JSON with exactly these fields:
   "stale_year_warning": <true|false>
 }}"""
 
-_IMAGE_PROMPT = """Pool list (id: name):
+_IMAGE_PROMPT = """Pool list (id: name — address):
 {pool_list}
 
 The image above is a screenshot (e.g. from Instagram or a website) with Philadelphia pool schedule information.
@@ -144,6 +144,7 @@ def build_pool_list() -> list[dict]:
         {
             "id": p.id,
             "name": p.name,
+            "address": p.address,
             "alternate_names": [a.name for a in p.alternate_names.all()],
         }
         for p in Pool.objects.prefetch_related("alternate_names").all()
@@ -157,11 +158,13 @@ def _format_pool_list(pool_list: list[dict]) -> str:
         alts = p.get("alternate_names", [])
         if alts:
             line += f" (also known as: {', '.join(alts)})"
+        if p.get("address"):
+            line += f" — {p['address']}"
         lines.append(line)
     return "\n".join(lines)
 
 
-_ALL_POOLS_PROMPT = """Pool list (id: name):
+_ALL_POOLS_PROMPT = """Pool list (id: name — address):
 {pool_list}
 
 Content to analyze:
@@ -180,7 +183,7 @@ Return a JSON array — one object per pool found:
 ]
 Return [] if no pool schedule info is found."""
 
-_ALL_POOLS_IMAGE_PROMPT = """Pool list (id: name):
+_ALL_POOLS_IMAGE_PROMPT = """Pool list (id: name — address):
 {pool_list}
 
 The image above may mention multiple Philadelphia pools. OCR the text and extract ALL pools
