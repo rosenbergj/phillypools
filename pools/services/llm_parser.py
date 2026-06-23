@@ -249,7 +249,7 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
     )
     message = client.messages.create(
         model="claude-haiku-4-5",
-        max_tokens=4096,
+        max_tokens=8192,
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
@@ -266,7 +266,7 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
     prompt = _ALL_POOLS_IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
     message = client.messages.create(
         model="claude-haiku-4-5",
-        max_tokens=4096,
+        max_tokens=8192,
         system=_system_prompt(),
         messages=[{
             "role": "user",
