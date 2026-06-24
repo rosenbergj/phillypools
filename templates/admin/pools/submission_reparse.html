@@ -116,6 +116,28 @@
   </form>
 {% endif %}
 
+{% if removed_pools %}
+  <div class="errornote" style="background:#fff3cd;border-color:#ffc107;color:#664d03;margin-top:2em">
+    <strong>Warning: pools removed from source</strong>
+    <p style="margin-top:0.5em">
+      The following pool{{ removed_pools|length|pluralize }} previously had date{{ removed_pools|length|pluralize }} sourced from this URL,
+      but no longer appear{{ removed_pools|length|pluralize:"s," }} in the current page.
+      You may want to clear those dates manually.
+    </p>
+    <ul style="margin:0.5em 0 0 1.5em">
+      {% for entry in removed_pools %}
+      <li>
+        <a href="{% url 'admin:pools_pool_change' entry.pool.pk %}" target="_blank">{{ entry.pool.name }}</a>
+        —
+        {% for kind, val in entry.stale %}
+          {{ kind }} date: <strong>{{ val }}</strong>{% if not forloop.last %}, {% endif %}
+        {% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
 {% if not error %}
   <p style="margin-top:2em">
     <a href="{% url 'admin:pools_submission_change' submission.pk %}">&larr; Back to submission</a>

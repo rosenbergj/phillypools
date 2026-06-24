@@ -379,11 +379,28 @@ class SubmissionAdmin(admin.ModelAdmin):
                     default_checked = False
             r["default_checked"] = default_checked
 
+        # Find pools whose dates were sourced from this URL but no longer appear in results
+        removed_pools = []
+        if submission.url:
+            parsed_pool_ids = {r["pool_id"] for r in results if r.get("pool_id")}
+            candidates = Pool.objects.filter(
+                Q(opening_date_source_url=submission.url, opening_date__isnull=False) |
+                Q(closing_date_source_url=submission.url, closing_date__isnull=False)
+            ).exclude(pk__in=parsed_pool_ids)
+            for pool in candidates:
+                stale = []
+                if pool.opening_date_source_url == submission.url and pool.opening_date:
+                    stale.append(("opening", pool.opening_date))
+                if pool.closing_date_source_url == submission.url and pool.closing_date:
+                    stale.append(("closing", pool.closing_date))
+                removed_pools.append({"pool": pool, "stale": stale})
+
         return TemplateResponse(request, "admin/pools/submission_reparse.html", {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "submission": submission,
             "results": results,
+            "removed_pools": removed_pools,
             "error": error,
             "title": "Re-parse for all pools",
         })
