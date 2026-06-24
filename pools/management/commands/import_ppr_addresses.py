@@ -79,15 +79,19 @@ def _build_matches(
     candidates.sort(key=lambda x: -x[0])
     assigned_ppr, assigned_db = set(), set()
     matched = []
+    pool_already_matched = {}  # ppr_name → pool that was already taken
     for score, ppr_name, ppr_address, pool in candidates:
-        if ppr_name in assigned_ppr or pool.pk in assigned_db:
+        if ppr_name in assigned_ppr:
+            continue
+        if pool.pk in assigned_db:
+            pool_already_matched[ppr_name] = pool
             continue
         matched.append((ppr_name, ppr_address, pool, score))
         assigned_ppr.add(ppr_name)
         assigned_db.add(pool.pk)
 
     unmatched_ppr = [(n, a) for n, a in ppr_addresses.items() if n not in assigned_ppr]
-    return matched, unmatched_ppr
+    return matched, unmatched_ppr, pool_already_matched
 
 
 class Command(BaseCommand):
@@ -123,7 +127,7 @@ class Command(BaseCommand):
             for alt in p.alternate_names.all():
                 db_pools[_normalize(alt.name)] = p
 
-        matched, unmatched_ppr = _build_matches(ppr_addresses, db_pools, min_score)
+        matched, unmatched_ppr, duplicates = _build_matches(ppr_addresses, db_pools, min_score)
 
         # Report matches
         changed = [(ppr_name, ppr_address, pool, score)
@@ -148,12 +152,21 @@ class Command(BaseCommand):
                     pool.address = ppr_address
                     pool.save(update_fields=["address"])
 
-        if unmatched_ppr:
+        true_unmatched = [(n, a) for n, a in unmatched_ppr if n not in duplicates]
+        if true_unmatched:
             self.stdout.write(self.style.WARNING(
-                f"\nCould not match {len(unmatched_ppr)} PPR schedule entr{'y' if len(unmatched_ppr) == 1 else 'ies'} to a pool in the DB:"
+                f"\nCould not match {len(true_unmatched)} PPR schedule entr{'y' if len(true_unmatched) == 1 else 'ies'} to a pool in the DB:"
             ))
-            for ppr_name, ppr_address in unmatched_ppr:
+            for ppr_name, ppr_address in true_unmatched:
                 self.stdout.write(f"  {ppr_name!r} — {ppr_address}")
+
+        if duplicates:
+            self.stdout.write(
+                f"\n{len(duplicates)} PPR schedule entr{'y' if len(duplicates) == 1 else 'ies'} skipped "
+                f"(same pool already matched under a different name):"
+            )
+            for ppr_name, pool in duplicates.items():
+                self.stdout.write(f"  {ppr_name!r} → already matched as {pool.name!r}")
 
         # Report DB pools with no PPR address found
         matched_db_ids = {pool.pk for _, _, pool, _ in matched}
