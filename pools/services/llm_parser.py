@@ -174,6 +174,8 @@ Content to analyze:
 {content}
 
 This source may mention multiple Philadelphia pools. Extract ALL pools mentioned with schedule info.
+Do not put address information or address discrepancies in the notes field — addresses in the source
+may legitimately differ from the pool list and that difference is not relevant here.
 Return a JSON array — one object per pool found:
 [
   {{
@@ -190,7 +192,10 @@ _ALL_POOLS_IMAGE_PROMPT = """Pool list (id: name — address):
 {pool_list}
 
 The image above may mention multiple Philadelphia pools. OCR the text and extract ALL pools
-mentioned with schedule info. Return a JSON array — one object per pool found:
+mentioned with schedule info.
+Do not put address information or address discrepancies in the notes field — addresses in the source
+may legitimately differ from the pool list and that difference is not relevant here.
+Return a JSON array — one object per pool found:
 [
   {{
     "pool_id": <integer from the pool list above, or null if no match>,
