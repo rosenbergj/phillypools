@@ -18,6 +18,8 @@ POOL_TYPE_MAP = {
     "Spray": "spray",
 }
 
+ALL_FIELDS = ["name", "address", "latitude", "longitude", "neighborhood", "pool_type", "is_active"]
+
 
 class Command(BaseCommand):
     help = "Import Philadelphia public pools from the OpenDataPhilly GeoJSON feed"
@@ -25,9 +27,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--apply', action='store_true',
                             help='Write changes to the database (default is dry run)')
+        parser.add_argument('--fields', nargs='+', metavar='FIELD', choices=ALL_FIELDS,
+                            help='Only update these fields on existing pools (new pools always get all fields). '
+                                 f'Choices: {", ".join(ALL_FIELDS)}')
 
     def handle(self, *args, **options):
         dry_run = not options['apply']
+        fields_to_update = set(options['fields'] or ALL_FIELDS)
         prefix = "[DRY RUN] " if dry_run else ""
 
         self.stdout.write("Fetching pool data from OpenDataPhilly...")
@@ -84,7 +90,7 @@ class Command(BaseCommand):
                 or ""
             ).strip()
 
-            defaults = {
+            all_defaults = {
                 "name": name,
                 "address": address,
                 "latitude": lat,
@@ -95,6 +101,7 @@ class Command(BaseCommand):
             }
 
             existing = Pool.objects.filter(ppr_amenity_id=amenity_id).first()
+
             if dry_run:
                 if existing:
                     updated += 1
@@ -102,23 +109,26 @@ class Command(BaseCommand):
                 else:
                     created += 1
                     self.stdout.write(f"  {prefix}Would create: {name}")
+            elif existing:
+                update_data = {k: all_defaults[k] for k in fields_to_update}
+                for attr, val in update_data.items():
+                    setattr(existing, attr, val)
+                save_fields = list(update_data.keys())
+                if city_comment and city_comment not in (existing.notes or ""):
+                    today_str = date.today().strftime("%m/%d/%Y")
+                    existing.notes = (existing.notes + "\n" if existing.notes else "") + f"{today_str} update: {city_comment}"
+                    save_fields.append("notes")
+                existing.save(update_fields=save_fields)
+                updated += 1
+                self.stdout.write(f"  Updated: {name}")
             else:
-                pool, was_created = Pool.objects.update_or_create(
-                    ppr_amenity_id=amenity_id,
-                    defaults=defaults,
-                )
-                if was_created:
+                pool = Pool(ppr_amenity_id=amenity_id, **all_defaults)
+                pool.save()
+                if city_comment:
                     pool.notes = city_comment
                     pool.save(update_fields=["notes"])
-                    created += 1
-                    self.stdout.write(f"  Created: {name}")
-                else:
-                    if city_comment and city_comment not in (pool.notes or ""):
-                        today_str = date.today().strftime("%m/%d/%Y")
-                        pool.notes = (pool.notes + "\n" if pool.notes else "") + f"{today_str} update: {city_comment}"
-                        pool.save(update_fields=["notes"])
-                    updated += 1
-                    self.stdout.write(f"  Updated: {name}")
+                created += 1
+                self.stdout.write(f"  Created: {name}")
 
         label = "Would create" if dry_run else "Created"
         label2 = "would update" if dry_run else "updated"
@@ -145,3 +155,8 @@ class Command(BaseCommand):
             self.stdout.write("Assigning neighborhoods...")
             from django.core.management import call_command
             call_command("assign_neighborhoods")
+            self.stdout.write(self.style.WARNING(
+                "\nNote: addresses come from OpenDataPhilly and may not match the PPR website. "
+                "Run `python manage.py import_ppr_addresses --apply` to update them from the "
+                "official Parks & Rec schedule pages."
+            ))

@@ -35,6 +35,22 @@ This is idempotent — safe to run multiple times. It will:
 - **Append** any new city comments to pool notes (with a datestamp), without overwriting notes you've added manually
 - **Warn** about pools in the DB that no longer appear in the city's feed — review those manually and decide whether to delete or keep them
 
+> **Note:** `scrape_pools` uses OpenDataPhilly addresses, which are often park centroids rather than real entrance addresses. Run step 2b to fix them.
+
+## 2b. Update addresses from PPR schedule pages
+
+```
+python manage.py import_ppr_addresses --apply
+```
+
+This fetches the phila.gov pool opening schedule pages and updates addresses to match what PPR actually publishes (which aligns with Google Maps and other sources). It covers ~57 of the 70 pools — the rest either don't appear on schedule pages (inactive pools) or have name mismatches that require manual attention. Check the command output for any unmatched pools.
+
+If you need to re-run `scrape_pools` later (e.g. to pick up a newly added pool), use `--fields` to avoid clobbering the PPR addresses:
+
+```
+python manage.py scrape_pools --apply --fields latitude longitude neighborhood pool_type
+```
+
 ## 3. Review flagged pools
 
 If the scraper printed a "not found in current feed" warning, check each listed pool in the admin. Options:
