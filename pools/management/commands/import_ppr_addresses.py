@@ -116,8 +116,12 @@ class Command(BaseCommand):
                 self.stderr.write(f"  Failed: {e}")
         self.stdout.write(f"Found {len(ppr_addresses)} pool entries across schedule pages.\n")
 
-        # Build normalized name → Pool lookup
-        db_pools = {_normalize(p.name): p for p in Pool.objects.all()}
+        # Build normalized name → Pool lookup, including alternate names
+        db_pools = {}
+        for p in Pool.objects.prefetch_related("alternate_names").all():
+            db_pools[_normalize(p.name)] = p
+            for alt in p.alternate_names.all():
+                db_pools[_normalize(alt.name)] = p
 
         matched, unmatched_ppr = _build_matches(ppr_addresses, db_pools, min_score)
 
