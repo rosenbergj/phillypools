@@ -67,8 +67,8 @@ class Command(BaseCommand):
             address = ", ".join(p for p in address_parts if p).strip()
 
             coords = geometry.get("coordinates") if geometry else None
-            lat = coords[1] if coords and len(coords) >= 2 else None
-            lng = coords[0] if coords and len(coords) >= 2 else None
+            lat = round(coords[1], 5) if coords and len(coords) >= 2 else None
+            lng = round(coords[0], 5) if coords and len(coords) >= 2 else None
 
             pool_type_raw = (props.get("pool_type") or "").strip()
             pool_type = POOL_TYPE_MAP.get(pool_type_raw, "outdoor")
