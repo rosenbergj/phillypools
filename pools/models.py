@@ -42,8 +42,16 @@ class Pool(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        old_opening = old_closing = None
+        if self.pk:
+            try:
+                old = Pool.objects.get(pk=self.pk)
+                old_opening = old.opening_date
+                old_closing = old.closing_date
+            except Pool.DoesNotExist:
+                pass
         super().save(*args, **kwargs)
-        _upsert_season_history(self)
+        _upsert_season_history(self, old_opening=old_opening, old_closing=old_closing)
 
     @property
     def is_open(self):
@@ -56,8 +64,14 @@ class Pool(models.Model):
         return None  # no opening date, or opening date in the future
 
 
-def _upsert_season_history(pool):
-    """Update PoolSeasonHistory whenever opening_date or closing_date is set on a pool."""
+def _upsert_season_history(pool, old_opening=None, old_closing=None):
+    if old_opening and not pool.opening_date:
+        PoolSeasonHistory.objects.filter(pool=pool, year=old_opening.year).update(opening_date=None)
+        PoolSeasonHistory.objects.filter(pool=pool, year=old_opening.year, closing_date__isnull=True).delete()
+    if old_closing and not pool.closing_date:
+        PoolSeasonHistory.objects.filter(pool=pool, year=old_closing.year).update(closing_date=None)
+        PoolSeasonHistory.objects.filter(pool=pool, year=old_closing.year, opening_date__isnull=True).delete()
+
     dates_by_year = {}
     if pool.opening_date:
         dates_by_year.setdefault(pool.opening_date.year, {})["opening_date"] = pool.opening_date
@@ -79,6 +93,7 @@ class PoolSeasonHistory(models.Model):
     class Meta:
         ordering = ["year"]
         unique_together = [("pool", "year")]
+        verbose_name_plural = "pool season histories"
 
     def __str__(self):
         return f"{self.pool.name} {self.year}"
