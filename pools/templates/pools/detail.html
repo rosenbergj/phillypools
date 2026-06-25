@@ -7,6 +7,29 @@
 {% block og_title %}{{ pool.name }} — Philly Pools{% endblock %}
 {% block og_description %}{{ pool.name }} hours, schedule, and location — Philadelphia public pool{% if pool.neighborhood %} in {{ pool.neighborhood }}{% endif %}.{% endblock %}
 
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SportsActivityLocation",
+  "name": "{{ pool.name|escapejs }}",
+  "url": "https://phillypools.app{{ pool.get_absolute_url }}",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "{{ pool.address|escapejs }}",
+    "addressLocality": "Philadelphia",
+    "addressRegion": "PA",
+    "addressCountry": "US"
+  }{% if pool.latitude and pool.longitude %},
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": {{ pool.latitude }},
+    "longitude": {{ pool.longitude }}
+  }{% endif %}
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4" style="max-width: 720px">
   <a href="/" class="text-muted small text-decoration-none">&larr; All pools</a>
