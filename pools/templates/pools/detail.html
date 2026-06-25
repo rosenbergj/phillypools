@@ -171,7 +171,7 @@
             <a href="{{ pool.updates_source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
           {% endif %}
         </h2>
-        <p class="mb-0">{{ pool.updates|linebreaksbr }}</p>
+        <p class="mb-0">{{ pool.updates|urlize|linebreaksbr }}</p>
       </div>
     </div>
   {% endif %}
@@ -180,7 +180,7 @@
     <div class="card mb-4">
       <div class="card-body">
         <h2 class="h6 text-uppercase text-muted mb-2">Notes</h2>
-        <p class="mb-0">{{ pool.notes }}</p>
+        <p class="mb-0">{{ pool.notes|urlize|linebreaksbr }}</p>
       </div>
     </div>
   {% endif %}
