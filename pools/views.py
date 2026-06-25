@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+import threading
 from datetime import timedelta
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
@@ -435,6 +436,68 @@ def toggle_like(request, pk):
     return response
 
 
+def _process_submission_llm(submission_pk, url, has_image):
+    """Run URL fetch and LLM parsing in a background thread after the submission is saved."""
+    from django import db
+    try:
+        from pools.services.llm_parser import build_pool_list
+        pool_list = build_pool_list()
+
+        submission = Submission.objects.get(pk=submission_pk)
+        raw_content = ""
+        llm_response = None
+        parsed_fields = {}
+
+        if url:
+            try:
+                from pools.services.url_fetcher import fetch_url
+                raw_content = fetch_url(url)
+            except Exception:
+                pass
+            try:
+                from pools.services.llm_parser import parse_submission
+                parsed_fields = parse_submission(raw_content, pool_list)
+                llm_response = parsed_fields.pop("_raw", None)
+            except Exception as e:
+                llm_response = {"error": str(e)}
+
+        elif has_image and submission.uploaded_image:
+            try:
+                from pools.services.llm_parser import parse_image_submission
+                image_bytes = submission.uploaded_image.read()
+                image_name = submission.uploaded_image.name
+                parsed_fields = parse_image_submission(image_bytes, image_name, pool_list)
+                llm_response = parsed_fields.pop("_raw", None)
+            except Exception as e:
+                llm_response = {"error": str(e)}
+
+        parsed_pool = submission.parsed_pool
+        if not parsed_pool and parsed_fields.get("pool_id"):
+            try:
+                parsed_pool = Pool.objects.get(pk=parsed_fields["pool_id"])
+            except Pool.DoesNotExist:
+                pass
+
+        parsed_notes = parsed_fields.get("notes") or ""
+        if parsed_fields.get("stale_year_warning"):
+            parsed_notes = "WARNING: Source may be from a prior season — verify dates before applying.\n" + parsed_notes
+
+        submission.raw_fetched_content = raw_content
+        submission.llm_response = llm_response
+        submission.parsed_pool = parsed_pool
+        submission.parsed_opening_date = parsed_fields.get("opening_date")
+        submission.parsed_closing_date = parsed_fields.get("closing_date")
+        submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
+        submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
+        submission.parsed_notes = parsed_notes
+        submission.llm_confidence = parsed_fields.get("confidence", "")
+        submission.save()
+    except Exception:
+        logger.exception("Background LLM processing failed for submission %s", submission_pk)
+    finally:
+        db.connection.close()
+
+
 def submit(request):
     pools = Pool.objects.all().order_by("name")
     preselected_pool_id = request.GET.get("pool", "")
@@ -513,13 +576,8 @@ def submit(request):
             except Pool.DoesNotExist:
                 pass
 
-        raw_content = ""
-        llm_response = None
-        parsed_fields = {}
-        from pools.services.llm_parser import build_pool_list
-        pool_list = build_pool_list()
-
-        # Build a Submission instance so we can save the image via Django's storage
+        # Save submission immediately so the user can be redirected to the thanks page.
+        # URL fetch and LLM parsing happen in a background thread.
         submission = Submission(
             url=url if url_valid else "",
             submitter_note=submitter_note,
@@ -527,52 +585,13 @@ def submit(request):
         )
         if uploaded_image:
             submission.uploaded_image = uploaded_image
-
         submission.save()
 
-        if url_valid:
-            try:
-                from pools.services.url_fetcher import fetch_url
-                raw_content = fetch_url(url)
-            except Exception:
-                pass
-
-            try:
-                from pools.services.llm_parser import parse_submission
-                parsed_fields = parse_submission(raw_content, pool_list)
-                llm_response = parsed_fields.pop("_raw", None)
-            except Exception as e:
-                llm_response = {"error": str(e)}
-
-        elif uploaded_image and submission.uploaded_image:
-            try:
-                from pools.services.llm_parser import parse_image_submission
-                image_bytes = submission.uploaded_image.read()
-                image_name = submission.uploaded_image.name
-                parsed_fields = parse_image_submission(image_bytes, image_name, pool_list)
-                llm_response = parsed_fields.pop("_raw", None)
-            except Exception as e:
-                llm_response = {"error": str(e)}
-
-        if not parsed_pool and parsed_fields.get("pool_id"):
-            try:
-                parsed_pool = Pool.objects.get(pk=parsed_fields["pool_id"])
-            except Pool.DoesNotExist:
-                pass
-
-        submission.raw_fetched_content = raw_content
-        submission.llm_response = llm_response
-        submission.parsed_pool = parsed_pool
-        submission.parsed_opening_date = parsed_fields.get("opening_date")
-        submission.parsed_closing_date = parsed_fields.get("closing_date")
-        submission.parsed_weekday_schedule = parsed_fields.get("weekday_schedule") or ""
-        submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
-        parsed_notes = parsed_fields.get("notes") or ""
-        if parsed_fields.get("stale_year_warning"):
-            parsed_notes = "WARNING: Source may be from a prior season — verify dates before applying.\n" + parsed_notes
-        submission.parsed_notes = parsed_notes
-        submission.llm_confidence = parsed_fields.get("confidence", "")
-        submission.save()
+        threading.Thread(
+            target=_process_submission_llm,
+            args=(submission.pk, url if url_valid else "", bool(uploaded_image)),
+            daemon=True,
+        ).start()
 
         return redirect(_thanks_url(pool_id))
 
