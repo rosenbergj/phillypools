@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /submit/
+
+Sitemap: https://phillypools.app/sitemap.xml
