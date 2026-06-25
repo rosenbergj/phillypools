@@ -391,14 +391,25 @@
   attachCardListeners();
 
   window.addEventListener('pageshow', () => {
-    const poolId = sessionStorage.getItem('selectedPoolId');
+    const highlightId = sessionStorage.getItem('highlightPoolId');
+    const selectId = sessionStorage.getItem('selectedPoolId');
+    const poolId = highlightId || selectId;
     if (!poolId) return;
+    sessionStorage.removeItem('highlightPoolId');
     sessionStorage.removeItem('selectedPoolId');
     const card = document.getElementById('pool-' + poolId);
-    if (!card) return;
-    card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-    card.classList.add('highlighted');
-    setTimeout(() => card.classList.remove('highlighted'), 2000);
+    if (card) {
+      card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+      card.classList.add('highlighted');
+      setTimeout(() => card.classList.remove('highlighted'), 2000);
+    }
+    if (highlightId) {
+      const marker = markerById[parseInt(poolId)];
+      if (marker) {
+        map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
+        map.once('moveend', () => marker.openPopup());
+      }
+    }
   });
 
   window.addEventListener('popstate', () => {

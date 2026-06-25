@@ -7,6 +7,7 @@ from pathlib import Path
 
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.utils import timezone
 
 from pools.models import Pool, PoolLike, Submission
@@ -262,6 +263,13 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
     }
 
 
+def _thanks_url(pool_id: str) -> str:
+    url = reverse("submit_thanks")
+    if pool_id and pool_id.isdigit():
+        url += f"?pool={pool_id}"
+    return url
+
+
 def index(request):
     zip_query = request.GET.get("zip", "").strip()
     status_filter = request.GET.get("status", "")
@@ -490,13 +498,13 @@ def submit(request):
                     "Rejected non-image upload: filename=%r ip=%s",
                     uploaded_image.name, ip,
                 )
-                return redirect("submit_thanks")
+                return redirect(_thanks_url(pool_id))
             if moderate_image(image_bytes_for_check, uploaded_image.name):
                 logger.warning(
                     "Rejected image flagged by moderation: filename=%r ip=%s",
                     uploaded_image.name, ip,
                 )
-                return redirect("submit_thanks")
+                return redirect(_thanks_url(pool_id))
 
         parsed_pool = None
         if pool_id:
@@ -566,7 +574,7 @@ def submit(request):
         submission.llm_confidence = parsed_fields.get("confidence", "")
         submission.save()
 
-        return redirect("submit_thanks")
+        return redirect(_thanks_url(pool_id))
 
     from django.conf import settings as django_settings
     return render(request, "pools/submit.html", {
@@ -577,4 +585,5 @@ def submit(request):
 
 
 def submit_thanks(request):
-    return render(request, "pools/submit_thanks.html")
+    pool_id = request.GET.get("pool", "")
+    return render(request, "pools/submit_thanks.html", {"pool_id": pool_id if pool_id.isdigit() else ""})

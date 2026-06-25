@@ -33,7 +33,7 @@
 
 {% block content %}
 <div class="container py-4" style="max-width: 720px">
-  <a href="/" class="text-muted small text-decoration-none">&larr; All pools</a>
+  <a href="/" class="text-muted small text-decoration-none" onclick="sessionStorage.setItem('highlightPoolId','{{ pool.pk }}')">&larr; All pools</a>
 
   <div class="d-flex align-items-center gap-2 mt-2 mb-1">
     <h1 class="h3 mb-0">{{ pool.name }}</h1>
