@@ -1,6 +1,8 @@
 {% extends "pools/base.html" %}
 
 {% block title %}{{ pool.name }} — Philly Pools{% endblock %}
+{% block og_url %}{{ pool.get_absolute_url }}{% endblock %}
+{% block canonical_url %}{{ pool.get_absolute_url }}{% endblock %}
 
 {% block content %}
 <div class="container py-4" style="max-width: 720px">
