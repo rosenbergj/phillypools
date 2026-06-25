@@ -53,6 +53,10 @@ class Pool(models.Model):
         super().save(*args, **kwargs)
         _upsert_season_history(self, old_opening=old_opening, old_closing=old_closing)
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("pool_detail", kwargs={"pk": self.pk})
+
     @property
     def is_open(self):
         from datetime import date

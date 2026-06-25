@@ -104,6 +104,7 @@ def _source_url(submission):
 
 def apply_to_pool(modeladmin, request, queryset):
     applied = skipped = 0
+    applied_pools = []
     reactivated = []
     date_warnings = []
     for sub in queryset.select_related("parsed_pool"):
@@ -147,12 +148,21 @@ def apply_to_pool(modeladmin, request, queryset):
         sub.reviewed_at = timezone.now()
         sub.save()
         applied += 1
+        applied_pools.append(pool)
 
-    msg = f"Applied {applied} submission(s) to pool(s)."
+    if applied == 1:
+        pool = applied_pools[0]
+        msg = format_html(
+            'Applied 1 submission to <a href="{}">{}</a>.',
+            pool.get_absolute_url(),
+            pool.name,
+        )
+    else:
+        msg = f"Applied {applied} submission(s) to pool(s)."
     if reactivated:
-        msg += f" Set to active: {', '.join(reactivated)}."
+        msg = format_html("{} Set to active: {}.", msg, ", ".join(reactivated))
     if skipped:
-        msg += f" Skipped {skipped} with no linked pool."
+        msg = format_html("{} Skipped {} with no linked pool.", msg, skipped)
     modeladmin.message_user(request, msg)
     for warning in date_warnings:
         modeladmin.message_user(request, f"Date overwrite: {warning}", level=messages.WARNING)
