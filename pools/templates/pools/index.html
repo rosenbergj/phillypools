@@ -17,6 +17,12 @@
 {% block content %}
 <div class="container-fluid px-3 pt-3">
 
+  {% if heat_emergency %}
+  <div class="alert py-2 mb-3" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
+    During heat health emergencies, most pools switch to Open Swim for their entire operating day.
+  </div>
+  {% endif %}
+
   <div class="alert alert-info py-2 mb-3 small">
     Schedule info here is crowd-sourced: It's only as current as what people share.
     Have updated info? <a href="{% url 'submit' %}" class="alert-link">Submit an update.</a>

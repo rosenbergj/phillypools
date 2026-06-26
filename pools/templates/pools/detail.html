@@ -35,6 +35,12 @@
 <div class="container py-4" style="max-width: 720px">
   <a href="/" class="text-muted small text-decoration-none" onclick="sessionStorage.setItem('highlightPoolId','{{ pool.pk }}')">&larr; All pools</a>
 
+  {% if heat_emergency %}
+  <div class="alert py-2 mt-3 mb-0" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
+    During heat health emergencies, most pools switch to Open Swim for their entire operating day.
+  </div>
+  {% endif %}
+
   <div class="d-flex align-items-center gap-2 mt-2 mb-1">
     <h1 class="h3 mb-0">{{ pool.name }}</h1>
     <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
