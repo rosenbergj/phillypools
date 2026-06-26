@@ -11,7 +11,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 
-from pools.models import Pool, PoolLike, Submission
+from pools.models import Pool, PoolLike, PoolSeasonHistory, Submission
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 
@@ -392,6 +392,16 @@ def pool_detail(request, pk):
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
     voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
     year = today.year
+
+    prior_schedule = None
+    if not pool.weekday_schedule and not pool.weekend_schedule:
+        try:
+            h = pool.season_history.get(year=year - 1)
+            if h.weekday_schedule or h.weekend_schedule:
+                prior_schedule = h
+        except PoolSeasonHistory.DoesNotExist:
+            pass
+
     return render(request, "pools/detail.html", {
         "pool": pool,
         "schedule_changes": schedule_changes,
@@ -399,6 +409,7 @@ def pool_detail(request, pk):
         "like_count": pool.likes.filter(year=year).count(),
         "total_like_count": pool.likes.count(),
         "user_liked": bool(voter_id) and pool.likes.filter(voter_id=voter_id, year=year).exists(),
+        "prior_schedule": prior_schedule,
     })
 
 

@@ -71,10 +71,17 @@ class Pool(models.Model):
 def _upsert_season_history(pool, old_opening=None, old_closing=None):
     if old_opening and not pool.opening_date:
         PoolSeasonHistory.objects.filter(pool=pool, year=old_opening.year).update(opening_date=None)
-        PoolSeasonHistory.objects.filter(pool=pool, year=old_opening.year, closing_date__isnull=True).delete()
+        # Only delete if no data worth keeping remains.
+        PoolSeasonHistory.objects.filter(
+            pool=pool, year=old_opening.year,
+            closing_date__isnull=True, weekday_schedule="", weekend_schedule="",
+        ).delete()
     if old_closing and not pool.closing_date:
         PoolSeasonHistory.objects.filter(pool=pool, year=old_closing.year).update(closing_date=None)
-        PoolSeasonHistory.objects.filter(pool=pool, year=old_closing.year, opening_date__isnull=True).delete()
+        PoolSeasonHistory.objects.filter(
+            pool=pool, year=old_closing.year,
+            opening_date__isnull=True, weekday_schedule="", weekend_schedule="",
+        ).delete()
 
     dates_by_year = {}
     if pool.opening_date:
@@ -83,9 +90,16 @@ def _upsert_season_history(pool, old_opening=None, old_closing=None):
         dates_by_year.setdefault(pool.closing_date.year, {})["closing_date"] = pool.closing_date
     for year, fields in dates_by_year.items():
         obj, _ = PoolSeasonHistory.objects.get_or_create(pool=pool, year=year)
-        for field, value in fields.items():
+        update = dict(fields)
+        # Keep schedule history in sync while the pool has schedule data.
+        # Never overwrite a non-empty history value with blank.
+        if pool.weekday_schedule:
+            update["weekday_schedule"] = pool.weekday_schedule
+        if pool.weekend_schedule:
+            update["weekend_schedule"] = pool.weekend_schedule
+        for field, value in update.items():
             setattr(obj, field, value)
-        obj.save(update_fields=list(fields.keys()))
+        obj.save(update_fields=list(update.keys()))
 
 
 class PoolSeasonHistory(models.Model):
@@ -93,6 +107,8 @@ class PoolSeasonHistory(models.Model):
     year = models.IntegerField()
     opening_date = models.DateField(null=True, blank=True)
     closing_date = models.DateField(null=True, blank=True)
+    weekday_schedule = models.TextField(blank=True)
+    weekend_schedule = models.TextField(blank=True)
 
     class Meta:
         ordering = ["year"]
