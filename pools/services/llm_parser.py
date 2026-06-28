@@ -48,11 +48,15 @@ def _system_prompt() -> str:
     )
 
 _SCHEDULE_INSTRUCTIONS = """\
+weekday_schedule covers Monday through Friday ONLY. weekend_schedule covers Saturday and Sunday ONLY.
+Never include Sat or Sun data in weekday_schedule. Never include Mon–Fri data in weekend_schedule.
 For weekday_schedule and weekend_schedule, summarize into compact time blocks, one per line.
 Format each line as: "H–H Activity" using an en-dash (e.g. "11–1 Camp Swim" or "1–4 Open Swim").
 Use 12-hour times without am/pm unless needed for clarity.
 Merge consecutive blocks with the same activity into one span (e.g. "11–12 Day Camp" + "12–1 Day Camp" → "11–1 Day Camp").
-Note per-day variations in parentheses after the activity (e.g. "4–5 Swim Lessons (Wed-Thu) / Swim Team (Mon, Tues, Fri)").
+Also treat gaps of 10 minutes or less between same-activity blocks as continuous and merge them (e.g. "1–1:50 Open Swim" + "2–2:50 Open Swim" → "1–2:50 Open Swim").
+Note per-day variations in parentheses only when days within that section differ (e.g. "4–5 Swim Lessons (Mon, Wed) / Swim Team (Tue, Thu)" in weekday_schedule).
+Do NOT annotate with day names when an activity applies to every day in that section.
 Omit any "pool closed" or "no activity" blocks at the start or end of the day — those are implied by the hours listed.
 Do include a "closed" block only if there is a gap of more than 10 minutes in the middle of an otherwise active day (e.g. closed 12–1 between two sessions).
 If weekday and weekend schedules are identical, still fill in both fields."""
