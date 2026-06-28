@@ -214,10 +214,11 @@ Return [] if no pool schedule info is found."""
 
 def _parse_response(response_text: str) -> dict:
     text = response_text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-    return json.loads(text)
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+    result, _ = json.JSONDecoder().raw_decode(text, start)
+    return result
 
 
 def _parse_list_response(response_text: str) -> list:
