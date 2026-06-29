@@ -22,6 +22,8 @@ python manage.py reset_season
 
 This clears opening/closing dates, their source URLs, updates, and weekday/weekend schedule text for all pools. It also deletes past schedule changes. Before clearing schedules, it archives them into each pool's season history record, so the site can show "here was last year's schedule" on pool detail pages until a new schedule is submitted for the current season. (Only the immediately prior year is shown this way; older history is retained in the database but not displayed.)
 
+It will also prompt you to clear the selected display image for each pool. Display images are typically specific to a season (a photo of last year's hours sign won't reflect the new season's schedule), so you'll generally want to confirm this. The dry run shows which pools have a display image selected.
+
 Add `--keep-schedules` to skip clearing and archiving schedule text — useful if you want to carry schedules forward as a starting point for the new season and update them manually.
 
 ## 2. Sync pool inventory from OpenDataPhilly

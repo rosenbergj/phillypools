@@ -27,6 +27,10 @@ class Command(BaseCommand):
         prefix = "[DRY RUN] " if dry_run else ""
 
         pools = list(Pool.objects.all())
+        pools_with_images = list(
+            Pool.objects.filter(display_image_submission__isnull=False)
+            .select_related('display_image_submission')
+        )
         self.stdout.write(f"Found {len(pools)} pools.")
 
         date_fields = [
@@ -118,6 +122,32 @@ class Command(BaseCommand):
             )
             if not dry_run:
                 past_changes.delete()
+
+        # --- Step 5: Clear display images (with confirmation) ---
+        image_count = len(pools_with_images)
+        if image_count:
+            self.stdout.write(f"\n{prefix}Display images selected for {image_count} pool(s):")
+            for pool in pools_with_images:
+                sub = pool.display_image_submission
+                date_str = sub.submitted_at.strftime('%b %-d, %Y') if sub else 'unknown'
+                self.stdout.write(f"  {pool.name} (submitted {date_str})")
+            if dry_run:
+                self.stdout.write(
+                    f"{prefix}Would clear display image for {image_count} pool(s) (confirmation required on --apply)."
+                )
+            else:
+                self.stdout.write("")
+                try:
+                    confirm = input(f"  Type 'yes' to clear display images for all {image_count} pool(s), or press Enter to skip: ")
+                except EOFError:
+                    confirm = ""
+                if confirm.strip().lower() == "yes":
+                    Pool.objects.filter(display_image_submission__isnull=False).update(display_image_submission=None)
+                    self.stdout.write(self.style.SUCCESS(f"  Cleared display images for {image_count} pool(s)."))
+                else:
+                    self.stdout.write("  Skipped — display images left unchanged.")
+        else:
+            self.stdout.write(f"\n{prefix}No pools have a selected display image.")
 
         if dry_run:
             self.stdout.write(
