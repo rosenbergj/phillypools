@@ -214,6 +214,7 @@ class Submission(models.Model):
     ]
     STATUS_CHOICES = [
         ("pending", "Pending"),
+        ("hold", "Hold"),
         ("approved", "Approved"),
         ("rejected", "Rejected"),
     ]
