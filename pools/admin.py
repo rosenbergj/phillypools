@@ -1,16 +1,100 @@
 from datetime import date
 
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import ShowFacets
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
-from django.utils.html import format_html, format_html_join
+from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
 from pools.models import MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
+
+
+class SubmissionImageWidget(forms.Widget):
+    """Radio-button image picker for selecting a submission's image on a pool page."""
+
+    def __init__(self, queryset=None, current_year=None, show_all=False, toggle_url=None, attrs=None):
+        super().__init__(attrs)
+        self._queryset = list(queryset) if queryset is not None else []
+        self._current_year = current_year
+        self._show_all = show_all
+        self._toggle_url = toggle_url
+
+    def render(self, name, value, attrs=None, renderer=None):
+        try:
+            current_pk = int(value) if value else None
+        except (ValueError, TypeError):
+            current_pk = None
+
+        submissions = [s for s in self._queryset if s.uploaded_image]
+
+        if not submissions:
+            if self._toggle_url:
+                return mark_safe(
+                    f'<p style="color:#666;margin:0">No approved images from this year for this pool. '
+                    f'<a href="{escape(self._toggle_url)}">Show all submissions</a></p>'
+                )
+            return mark_safe('<p style="color:#666;margin:0">No images have been submitted for this pool.</p>')
+
+        html = ['<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;padding:8px 0">']
+
+        none_checked = ' checked' if current_pk is None else ''
+        html.append(
+            f'<label style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer">'
+            f'<input type="radio" name="{name}" value=""{none_checked}>'
+            f'<span style="font-size:.85em;color:#666">None</span>'
+            f'</label>'
+        )
+
+        for sub in submissions:
+            selected = ' checked' if current_pk == sub.pk else ''
+            is_current_year = sub.submitted_at.year == self._current_year
+            is_approved = sub.status == 'approved'
+
+            date_str = sub.submitted_at.strftime('%b %-d, %Y')
+            date_html = f'<strong>{date_str}</strong>' if is_current_year else date_str
+
+            if is_approved:
+                container_style = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer'
+                status_html = ''
+            else:
+                container_style = (
+                    'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;'
+                    'background:#fffbe6;border:1px solid #ffe58f;border-radius:4px;padding:6px'
+                )
+                status_html = (
+                    f'<span style="font-size:.75em;padding:1px 5px;background:#faad14;'
+                    f'border-radius:3px;display:block;text-align:center">{escape(sub.status)}</span>'
+                )
+
+            img_url = escape(sub.uploaded_image.url)
+            html.append(
+                f'<label style="{container_style}">'
+                f'<input type="radio" name="{name}" value="{sub.pk}"{selected}>'
+                f'<img src="{img_url}" style="max-width:150px;max-height:120px;object-fit:contain">'
+                f'<span style="font-size:.85em;text-align:center">{date_html}</span>'
+                f'{status_html}'
+                f'</label>'
+            )
+
+        html.append('</div>')
+
+        if self._toggle_url:
+            toggle = escape(self._toggle_url)
+            html.append(
+                f'<p style="margin-top:4px;font-size:.9em">'
+                f'<a href="{toggle}">Also show older and non-approved images</a></p>'
+            )
+
+        return mark_safe(''.join(html))
+
+    def value_from_datadict(self, data, files, name):
+        val = data.get(name)
+        return val if val else None
 
 
 class PoolStatusFilter(admin.SimpleListFilter):
@@ -39,7 +123,59 @@ class PoolAdmin(admin.ModelAdmin):
     list_filter = [PoolStatusFilter, "is_active", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
-    readonly_fields = ["last_updated"]
+    readonly_fields = ["last_updated", "display_image_preview"]
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        fieldsets.append((
+            "Display Image", {
+                "fields": ("display_image_preview", "display_image_submission", "display_image_caption"),
+            }
+        ))
+        return fieldsets
+
+    def display_image_preview(self, obj):
+        sub = obj.display_image_submission
+        if sub and sub.uploaded_image:
+            return format_html(
+                '<img src="{}" style="max-width:400px;max-height:300px;object-fit:contain">',
+                sub.uploaded_image.url,
+            )
+        return "—"
+    display_image_preview.short_description = "Current image"
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "display_image_submission":
+            pool_pk = request.resolver_match.kwargs.get('object_id')
+            year = timezone.now().year
+            show_all = bool(request.GET.get('show_all_images'))
+            if pool_pk:
+                full_qs = (
+                    Submission.objects
+                    .filter(parsed_pool_id=pool_pk)
+                    .exclude(uploaded_image='')
+                    .order_by('-submitted_at')
+                )
+                if show_all:
+                    display_qs = full_qs
+                    toggle_url = None
+                else:
+                    display_qs = full_qs.filter(status='approved', submitted_at__year=year)
+                    has_extra = full_qs.exclude(status='approved', submitted_at__year=year).exists()
+                    toggle_url = (request.path + '?show_all_images=1') if has_extra else None
+            else:
+                full_qs = Submission.objects.none()
+                display_qs = Submission.objects.none()
+                toggle_url = None
+            kwargs["queryset"] = full_qs
+            kwargs["widget"] = SubmissionImageWidget(
+                queryset=display_qs,
+                current_year=year,
+                show_all=show_all,
+                toggle_url=toggle_url,
+            )
+            kwargs["required"] = False
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def is_open_display(self, obj):
         if obj.is_open is True:
@@ -242,6 +378,9 @@ class SubmissionAdmin(admin.ModelAdmin):
     def response_change(self, request, obj):
         if "_apply" in request.POST:
             apply_to_pool(self, request, Submission.objects.filter(pk=obj.pk))
+            if "_set_display_image" in request.POST and obj.uploaded_image and obj.parsed_pool_id:
+                Pool.objects.filter(pk=obj.parsed_pool_id).update(display_image_submission=obj)
+                self.message_user(request, f"Display image updated for {obj.parsed_pool}.")
             return redirect(request.path)
         if "_reparse" in request.POST:
             self._run_reparse(request, obj)

@@ -35,6 +35,14 @@ class Pool(models.Model):
     is_active = models.BooleanField(default=True)
     last_updated = models.DateTimeField(auto_now=True)
 
+    display_image_submission = models.ForeignKey(
+        'Submission',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='displayed_on_pools',
+    )
+    display_image_caption = models.TextField(blank=True)
+
     class Meta:
         ordering = ["name"]
 

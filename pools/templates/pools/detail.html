@@ -206,6 +206,20 @@
     </div>
   {% endif %}
 
+  {% if pool.display_image_submission and pool.display_image_submission.uploaded_image %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <img src="{{ pool.display_image_submission.uploaded_image.url }}"
+             alt="Schedule sign for {{ pool.name }}"
+             class="img-fluid rounded d-block"
+             style="max-width:600px">
+        <p class="text-muted small mt-2 mb-0">
+          {{ pool.display_image_caption|default:"Image submitted by a user"|urlize }}
+        </p>
+      </div>
+    </div>
+  {% endif %}
+
   <a href="{% url 'submit' %}?pool={{ pool.pk }}" class="btn btn-outline-primary btn-sm">
     Submit an update for this pool
   </a>
