@@ -124,15 +124,29 @@ class PoolAdmin(admin.ModelAdmin):
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
     readonly_fields = ["last_updated", "display_image_preview"]
-
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = list(super().get_fieldsets(request, obj))
-        fieldsets.append((
-            "Display Image", {
-                "fields": ("display_image_preview", "display_image_submission", "display_image_caption"),
-            }
-        ))
-        return fieldsets
+    fieldsets = [
+        (None, {"fields": (
+            "name", "ppr_amenity_id", "address", "neighborhood",
+            "latitude", "longitude", "pool_type", "is_active",
+            "phillypublicpools_url", "social_media_url", "phone_number",
+        )}),
+        ("Season", {"fields": (
+            "opening_date", "opening_date_source_url",
+            "closing_date", "closing_date_source_url",
+        )}),
+        ("Schedule", {"fields": (
+            "weekday_schedule", "weekday_schedule_source_url",
+            "weekend_schedule", "weekend_schedule_source_url",
+        )}),
+        ("Info", {"fields": (
+            "notes",
+            "updates", "updates_source_url",
+        )}),
+        ("DISPLAY IMAGE", {"fields": (
+            "display_image_preview", "display_image_submission", "display_image_caption",
+        )}),
+        ("Metadata", {"fields": ("last_updated",), "classes": ("collapse",)}),
+    ]
 
     def display_image_preview(self, obj):
         sub = obj.display_image_submission
@@ -143,6 +157,17 @@ class PoolAdmin(admin.ModelAdmin):
             )
         return "—"
     display_image_preview.short_description = "Current image"
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == "display_image_submission" and formfield:
+            w = formfield.widget
+            if hasattr(w, 'can_add_related'):
+                w.can_add_related = False
+                w.can_change_related = False
+                w.can_delete_related = False
+                w.can_view_related = False
+        return formfield
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "display_image_submission":
