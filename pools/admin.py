@@ -126,7 +126,7 @@ class PoolAdmin(admin.ModelAdmin):
     readonly_fields = ["last_updated", "display_image_preview"]
     fieldsets = [
         (None, {"fields": (
-            "name", "ppr_amenity_id", "address", "neighborhood",
+            "name", "slug", "ppr_amenity_id", "address", "neighborhood",
             "latitude", "longitude", "pool_type", "is_active",
             "phillypublicpools_url", "social_media_url", "phone_number",
         )}),

@@ -79,7 +79,7 @@
           <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded">
             <div class="d-flex justify-content-between align-items-start">
               <div class="d-flex align-items-baseline">
-                <a href="{% url 'pool_detail' pool.pk %}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>{% if pool.like_count %}<span class="text-muted small ms-2 pool-like-count">&#9829; {{ pool.like_count }}</span>{% endif %}
+                <a href="{{ pool.get_absolute_url }}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>{% if pool.like_count %}<span class="text-muted small ms-2 pool-like-count">&#9829; {{ pool.like_count }}</span>{% endif %}
               </div>
               <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
                 {% if show_distance and pool.distance is not None %}
@@ -174,7 +174,7 @@
         const allLines = schedule.trim().split('\n');
         const truncate = allLines.length > 6;
         const lines = allLines.slice(0, truncate ? 5 : allLines.length).map(escHtml).join('<br>');
-        const truncated = truncate ? `<br><a href="/pools/${pool.id}/">more details</a>` : '';
+        const truncated = truncate ? `<br><a href="/pools/${pool.slug}/">more details</a>` : '';
         statusLine = `<br><small>${lines}${truncated}</small>`;
       } else {
         statusLine = '<br><small>Open today</small>';
@@ -197,7 +197,7 @@
       <span class="like-icon">${pool.user_liked ? '&#9829;' : '&#9825;'}</span> <span class="like-count">${pool.like_count}</span>
     </button>`;
     return `<div class="d-flex align-items-center justify-content-between gap-1">
-      <strong><a href="/pools/${pool.id}/">${escHtml(pool.name)}</a></strong>${likeBtn}
+      <strong><a href="/pools/${pool.slug}/">${escHtml(pool.name)}</a></strong>${likeBtn}
     </div><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}${adminLine}`;
   }
 
@@ -314,7 +314,7 @@
     return `<div id="pool-${pool.id}" class="pool-card p-2 mb-1 rounded">
       <div class="d-flex justify-content-between align-items-start">
         <div class="d-flex align-items-baseline">
-          <a href="/pools/${pool.id}/" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>${pool.like_count > 0 ? `<span class="text-muted small ms-2 pool-like-count">&#9829; ${pool.like_count}</span>` : ''}
+          <a href="/pools/${pool.slug}/" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>${pool.like_count > 0 ? `<span class="text-muted small ms-2 pool-like-count">&#9829; ${pool.like_count}</span>` : ''}
         </div>
         <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
           ${distHtml}

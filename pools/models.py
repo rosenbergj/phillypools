@@ -42,6 +42,7 @@ class Pool(models.Model):
         related_name='displayed_on_pools',
     )
     display_image_caption = models.TextField(blank=True)
+    slug = models.SlugField(max_length=220, unique=True)
 
     class Meta:
         ordering = ["name"]
@@ -50,6 +51,15 @@ class Pool(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            base = slugify(self.name)
+            candidate = base
+            n = 2
+            while Pool.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+                candidate = f"{base}-{n}"
+                n += 1
+            self.slug = candidate
         old_opening = old_closing = None
         if self.pk:
             try:
@@ -63,7 +73,7 @@ class Pool(models.Model):
 
     def get_absolute_url(self):
         from django.urls import reverse
-        return reverse("pool_detail", kwargs={"pk": self.pk})
+        return reverse("pool_detail", kwargs={"slug": self.slug})
 
     @property
     def is_open(self):

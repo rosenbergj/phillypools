@@ -284,6 +284,7 @@ def index(request):
     pools_geojson = [
         {
             "id": p.id,
+            "slug": p.slug,
             "name": p.name,
             "lat": p.latitude,
             "lng": p.longitude,
@@ -331,6 +332,7 @@ def pools_json(request):
         dist = getattr(p, "distance", None)
         pools_list.append({
             "id": p.id,
+            "slug": p.slug,
             "name": p.name,
             "address": p.address,
             "lat": p.latitude,
@@ -385,8 +387,13 @@ def neighborhood_at(request):
     return JsonResponse({"neighborhood": None})
 
 
-def pool_detail(request, pk):
+def pool_detail_pk_redirect(request, pk):
     pool = get_object_or_404(Pool, pk=pk)
+    return redirect(pool.get_absolute_url(), permanent=True)
+
+
+def pool_detail(request, slug):
+    pool = get_object_or_404(Pool, slug=slug)
     today = timezone.localdate()
     pool.map_status = _pool_map_status(pool, today)
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
