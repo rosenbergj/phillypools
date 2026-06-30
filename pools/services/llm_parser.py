@@ -259,6 +259,66 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
     return result
 
 
+_HEAT_EMERGENCY_PROMPT = """\
+You are reading a press release from the Philadelphia Department of Public Health about a \
+Heat Health Emergency. These releases come in several forms:
+1. Declaring a new emergency, e.g. "Health Department Declares Heat Health Emergency \
+Wednesday, July 1 at 11 a.m. through Saturday, July 4 at 8 p.m."
+2. Revising an emergency already in effect — extending it ("...now extended through Sunday, \
+July 5 at 8 p.m.") or ending it early ("...will now end Friday, July 3 at 11 p.m. instead of \
+Saturday"). Treat these the same as a declaration: report the new, final effective window.
+3. Announcing that an emergency has ended, e.g. "Heat Health Emergency Ends".
+
+Title: {title}
+
+Content:
+{content}
+
+Return ONLY valid JSON with these fields:
+- is_active_emergency: true for forms 1 and 2 above (declaring, extending, or shortening an \
+emergency that is/was in effect), false for form 3 (announcing the emergency is over).
+- starts_at: ISO 8601 datetime (America/New_York, e.g. "2026-07-01T11:00:00") the emergency \
+begins or began. If this release doesn't restate the original start time (e.g. a revision that \
+only mentions the new end time), return null rather than guessing.
+- ends_at: ISO 8601 datetime (America/New_York) — the FINAL, currently-effective end of the \
+emergency after applying any extension or early-end described in this release (not the original \
+end time if it changed). Null if open-ended or not stated.
+
+This press release was published on {today}. Assume any date without a year is {year}, and \
+resolve relative phrases like "today," "tomorrow," or "this afternoon" relative to that \
+publish date — NOT relative to your own training/knowledge cutoff.
+"""
+
+
+def parse_heat_emergency(title: str, content: str, reference_date: date | None = None) -> dict:
+    """Parse a Philly DPH press release for heat emergency start/end times.
+
+    reference_date should be the press release's own publish date (not today's wall-clock
+    date) so relative phrasing in the release resolves correctly regardless of when this
+    function happens to run.
+    """
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    today = reference_date or date.today()
+    prompt = _HEAT_EMERGENCY_PROMPT.format(
+        title=title,
+        content=content[:8000],
+        today=today,
+        year=today.year,
+    )
+    message = client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=512,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = message.content[0].text
+    try:
+        result = _parse_response(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {"_raw": raw}
+    result["_raw"] = raw
+    return result
+
+
 def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
     """Extract schedule info for every pool mentioned in text."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))

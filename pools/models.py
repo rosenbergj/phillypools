@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Pool(models.Model):
@@ -243,3 +244,63 @@ class Submission(models.Model):
 
     def __str__(self):
         return f"{self.url} ({self.submitted_at:%Y-%m-%d})"
+
+
+class HeatHealthEmergency(models.Model):
+    """A single Philadelphia-declared Heat Health Emergency, with a start and (once known) end."""
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Blank while still in effect / not yet confirmed ended.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-starts_at"]
+        verbose_name_plural = "Heat health emergencies"
+
+    def __str__(self):
+        end = timezone.localtime(self.ends_at).strftime("%b %-d, %-I%p") if self.ends_at else "ongoing"
+        return f"{timezone.localtime(self.starts_at).strftime('%b %-d, %-I%p')} – {end}"
+
+
+class HeatEmergencyPressRelease(models.Model):
+    """A detected Philadelphia Dept. of Public Health press release about a Heat Health Emergency."""
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("applied", "Applied"),
+        ("rejected", "Rejected"),
+    ]
+
+    title = models.CharField(max_length=255)
+    source_url = models.URLField(unique=True)
+    raw_content = models.TextField(blank=True)
+    detected_at = models.DateTimeField(auto_now_add=True)
+    published_at = models.DateField(
+        null=True, blank=True,
+        help_text="Date the press release itself was published.",
+    )
+
+    is_active_emergency = models.BooleanField(
+        default=True, help_text="False if this release announces the emergency ending"
+    )
+    parsed_starts_at = models.DateTimeField(null=True, blank=True)
+    parsed_ends_at = models.DateTimeField(null=True, blank=True)
+    llm_response = models.JSONField(null=True, blank=True)
+
+    emergency = models.ForeignKey(
+        HeatHealthEmergency, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="press_releases",
+        help_text="Which emergency this release acts on (a revision or an end). "
+                   "Leave blank to start a brand-new emergency when applied.",
+    )
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-published_at", "-detected_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.detected_at:%Y-%m-%d})"

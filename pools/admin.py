@@ -11,7 +11,7 @@ from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
-from pools.models import MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
 
 
 class SubmissionImageWidget(forms.Widget):
@@ -329,6 +329,54 @@ def apply_to_pool(modeladmin, request, queryset):
         modeladmin.message_user(request, f"Date overwrite: {warning}", level=messages.WARNING)
 
 apply_to_pool.short_description = "Apply parsed data to linked pool"
+
+
+def apply_press_release(modeladmin, request, queryset):
+    applied = skipped = 0
+    for pr in queryset.order_by("published_at", "detected_at"):
+        emergency = pr.emergency
+        if not emergency and "declares" not in pr.title.lower():
+            # Re-resolve here (not just at scrape time) because when applying a batch in one
+            # action — e.g. catching up on several historical releases at once — an earlier
+            # release in this same batch may have just created the emergency this one acts on.
+            emergency = (
+                HeatHealthEmergency.objects.filter(ends_at__isnull=True).order_by("-starts_at").first()
+                or HeatHealthEmergency.objects.order_by("-starts_at").first()
+            )
+        if emergency:
+            if pr.parsed_starts_at:
+                emergency.starts_at = pr.parsed_starts_at
+            if pr.parsed_ends_at:
+                emergency.ends_at = pr.parsed_ends_at
+            elif not pr.is_active_emergency and not emergency.ends_at:
+                # "Ends" release with no specific time parsed — end it as of now rather
+                # than leaving it open. If the release simply confirms a date the linked
+                # emergency already has, this branch is never hit (true no-op).
+                emergency.ends_at = timezone.now()
+        else:
+            if not pr.parsed_starts_at:
+                skipped += 1
+                continue
+            emergency = HeatHealthEmergency.objects.create(
+                starts_at=pr.parsed_starts_at, ends_at=pr.parsed_ends_at
+            )
+        emergency.save()
+        pr.emergency = emergency
+        pr.status = "applied"
+        pr.reviewed_at = timezone.now()
+        pr.save()
+        applied += 1
+    msg = f"Applied {applied} press release(s)."
+    if skipped:
+        msg += f" Skipped {skipped} with no linked emergency and no parsed start date — link or correct manually."
+    modeladmin.message_user(request, msg)
+apply_press_release.short_description = "Apply to emergency (creates new one if unlinked)"
+
+
+def reject_press_releases(modeladmin, request, queryset):
+    updated = queryset.update(status="rejected", reviewed_at=timezone.now())
+    modeladmin.message_user(request, f"Rejected {updated} press release(s).")
+reject_press_releases.short_description = "Reject selected press releases"
 
 
 @admin.register(Submission)
@@ -697,3 +745,48 @@ class MonitoredPageAdmin(admin.ModelAdmin):
         return bool(obj.content_hash)
     has_hash.short_description = "Initialized"
     has_hash.boolean = True
+
+
+@admin.register(HeatHealthEmergency)
+class HeatHealthEmergencyAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "starts_at", "ends_at", "created_at"]
+    fields = ["starts_at", "ends_at", "created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(HeatEmergencyPressRelease)
+class HeatEmergencyPressReleaseAdmin(admin.ModelAdmin):
+    list_display = ["title", "published_at", "is_active_emergency", "parsed_starts_at", "parsed_ends_at", "emergency", "status"]
+    list_filter = ["status", "is_active_emergency"]
+    list_select_related = ["emergency"]
+    actions = [apply_press_release, reject_press_releases]
+    readonly_fields = ["detected_at", "raw_content_display", "llm_response_display"]
+    fieldsets = (
+        ("Detected press release", {
+            "description": "Auto-filled by the scraper, or fill in by hand to manually declare/end an emergency.",
+            "fields": ("title", "source_url", "published_at", "detected_at", "raw_content_display"),
+        }),
+        ("Parsed / editable", {
+            "description": "Correct these before applying if the LLM got them wrong. 'emergency' is which "
+                           "existing emergency this revises or ends — leave blank to start a new one.",
+            "fields": ("is_active_emergency", "parsed_starts_at", "parsed_ends_at", "emergency"),
+        }),
+        ("Review", {
+            "fields": ("status", "reviewed_at"),
+        }),
+        ("Raw LLM response", {
+            "classes": ("collapse",),
+            "fields": ("llm_response_display",),
+        }),
+    )
+
+    def raw_content_display(self, obj):
+        return format_html("<pre style='white-space:pre-wrap;max-height:300px;overflow:auto'>{}</pre>", obj.raw_content)
+    raw_content_display.short_description = "Fetched page content"
+
+    def llm_response_display(self, obj):
+        if obj.llm_response:
+            import json
+            return format_html("<pre style='white-space:pre-wrap'>{}</pre>", json.dumps(obj.llm_response, indent=2))
+        return "—"
+    llm_response_display.short_description = "Raw LLM response"

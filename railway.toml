@@ -2,6 +2,6 @@
 buildCommand = "python manage.py check_deploy && python manage.py collectstatic --noinput"
 
 [deploy]
-startCommand = "if [ \"$RAILWAY_SERVICE_NAME\" = \"url-watcher\" ]; then python manage.py check_pool_schedule; else python manage.py migrate --noinput && gunicorn phillypools.wsgi --bind 0.0.0.0:$PORT --workers 2; fi"
+startCommand = "if [ \"$RAILWAY_SERVICE_NAME\" = \"url-watcher\" ]; then python manage.py check_pool_schedule && python manage.py check_heat_emergency; else python manage.py migrate --noinput && gunicorn phillypools.wsgi --bind 0.0.0.0:$PORT --workers 2; fi"
 healthcheckPath = "/"
 healthcheckTimeout = 30
