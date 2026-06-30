@@ -339,6 +339,7 @@ class SubmissionAdmin(admin.ModelAdmin):
     list_filter = ["status", "llm_confidence"]
     list_select_related = ["parsed_pool"]
     actions = [apply_to_pool]
+    list_display_links = ["submitted_at"]
     readonly_fields = [
         "submitted_at",
         "image_preview",
@@ -592,12 +593,12 @@ class SubmissionAdmin(admin.ModelAdmin):
             url = obj.url
             truncated = url[:60] + ("…" if len(url) > 60 else "")
             if "facebook.com" in url:
-                badge = format_html(
+                badge = mark_safe(
                     '<span style="background:#1877f2;color:#fff;font-size:.75em;'
                     'padding:1px 5px;border-radius:3px;margin-right:4px">FB</span>'
                 )
             elif "instagram.com" in url:
-                badge = format_html(
+                badge = mark_safe(
                     '<span style="background:#e1306c;color:#fff;font-size:.75em;'
                     'padding:1px 5px;border-radius:3px;margin-right:4px">Insta</span>'
                 )
