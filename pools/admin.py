@@ -421,20 +421,20 @@ class SubmissionAdmin(admin.ModelAdmin):
         llm_response = None
         parsed_fields = {}
 
-        if submission.url:
+        if submission.uploaded_image:
+            try:
+                image_bytes = submission.uploaded_image.read()
+                parsed_fields = parse_image_submission(image_bytes, submission.uploaded_image.name, pool_list)
+                llm_response = parsed_fields.pop("_raw", None)
+            except Exception as e:
+                llm_response = {"error": str(e)}
+        elif submission.url:
             try:
                 raw_content = fetch_url(submission.url)
             except Exception:
                 pass
             try:
                 parsed_fields = parse_submission(raw_content, pool_list)
-                llm_response = parsed_fields.pop("_raw", None)
-            except Exception as e:
-                llm_response = {"error": str(e)}
-        elif submission.uploaded_image:
-            try:
-                image_bytes = submission.uploaded_image.read()
-                parsed_fields = parse_image_submission(image_bytes, submission.uploaded_image.name, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception as e:
                 llm_response = {"error": str(e)}
@@ -528,13 +528,13 @@ class SubmissionAdmin(admin.ModelAdmin):
         from pools.services.llm_parser import build_pool_list
         pool_list = build_pool_list()
         try:
-            if submission.url:
+            if submission.uploaded_image:
+                from pools.services.llm_parser import parse_all_pools_image
+                results = parse_all_pools_image(submission.uploaded_image.read(), submission.uploaded_image.name, pool_list)
+            elif submission.url:
                 from pools.services.url_fetcher import fetch_url
                 from pools.services.llm_parser import parse_all_pools
                 results = parse_all_pools(fetch_url(submission.url), pool_list)
-            elif submission.uploaded_image:
-                from pools.services.llm_parser import parse_all_pools_image
-                results = parse_all_pools_image(submission.uploaded_image.read(), submission.uploaded_image.name, pool_list)
             else:
                 error = "This submission has no URL or image to parse."
         except Exception as e:
@@ -589,7 +589,24 @@ class SubmissionAdmin(admin.ModelAdmin):
 
     def short_source(self, obj):
         if obj.url:
-            return obj.url[:60] + ("…" if len(obj.url) > 60 else "")
+            url = obj.url
+            truncated = url[:60] + ("…" if len(url) > 60 else "")
+            if "facebook.com" in url:
+                badge = format_html(
+                    '<span style="background:#1877f2;color:#fff;font-size:.75em;'
+                    'padding:1px 5px;border-radius:3px;margin-right:4px">FB</span>'
+                )
+            elif "instagram.com" in url:
+                badge = format_html(
+                    '<span style="background:#e1306c;color:#fff;font-size:.75em;'
+                    'padding:1px 5px;border-radius:3px;margin-right:4px">Insta</span>'
+                )
+            else:
+                badge = ""
+            return format_html(
+                '{}<a href="{}" target="_blank" rel="noopener">{}</a>',
+                badge, url, truncated,
+            )
         if obj.uploaded_image:
             return f"[image] {obj.uploaded_image.name.split('/')[-1]}"
         return "—"
