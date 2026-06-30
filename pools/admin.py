@@ -331,24 +331,28 @@ def apply_to_pool(modeladmin, request, queryset):
 apply_to_pool.short_description = "Apply parsed data to linked pool"
 
 
+def _suggest_emergency(title):
+    if "declares" in title.lower():
+        return None
+    return (
+        HeatHealthEmergency.objects.filter(ends_at__isnull=True).order_by("-starts_at").first()
+        or HeatHealthEmergency.objects.order_by("-starts_at").first()
+    )
+
+
 def apply_press_release(modeladmin, request, queryset):
     applied = skipped = 0
     for pr in queryset.order_by("published_at", "detected_at"):
-        emergency = pr.emergency
-        if not emergency and "declares" not in pr.title.lower():
-            # Re-resolve here (not just at scrape time) because when applying a batch in one
-            # action — e.g. catching up on several historical releases at once — an earlier
-            # release in this same batch may have just created the emergency this one acts on.
-            emergency = (
-                HeatHealthEmergency.objects.filter(ends_at__isnull=True).order_by("-starts_at").first()
-                or HeatHealthEmergency.objects.order_by("-starts_at").first()
-            )
+        # Re-resolve here (not just at scrape time) because when applying a batch in one
+        # action — e.g. catching up on several historical releases at once — an earlier
+        # release in this same batch may have just created the emergency this one acts on.
+        emergency = pr.emergency or _suggest_emergency(pr.title)
         if emergency:
             if pr.parsed_starts_at:
                 emergency.starts_at = pr.parsed_starts_at
             if pr.parsed_ends_at:
                 emergency.ends_at = pr.parsed_ends_at
-            elif not pr.is_active_emergency and not emergency.ends_at:
+            elif pr.release_kind == "ends" and not emergency.ends_at:
                 # "Ends" release with no specific time parsed — end it as of now rather
                 # than leaving it open. If the release simply confirms a date the linked
                 # emergency already has, this branch is never hit (true no-op).
@@ -756,8 +760,9 @@ class HeatHealthEmergencyAdmin(admin.ModelAdmin):
 
 @admin.register(HeatEmergencyPressRelease)
 class HeatEmergencyPressReleaseAdmin(admin.ModelAdmin):
-    list_display = ["title", "published_at", "is_active_emergency", "parsed_starts_at", "parsed_ends_at", "emergency", "status"]
-    list_filter = ["status", "is_active_emergency"]
+    change_form_template = "admin/pools/heatemergencypressrelease_change_form.html"
+    list_display = ["title", "published_at", "release_kind", "parsed_starts_at", "parsed_ends_at", "emergency_display", "status"]
+    list_filter = ["status", "release_kind"]
     list_select_related = ["emergency"]
     actions = [apply_press_release, reject_press_releases]
     readonly_fields = ["detected_at", "raw_content_display", "llm_response_display"]
@@ -768,8 +773,9 @@ class HeatEmergencyPressReleaseAdmin(admin.ModelAdmin):
         }),
         ("Parsed / editable", {
             "description": "Correct these before applying if the LLM got them wrong. 'emergency' is which "
-                           "existing emergency this revises or ends — leave blank to start a new one.",
-            "fields": ("is_active_emergency", "parsed_starts_at", "parsed_ends_at", "emergency"),
+                           "existing emergency this revises or ends — leave blank to start a new one. It's only "
+                           "set in the database once you Apply; until then this just shows what Apply would do.",
+            "fields": ("release_kind", "parsed_starts_at", "parsed_ends_at", "emergency"),
         }),
         ("Review", {
             "fields": ("status", "reviewed_at"),
@@ -779,6 +785,22 @@ class HeatEmergencyPressReleaseAdmin(admin.ModelAdmin):
             "fields": ("llm_response_display",),
         }),
     )
+
+    def get_form(self, request, obj=None, **kwargs):
+        # ModelForm initial data for a bound instance comes from model_to_dict(obj), which
+        # shadows field.initial — so the suggestion has to be set on obj itself to show up
+        # pre-selected. Harmless on POST: a real save/apply overwrites this from submitted data.
+        if obj and obj.status == "pending" and not obj.emergency_id:
+            suggested = _suggest_emergency(obj.title)
+            if suggested:
+                obj.emergency = suggested
+        return super().get_form(request, obj, **kwargs)
+
+    def response_change(self, request, obj):
+        if "_apply" in request.POST:
+            apply_press_release(self, request, HeatEmergencyPressRelease.objects.filter(pk=obj.pk))
+            return redirect(request.path)
+        return super().response_change(request, obj)
 
     def raw_content_display(self, obj):
         return format_html("<pre style='white-space:pre-wrap;max-height:300px;overflow:auto'>{}</pre>", obj.raw_content)
@@ -790,3 +812,14 @@ class HeatEmergencyPressReleaseAdmin(admin.ModelAdmin):
             return format_html("<pre style='white-space:pre-wrap'>{}</pre>", json.dumps(obj.llm_response, indent=2))
         return "—"
     llm_response_display.short_description = "Raw LLM response"
+
+    def emergency_display(self, obj):
+        if obj.emergency:
+            return str(obj.emergency)
+        if obj.status != "pending":
+            return "—"
+        suggested = _suggest_emergency(obj.title)
+        if suggested:
+            return format_html("<em>will link to {} on Apply</em>", str(suggested))
+        return mark_safe("<em>will create new on Apply</em>")
+    emergency_display.short_description = "Emergency"

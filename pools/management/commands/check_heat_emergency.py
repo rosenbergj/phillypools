@@ -93,12 +93,14 @@ class Command(BaseCommand):
                 or HeatHealthEmergency.objects.order_by("-starts_at").first()
             )
 
+        release_kind = "ends" if parsed.get("is_active_emergency") is False else "declares_or_extends"
+
         HeatEmergencyPressRelease.objects.create(
             title=title,
             source_url=url,
             raw_content=raw_content,
             published_at=published_at,
-            is_active_emergency=parsed.get("is_active_emergency", True),
+            release_kind=release_kind,
             parsed_starts_at=_parse_alert_datetime(parsed.get("starts_at")),
             parsed_ends_at=_parse_alert_datetime(parsed.get("ends_at")),
             llm_response=llm_response,

@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% block submit_buttons_bottom %}
+<div class="submit-row">
+  <input type="submit" value="Save and return to queue">
+  <input type="submit" name="_continue" value="Save and continue editing">
+  <input type="submit" name="_apply" value="Apply →"
+         class="default"
+         style="text-transform:none"
+         title="Save your edits to the fields above, then link to (or create) the emergency they describe">
+</div>
+{% endblock %}

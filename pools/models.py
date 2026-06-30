@@ -282,8 +282,14 @@ class HeatEmergencyPressRelease(models.Model):
         help_text="Date the press release itself was published.",
     )
 
-    is_active_emergency = models.BooleanField(
-        default=True, help_text="False if this release announces the emergency ending"
+    RELEASE_KIND_CHOICES = [
+        ("declares_or_extends", "Declares / extends"),
+        ("ends", "Ends"),
+    ]
+    release_kind = models.CharField(
+        max_length=20, choices=RELEASE_KIND_CHOICES, default="declares_or_extends",
+        help_text="What this specific release announces — not whether an emergency is "
+                   "currently in effect.",
     )
     parsed_starts_at = models.DateTimeField(null=True, blank=True)
     parsed_ends_at = models.DateTimeField(null=True, blank=True)
