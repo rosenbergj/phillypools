@@ -479,7 +479,8 @@ class SubmissionAdmin(admin.ModelAdmin):
                     pool = Pool.objects.get(pk=pool_id)
                     opening = request.POST.get(f"opening_date_{pool_id}")
                     closing = request.POST.get(f"closing_date_{pool_id}")
-                    notes = request.POST.get(f"notes_{pool_id}", "")
+                    notes = request.POST.get(f"notes_{pool_id}", "").strip()
+                    phone = request.POST.get(f"phone_number_{pool_id}", "").strip()
                     if opening:
                         new_opening = date.fromisoformat(opening)
                         if pool.opening_date and pool.opening_date != new_opening:
@@ -499,8 +500,11 @@ class SubmissionAdmin(admin.ModelAdmin):
                             )
                         pool.closing_date = new_closing
                         pool.closing_date_source_url = source
+                    if phone:
+                        pool.phone_number = phone
                     if notes:
-                        pool.updates = notes
+                        existing = pool.updates.strip()
+                        pool.updates = (existing + "\n" + notes).strip() if existing else notes
                         pool.updates_source_url = source
                     pool.save()
                     applied += 1
@@ -545,12 +549,16 @@ class SubmissionAdmin(admin.ModelAdmin):
             if pool_obj:
                 parsed_opening = r.get("opening_date")
                 parsed_closing = r.get("closing_date")
-                if parsed_opening and pool_obj.opening_date and pool_obj.opening_date.isoformat() == parsed_opening:
-                    default_checked = False
-                if parsed_closing and pool_obj.closing_date and pool_obj.closing_date.isoformat() == parsed_closing:
-                    default_checked = False
-                if not pool_obj.is_active and not parsed_opening:
-                    default_checked = False
+                parsed_phone = r.get("phone_number", "")
+                parsed_notes = r.get("notes", "")
+                has_new_data = bool(parsed_phone or parsed_notes)
+                if not has_new_data:
+                    if parsed_opening and pool_obj.opening_date and pool_obj.opening_date.isoformat() == parsed_opening:
+                        default_checked = False
+                    if parsed_closing and pool_obj.closing_date and pool_obj.closing_date.isoformat() == parsed_closing:
+                        default_checked = False
+                    if not pool_obj.is_active and not parsed_opening:
+                        default_checked = False
             r["default_checked"] = default_checked
 
         # Find pools whose dates were sourced from this URL but no longer appear in results

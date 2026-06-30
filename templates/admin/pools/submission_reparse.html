@@ -34,7 +34,8 @@
           <th>Pool (as named in source)</th>
           <th>Opening date</th>
           <th>Closing date</th>
-          <th>Notes</th>
+          <th>Phone number</th>
+          <th>Updates addition <small style="font-weight:normal">(appended, not replaced)</small></th>
         </tr>
       </thead>
       <tbody>
@@ -94,6 +95,15 @@
                 <br><small class="help">Current: none</small>
               {% endif %}
             {% else %}{{ r.closing_date|default:"" }}{% endif %}
+          </td>
+          <td>
+            {% if r.pool_obj %}
+              <input type="text" name="phone_number_{{ r.pool_obj.pk }}"
+                     value="{{ r.phone_number|default:'' }}" size="16">
+              {% if r.pool_obj.phone_number %}
+                <br><small class="help">Current: {{ r.pool_obj.phone_number }}</small>
+              {% endif %}
+            {% else %}{{ r.phone_number|default:"" }}{% endif %}
           </td>
           <td>
             {% if r.pool_obj %}

@@ -187,7 +187,8 @@ Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "notes": "<any other relevant info excluding address information, or null>"
+    "phone_number": "<phone number for this pool as shown in the source, or null>",
+    "notes": "<free-text to append to this pool's updates, e.g. fitness class schedules (Aqua Zumba, Water Aerobics, etc.) with days/times/start dates — exclude address info — or null>"
   }}
 ]
 Return [] if no pool schedule info is found."""
@@ -195,7 +196,7 @@ Return [] if no pool schedule info is found."""
 _ALL_POOLS_IMAGE_PROMPT = """Pool list (id: name — address):
 {pool_list}
 
-The image above may mention multiple Philadelphia pools. OCR the text and extract ALL pools
+The image(s) above may mention multiple Philadelphia pools. OCR the text and extract ALL pools
 mentioned with schedule info.
 Do not put address information or address discrepancies in the notes field — addresses in the source
 may legitimately differ from the pool list and that difference is not relevant here.
@@ -206,7 +207,8 @@ Return a JSON array — one object per pool found:
     "pool_name": "<name as written in the source>",
     "opening_date": "<YYYY-MM-DD or null>",
     "closing_date": "<YYYY-MM-DD or null>",
-    "notes": "<any other relevant info excluding address information, or null>"
+    "phone_number": "<phone number for this pool as shown in the source, or null>",
+    "notes": "<free-text to append to this pool's updates, e.g. fitness class schedules (Aqua Zumba, Water Aerobics, etc.) with days/times/start dates — exclude address info — or null>"
   }}
 ]
 Return [] if no pool schedule info is found."""
