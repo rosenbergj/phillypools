@@ -350,6 +350,7 @@ def pools_json(request):
             "phillypublicpools_url": p.phillypublicpools_url or None,
             "like_count": p.like_count,
             "user_liked": p.user_liked,
+            "pool_type": p.pool_type,
         })
 
     return JsonResponse({

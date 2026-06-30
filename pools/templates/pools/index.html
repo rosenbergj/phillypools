@@ -97,6 +97,9 @@
                   {% else %}
                     <span class="badge bg-secondary">TBD</span>
                   {% endif %}
+                  {% if pool.pool_type == "indoor" %}
+                    <br><span class="badge" style="background:#0891b2">Indoor</span>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -305,6 +308,9 @@
     } else {
       badge = `<span class="badge bg-secondary">TBD</span>`;
     }
+    const indoorBadge = pool.pool_type === 'indoor'
+      ? '<br><span class="badge" style="background:#0891b2">Indoor</span>'
+      : '';
     const distHtml = showDistance && pool.distance != null
       ? `<span class="text-muted small" style="min-width:3rem;text-align:right">${pool.distance.toFixed(1)} mi</span>`
       : '';
@@ -318,7 +324,7 @@
         </div>
         <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
           ${distHtml}
-          <div style="min-width:5.5rem;text-align:center">${badge}</div>
+          <div style="min-width:5.5rem;text-align:center">${badge}${indoorBadge}</div>
         </div>
       </div>
       ${labelHtml}
