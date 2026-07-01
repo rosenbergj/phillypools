@@ -5,8 +5,11 @@ from pools.models import HeatHealthEmergency
 
 
 def is_heat_emergency() -> bool:
-    """Return True if Philadelphia currently has a Heat Health Emergency in effect."""
+    """Return True if Philadelphia currently has a Heat Health Emergency in effect, or one starts later today."""
     now = timezone.now()
-    return HeatHealthEmergency.objects.filter(starts_at__lte=now).filter(
+    today = timezone.localtime(now).date()
+    return HeatHealthEmergency.objects.filter(
+        Q(starts_at__lte=now) | Q(starts_at__date=today)
+    ).filter(
         Q(ends_at__isnull=True) | Q(ends_at__gte=now)
     ).exists()
