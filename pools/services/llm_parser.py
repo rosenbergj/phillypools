@@ -383,7 +383,7 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
         schedule_instructions=_SCHEDULE_INSTRUCTIONS,
     )
     message = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         max_tokens=1024,
         system=_system_prompt(),
         messages=[{
