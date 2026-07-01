@@ -19,7 +19,9 @@
 
   {% if heat_emergency %}
   <div class="alert py-2 mb-3" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
-    During heat health emergencies, most pools switch to Open Swim for their entire operating day.
+    During
+    {% if heat_emergency_url %}<a href="{{ heat_emergency_url }}" target="_blank" rel="noopener" class="text-white">heat health emergencies</a>{% else %}heat health emergencies{% endif %},
+    most pools switch to Open Swim for their entire operating day.
   </div>
   {% endif %}
 

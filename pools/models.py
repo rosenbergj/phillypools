@@ -264,6 +264,10 @@ class HeatHealthEmergency(models.Model):
         end = timezone.localtime(self.ends_at).strftime("%b %-d, %-I%p") if self.ends_at else "ongoing"
         return f"{timezone.localtime(self.starts_at).strftime('%b %-d, %-I%p')} – {end}"
 
+    def latest_press_release(self):
+        """The most recently published press release acting on this emergency (a revision, if any, wins)."""
+        return self.press_releases.order_by("-published_at", "-detected_at").first()
+
 
 class HeatEmergencyPressRelease(models.Model):
     """A detected Philadelphia Dept. of Public Health press release about a Heat Health Emergency."""
