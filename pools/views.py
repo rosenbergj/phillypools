@@ -247,6 +247,11 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
         pools = [p for p in pools if p.is_active]
     elif status_filter == "opening_soon":
         pools = [p for p in pools if _pool_map_status(p, today) in ("open", "opening_soon")]
+    elif status_filter == "zumba":
+        pools = [
+            p for p in pools
+            if "zumba" in p.weekday_schedule.lower() or "zumba" in p.weekend_schedule.lower()
+        ]
 
     for pool in pools:
         pool.map_status = _pool_map_status(pool, today)
