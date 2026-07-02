@@ -53,13 +53,23 @@
 {% block messages %}
 {% if request.user.is_authenticated %}
 {% pending_submission_count as pending %}
-{% if pending %}
+{% pending_press_release_count as pending_releases %}
+{% if pending or pending_releases %}
 <ul class="messagelist">
+  {% if pending %}
   <li class="warning">
     <a href="{% url 'admin:pools_submission_changelist' %}?status__exact=pending">
       {{ pending }} pending submission{{ pending|pluralize }} awaiting review &rarr;
     </a>
   </li>
+  {% endif %}
+  {% if pending_releases %}
+  <li class="warning">
+    <a href="{% url 'admin:pools_heatemergencypressrelease_changelist' %}?status__exact=pending">
+      {{ pending_releases }} pending heat emergency press release{{ pending_releases|pluralize }} awaiting review &rarr;
+    </a>
+  </li>
+  {% endif %}
 </ul>
 {% endif %}
 {% endif %}
