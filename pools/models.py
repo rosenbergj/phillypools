@@ -86,6 +86,20 @@ class Pool(models.Model):
             return not self.closing_date or self.closing_date >= today
         return None  # no opening date, or opening date in the future
 
+    @property
+    def schedule_completeness(self):
+        weekday = self.weekday_schedule or ""
+        weekend = self.weekend_schedule or ""
+        if not weekday.strip() and not weekend.strip():
+            return "none"
+        if not weekday.strip() or not weekend.strip():
+            return "partial"
+        if "11" not in weekday or "6" not in weekday:
+            return "partial"
+        if "unknown" in weekday.lower() or "unknown" in weekend.lower():
+            return "partial"
+        return "full"
+
 
 def _upsert_season_history(pool, old_opening=None, old_closing=None):
     if old_opening and not pool.opening_date:

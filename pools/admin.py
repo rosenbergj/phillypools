@@ -119,7 +119,7 @@ class PoolStatusFilter(admin.SimpleListFilter):
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ["name", "neighborhood", "social_media_display", "is_open_display", "opening_date_display", "closing_date_display", "is_active"]
+    list_display = ["name", "neighborhood", "social_media_display", "is_open_display", "opening_date_display", "closing_date_display", "schedule_display", "is_active"]
     list_filter = [PoolStatusFilter, "is_active", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
@@ -230,6 +230,17 @@ class PoolAdmin(admin.ModelAdmin):
             label = "other"
         return format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', url, label)
     social_media_display.short_description = "Social"
+
+    def schedule_display(self, obj):
+        colors = {"full": "#389e0d", "partial": "#faad14", "none": "#999"}
+        labels = {"full": "Full", "partial": "Partial", "none": "None"}
+        status = obj.schedule_completeness
+        return format_html(
+            '<span style="background:{};color:#fff;font-size:.75em;'
+            'padding:1px 5px;border-radius:3px">{}</span>',
+            colors[status], labels[status],
+        )
+    schedule_display.short_description = "Schedule"
 
 
 class PoolAlternateNameInline(admin.TabularInline):
