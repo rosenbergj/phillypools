@@ -167,6 +167,27 @@ def _season_duration(pool, today):
     return ", ".join(parts)
 
 
+def _last_season_duration(pool, last_year):
+    """Return e.g. '7 weeks, 3 days' for last_year's recorded season, or '0 days' if
+    the pool has no complete opening/closing record for that year (i.e. never opened)."""
+    try:
+        h = pool.season_history.get(year=last_year)
+    except PoolSeasonHistory.DoesNotExist:
+        return "0 days"
+    if not h.opening_date or not h.closing_date:
+        return "0 days"
+    total = (h.closing_date - h.opening_date).days + 1
+    if total <= 0:
+        return "0 days"
+    weeks, days = divmod(total, 7)
+    parts = []
+    if weeks:
+        parts.append(f"{weeks} week{'s' if weeks != 1 else ''}")
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    return ", ".join(parts)
+
+
 def _pool_map_status(pool, today):
     if not pool.is_active:
         return "inactive"
@@ -405,6 +426,13 @@ def pool_detail(request, slug):
     schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
     voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
     year = today.year
+    last_year = year - 1
+
+    # The app launched in 2026, so there's no history from before that. Don't show a
+    # "last season" stat until 2026 actually is the previous year (i.e. from 2027 on).
+    last_season_duration = None
+    if last_year >= 2026:
+        last_season_duration = _last_season_duration(pool, last_year)
 
     prior_schedule = None
     if not pool.weekday_schedule and not pool.weekend_schedule:
@@ -419,6 +447,8 @@ def pool_detail(request, slug):
         "pool": pool,
         "schedule_changes": schedule_changes,
         "season_duration": _season_duration(pool, today),
+        "last_season_duration": last_season_duration,
+        "last_season_year": last_year,
         "like_count": pool.likes.filter(year=year).count(),
         "total_like_count": pool.likes.count(),
         "user_liked": bool(voter_id) and pool.likes.filter(voter_id=voter_id, year=year).exists(),

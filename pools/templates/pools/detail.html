@@ -112,6 +112,11 @@
         <dd class="col-sm-8">{{ season_duration }}</dd>
         {% endif %}
 
+        {% if last_season_duration %}
+        <dt class="col-sm-4">Last season ({{ last_season_year }}) duration</dt>
+        <dd class="col-sm-8">{{ last_season_duration }}</dd>
+        {% endif %}
+
       </dl>
     </div>
   </div>
