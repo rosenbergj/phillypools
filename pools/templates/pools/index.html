@@ -163,6 +163,19 @@
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Built via concatenation, not a `/path/${...}/`-shaped template literal — Googlebot's
+  // static JS scanner has been observed extracting such literals verbatim (placeholder and
+  // all) as crawlable URLs, independent of actual script execution.
+  function poolUrl(slug) {
+    return '/pools/' + slug + '/';
+  }
+  function poolLikeUrl(id) {
+    return '/pools/' + id + '/like/';
+  }
+  function adminPoolUrl(id) {
+    return '/admin/pools/pool/' + id + '/change/';
+  }
+
   function makePopupContent(pool) {
     const today = new Date();
     const dow = today.getDay();
@@ -179,7 +192,7 @@
         const allLines = schedule.trim().split('\n');
         const truncate = allLines.length > 6;
         const lines = allLines.slice(0, truncate ? 5 : allLines.length).map(escHtml).join('<br>');
-        const truncated = truncate ? `<br><a href="/pools/${pool.slug}/">more details</a>` : '';
+        const truncated = truncate ? `<br><a href="${poolUrl(pool.slug)}">more details</a>` : '';
         statusLine = `<br><small>${lines}${truncated}</small>`;
       } else {
         statusLine = '<br><small>Open today</small>';
@@ -196,13 +209,13 @@
       : pool.phillypublicpools_url
         ? `<br><small><a href="${escHtml(pool.phillypublicpools_url)}" target="_blank" rel="noopener">phillypublicpools.com guide</a></small>`
         : '';
-    const adminLine = isAdmin ? `<br><small><a href="/admin/pools/pool/${pool.id}/change/">Edit in admin</a></small>` : '';
+    const adminLine = isAdmin ? `<br><small><a href="${adminPoolUrl(pool.id)}">Edit in admin</a></small>` : '';
     const likeBtn = `<button type="button" class="like-btn btn btn-sm ${pool.user_liked ? 'btn-primary' : 'btn-outline-primary'} py-0 px-1 ms-2"
         data-pool-id="${pool.id}" style="line-height:1.3">
       <span class="like-icon">${pool.user_liked ? '&#9829;' : '&#9825;'}</span> <span class="like-count">${pool.like_count}</span>
     </button>`;
     return `<div class="d-flex align-items-center justify-content-between gap-1">
-      <strong><a href="/pools/${pool.slug}/">${escHtml(pool.name)}</a></strong>${likeBtn}
+      <strong><a href="${poolUrl(pool.slug)}">${escHtml(pool.name)}</a></strong>${likeBtn}
     </div><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}${adminLine}`;
   }
 
@@ -217,7 +230,7 @@
     e.stopPropagation();
     btn.disabled = true;
     try {
-      const resp = await fetch(`/pools/${btn.dataset.poolId}/like/`, {
+      const resp = await fetch(poolLikeUrl(btn.dataset.poolId), {
         method: 'POST',
         headers: { 'X-CSRFToken': getCookie('csrftoken') },
       });
@@ -322,7 +335,7 @@
     return `<div id="pool-${pool.id}" class="pool-card p-2 mb-1 rounded">
       <div class="d-flex justify-content-between align-items-start">
         <div class="d-flex align-items-baseline">
-          <a href="/pools/${pool.slug}/" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>${pool.like_count > 0 ? `<span class="text-muted small ms-2 pool-like-count">&#9829; ${pool.like_count}</span>` : ''}
+          <a href="${poolUrl(pool.slug)}" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>${pool.like_count > 0 ? `<span class="text-muted small ms-2 pool-like-count">&#9829; ${pool.like_count}</span>` : ''}
         </div>
         <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
           ${distHtml}

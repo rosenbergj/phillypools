@@ -241,7 +241,7 @@
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        const resp = await fetch(`/pools/${btn.dataset.poolId}/like/`, {
+        const resp = await fetch('/pools/' + btn.dataset.poolId + '/like/', {
           method: 'POST',
           headers: { 'X-CSRFToken': csrfToken },
         });
