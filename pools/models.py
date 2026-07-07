@@ -94,7 +94,7 @@ class Pool(models.Model):
             return "none"
         if not weekday.strip() or not weekend.strip():
             return "partial"
-        if "11" not in weekday or "6" not in weekday:
+        if "11" not in weekday or ("6" not in weekday and "7" not in weekday):
             return "partial"
         if "unknown" in weekday.lower() or "unknown" in weekend.lower():
             return "partial"
