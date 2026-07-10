@@ -3,6 +3,7 @@ from datetime import date
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import ShowFacets
+from django.contrib.admin.templatetags.admin_list import _boolean_icon
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -760,10 +761,9 @@ class MonitoredPageAdmin(admin.ModelAdmin):
     def has_hash(self, obj):
         # Heat-emergency pages are never diffed, so "initialized" doesn't apply.
         if obj.page_type != "pool_info":
-            return None
-        return bool(obj.content_hash)
+            return "n/a"
+        return _boolean_icon(bool(obj.content_hash))
     has_hash.short_description = "Initialized"
-    has_hash.boolean = True
 
 
 @admin.register(DigestState)
