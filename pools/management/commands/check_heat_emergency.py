@@ -4,12 +4,11 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
-from pools.models import HeatEmergencyPressRelease, HeatHealthEmergency
+from pools.models import HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; PhillyPools/1.0; +https://phillypools.app)"
 }
-_DPH_URL = "https://www.phila.gov/departments/department-of-public-health/"
 
 
 def _parse_alert_datetime(value):
@@ -27,17 +26,28 @@ class Command(BaseCommand):
     help = "Check Philadelphia DPH press releases for heat health emergency declarations."
 
     def handle(self, *args, **options):
+        pages = list(MonitoredPage.objects.filter(page_type="heat_emergency"))
+        if not pages:
+            self.stderr.write("No heat-emergency monitored pages in database — add one via admin.")
+            return
+        for page in pages:
+            self._check_page(page)
+
+    def _check_page(self, page):
         try:
-            resp = requests.get(_DPH_URL, headers=_HEADERS, timeout=15)
+            resp = requests.get(page.url, headers=_HEADERS, timeout=15)
             resp.raise_for_status()
         except Exception as e:
-            self.stderr.write(f"Fetch error for {_DPH_URL}: {e}")
+            self.stderr.write(f"Fetch error for {page.url}: {e}")
             return
+
+        page.last_checked = timezone.now()
+        page.save(update_fields=["last_checked"])
 
         soup = BeautifulSoup(resp.text, "html.parser")
         grid = soup.find("div", class_="press-grid")
         if not grid:
-            self.stderr.write("press-grid not found — page structure may have changed")
+            self.stderr.write(f"press-grid not found on {page.url} — page structure may have changed")
             return
 
         existing_urls = set(HeatEmergencyPressRelease.objects.values_list("source_url", flat=True))

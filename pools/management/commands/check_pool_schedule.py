@@ -27,9 +27,9 @@ class Command(BaseCommand):
     help = "Check monitored pages for content changes and create submissions when they change."
 
     def handle(self, *args, **options):
-        pages = list(MonitoredPage.objects.all())
+        pages = list(MonitoredPage.objects.filter(page_type="pool_info"))
         if not pages:
-            self.stderr.write("No monitored pages in database — add one via admin.")
+            self.stderr.write("No pool-info monitored pages in database — add one via admin.")
             return
         for page in pages:
             self._check(page)

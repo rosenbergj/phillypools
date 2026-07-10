@@ -753,10 +753,14 @@ class PoolLikeAdmin(admin.ModelAdmin):
 
 @admin.register(MonitoredPage)
 class MonitoredPageAdmin(admin.ModelAdmin):
-    list_display = ["url", "last_checked", "last_changed", "has_hash"]
+    list_display = ["url", "page_type", "last_checked", "last_changed", "has_hash"]
+    list_filter = ["page_type"]
     readonly_fields = ["content_hash", "last_checked", "last_changed"]
 
     def has_hash(self, obj):
+        # Heat-emergency pages are never diffed, so "initialized" doesn't apply.
+        if obj.page_type != "pool_info":
+            return None
         return bool(obj.content_hash)
     has_hash.short_description = "Initialized"
     has_hash.boolean = True

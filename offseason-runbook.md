@@ -147,3 +147,5 @@ Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Ra
 ### 8. Set up monitored pages
 
 If there are any monitored pages being carried over from last year, visit `/admin/pools/monitoredpage/` to confirm they're listed. Either way, add any new ones for the current season. The cron will establish a baseline content hash on its first run — no submission is created on that first check.
+
+Monitored pages have a **page type**: "Pool info" pages are diffed for changes (creating submissions), while "Heat emergency info" pages are scanned for new DPH heat health emergency press releases. Confirm at least one heat-emergency page is present (the DPH press page was seeded by migration, and the restored database carries it) — if none exists, `check_heat_emergency` reports an error into the digest email rather than silently checking nothing.

@@ -199,8 +199,15 @@ class PoolAlternateName(models.Model):
 
 
 class MonitoredPage(models.Model):
-    """A URL whose main content is periodically checked for changes."""
+    """A URL checked periodically — pool-info pages are diffed for content changes
+    (creating a Submission); heat-emergency pages are scanned for new DPH press releases."""
+    PAGE_TYPE_CHOICES = [
+        ("pool_info", "Pool info"),
+        ("heat_emergency", "Heat emergency info"),
+    ]
+
     url = models.URLField(unique=True)
+    page_type = models.CharField(max_length=20, choices=PAGE_TYPE_CHOICES, default="pool_info")
     content_hash = models.CharField(max_length=64, blank=True)
     last_checked = models.DateTimeField(null=True, blank=True)
     last_changed = models.DateTimeField(null=True, blank=True)
