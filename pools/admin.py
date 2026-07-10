@@ -11,7 +11,7 @@ from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
-from pools.models import HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
 
 
 class SubmissionImageWidget(forms.Widget):
@@ -760,6 +760,17 @@ class MonitoredPageAdmin(admin.ModelAdmin):
         return bool(obj.content_hash)
     has_hash.short_description = "Initialized"
     has_hash.boolean = True
+
+
+@admin.register(DigestState)
+class DigestStateAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "last_digest_sent_at", "last_error_email_sent_at"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(HeatHealthEmergency)

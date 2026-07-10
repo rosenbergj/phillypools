@@ -45,6 +45,11 @@ From the Railway dashboard, copy every env var from both the **web service** and
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 - `R2_BUCKET_NAME`
+- `SES_ACCESS_KEY_ID` (cron service)
+- `SES_SECRET_ACCESS_KEY` (cron service)
+- `SES_REGION` (cron service)
+- `DIGEST_FROM_EMAIL` (cron service)
+- `DIGEST_TO_EMAIL` (cron service)
 
 `DATABASE_URL` and `RAILWAY_PUBLIC_DOMAIN` will be different on the new project — don't bother saving them.
 
@@ -115,16 +120,21 @@ Verify the restore worked by visiting the Railway-provided URL for the web servi
 
 ### 5. Add the cron service
 
-Add a second service from the same GitHub repo. It only needs three env vars, all set as cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard):
+Add a second service from the same GitHub repo. It needs three env vars set as cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard), plus the SES digest-email vars from your saved backup:
 
 ```
 RAILWAY_SERVICE_NAME=url-watcher
 ANTHROPIC_API_KEY=${{phillypools.ANTHROPIC_API_KEY}}
 DATABASE_URL=${{phillypools.DATABASE_URL}}
 SECRET_KEY=${{phillypools.SECRET_KEY}}
+SES_ACCESS_KEY_ID=<from your saved backup>
+SES_SECRET_ACCESS_KEY=<from your saved backup>
+SES_REGION=<from your saved backup>
+DIGEST_FROM_EMAIL=<from your saved backup>
+DIGEST_TO_EMAIL=<from your saved backup>
 ```
 
-In the Railway dashboard, configure this service as a **Cron** with schedule `15 13,16,19,22 * * *` (runs at 1:15, 4:15, 7:15, and 10:15 PM UTC). The `railway.toml` start command already branches on `RAILWAY_SERVICE_NAME`, so this service will run `check_pool_schedule` when triggered.
+In the Railway dashboard, configure this service as a **Cron** with schedule `15 1,13,16,19,22 * * *` (runs at 1:15 AM and 1:15, 4:15, 7:15, and 10:15 PM UTC — the 1:15 AM UTC run is the 9:15 PM EDT evening check). The `railway.toml` start command already branches on `RAILWAY_SERVICE_NAME`, so this service will run `run_url_watcher` when triggered — that runs the page and heat-emergency checks, then emails a digest if anything new is pending (see `pools/services/digest.py`). The SES sender/recipient identities live in AWS SES (sandbox mode is fine — both addresses just need to be verified there) and survive the offseason teardown.
 
 ### 6. Run the new season setup
 

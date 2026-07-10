@@ -328,3 +328,23 @@ class HeatEmergencyPressRelease(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.detected_at:%Y-%m-%d})"
+
+
+class DigestState(models.Model):
+    """Singleton row tracking when notification emails were last sent."""
+    last_digest_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Pending items created after this are 'new' in the next digest.",
+    )
+    last_error_email_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Scraper errors alone trigger at most one email per day.",
+    )
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Digest state"

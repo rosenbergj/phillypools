@@ -9,3 +9,4 @@ requests==2.34.2
 whitenoise==6.12.0
 django-allow-cidr==0.8.0
 django-storages[s3]==1.14.4
+boto3==1.43.45

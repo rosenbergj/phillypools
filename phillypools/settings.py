@@ -32,6 +32,14 @@ os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
 CLOUDFLARE_TURNSTILE_SITE_KEY = env('CLOUDFLARE_TURNSTILE_SITE_KEY', default='')
 CLOUDFLARE_TURNSTILE_SECRET_KEY = env('CLOUDFLARE_TURNSTILE_SECRET_KEY', default='')
 
+# AWS SES credentials for the pending-items digest email (SES_* names so they
+# can't be confused with the R2 credentials mapped onto AWS_* settings below).
+SES_ACCESS_KEY_ID = env('SES_ACCESS_KEY_ID', default='')
+SES_SECRET_ACCESS_KEY = env('SES_SECRET_ACCESS_KEY', default='')
+SES_REGION = env('SES_REGION', default='us-east-1')
+DIGEST_FROM_EMAIL = env('DIGEST_FROM_EMAIL', default='')
+DIGEST_TO_EMAIL = env('DIGEST_TO_EMAIL', default='')
+
 # Railway injects RAILWAY_PUBLIC_DOMAIN automatically
 _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
 if _railway_domain:
