@@ -120,18 +120,18 @@ Verify the restore worked by visiting the Railway-provided URL for the web servi
 
 ### 5. Add the cron service
 
-Add a second service from the same GitHub repo. It needs three env vars set as cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard), plus the SES digest-email vars from your saved backup:
+Add a second service from the same GitHub repo. All of its variables go on the cron service itself (Variables tab of that service). Three are cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard); the five SES digest-email vars are **plain literal values** from your saved backup — they exist only on the cron service and are not set on (or referenced from) the web service, since only the cron sends email:
 
 ```
 RAILWAY_SERVICE_NAME=url-watcher
 ANTHROPIC_API_KEY=${{phillypools.ANTHROPIC_API_KEY}}
 DATABASE_URL=${{phillypools.DATABASE_URL}}
 SECRET_KEY=${{phillypools.SECRET_KEY}}
-SES_ACCESS_KEY_ID=<from your saved backup>
-SES_SECRET_ACCESS_KEY=<from your saved backup>
-SES_REGION=<from your saved backup>
-DIGEST_FROM_EMAIL=<from your saved backup>
-DIGEST_TO_EMAIL=<from your saved backup>
+SES_ACCESS_KEY_ID=<literal value from your saved backup>
+SES_SECRET_ACCESS_KEY=<literal value from your saved backup>
+SES_REGION=<literal value from your saved backup>
+DIGEST_FROM_EMAIL=<literal value from your saved backup>
+DIGEST_TO_EMAIL=<literal value from your saved backup>
 ```
 
 In the Railway dashboard, configure this service as a **Cron** with schedule `15 1,13,16,19,22 * * *` (runs at 1:15 AM and 1:15, 4:15, 7:15, and 10:15 PM UTC — the 1:15 AM UTC run is the 9:15 PM EDT evening check). The `railway.toml` start command already branches on `RAILWAY_SERVICE_NAME`, so this service will run `run_url_watcher` when triggered — that runs the page and heat-emergency checks, then emails a digest if anything new is pending (see `pools/services/digest.py`). The SES sender/recipient identities live in AWS SES (sandbox mode is fine — both addresses just need to be verified there) and survive the offseason teardown.
