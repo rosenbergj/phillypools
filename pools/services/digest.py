@@ -19,6 +19,8 @@ from django.utils import timezone
 from pools.models import DigestState, HeatEmergencyPressRelease, Submission
 
 SITE_BASE_URL = "https://phillypools.app"
+# Every email this app sends should use this subject prefix.
+SUBJECT_PREFIX = "[phillypools.app] "
 ERROR_EMAIL_MIN_INTERVAL = timedelta(hours=24)
 
 
@@ -94,7 +96,7 @@ def _build_email(pending_subs, pending_prs, new_subs, new_prs, scrape_errors):
         )
     if scrape_errors and not subject_parts:
         subject_parts.append("scraper errors")
-    subject = "PhillyPools: " + ", ".join(subject_parts)
+    subject = SUBJECT_PREFIX + ", ".join(subject_parts)
 
     lines = []
 
