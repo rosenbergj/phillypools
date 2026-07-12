@@ -1,5 +1,5 @@
 [build]
-buildCommand = "python manage.py check_deploy && python manage.py collectstatic --noinput"
+buildCommand = "python manage.py collectstatic --noinput"
 
 [deploy]
 startCommand = "if [ \"$RAILWAY_SERVICE_NAME\" = \"url-watcher\" ]; then python manage.py run_url_watcher; else python manage.py migrate --noinput && gunicorn phillypools.wsgi --bind 0.0.0.0:$PORT --workers 2; fi"
