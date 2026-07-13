@@ -146,6 +146,10 @@ def _pool_status_label(pool, today):
             return "Closing tomorrow", "#fd7e14", True
         if 2 <= delta <= 5:
             return f"Closing in {delta} days", "#fd7e14", True
+        if delta > 5:
+            return f"Closing {pool.closing_date.strftime('%a %-m/%-d')}", "#6c757d", False
+        if delta < 0:
+            return f"Closed for the season on {pool.closing_date.strftime('%-m/%-d')}", "#6c757d", False
     return None, None, None
 
 
@@ -337,6 +341,7 @@ def index(request):
             "status": p.map_status,
             "address": p.address,
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
+            "closing_date": p.closing_date.isoformat() if p.closing_date else None,
             "weekday_schedule": p.weekday_schedule or None,
             "weekend_schedule": p.weekend_schedule or None,
             "active_schedule_change": p.active_schedule_change.description if p.active_schedule_change else None,
@@ -391,6 +396,7 @@ def pools_json(request):
             "label_bold": p.label_bold,
             "distance": None if (dist is None or dist == float("inf")) else dist,
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
+            "closing_date": p.closing_date.isoformat() if p.closing_date else None,
             "weekday_schedule": p.weekday_schedule or None,
             "weekend_schedule": p.weekend_schedule or None,
             "active_schedule_change": p.active_schedule_change.description if p.active_schedule_change else None,
