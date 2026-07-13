@@ -186,7 +186,9 @@
                       (m === 7 && d === 5 && dow === 1);
 
     let statusLine = '';
-    if (pool.status === 'open') {
+    if (pool.active_schedule_change) {
+      statusLine = `<br><small style="background:#fff3cd;padding:1px 4px;border-radius:3px">${escHtml(pool.active_schedule_change)}</small>`;
+    } else if (pool.status === 'open') {
       const schedule = isWeekend ? pool.weekend_schedule : pool.weekday_schedule;
       if (schedule) {
         const allLines = schedule.trim().split('\n');

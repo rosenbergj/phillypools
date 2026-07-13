@@ -172,13 +172,19 @@
   {% endif %}
 
   {% if schedule_changes %}
-    <div class="card mb-4">
+    <div class="card mb-4 border-warning" style="background:#fff3cd">
       <div class="card-body">
-        <h2 class="h6 text-uppercase text-muted mb-3">Schedule changes</h2>
+        <h2 class="h6 text-uppercase mb-3">Schedule changes</h2>
         {% for change in schedule_changes %}
           <div class="mb-2 {% if not forloop.last %}pb-2 border-bottom{% endif %}">
             <div class="small text-muted">
-              {{ change.date_from }}{% if change.date_from != change.date_to %} – {{ change.date_to }}{% endif %}
+              {% if change.date_to and change.date_from != change.date_to %}
+                {{ change.date_from }} – {{ change.date_to }}
+              {% elif change.date_to %}
+                {{ change.date_from }}
+              {% else %}
+                {{ change.date_from }} – ongoing
+              {% endif %}
               {% if change.source_url %}
                 <a href="{{ change.source_url }}" target="_blank" rel="noopener" class="source-link" title="Source">[link]</a>
               {% endif %}

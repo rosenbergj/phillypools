@@ -11,7 +11,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 
-from pools.models import Pool, PoolLike, PoolSeasonHistory, Submission
+from pools.models import Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 
@@ -196,10 +196,29 @@ def _pool_map_status(pool, today):
             return "no_date"  # prior-season data — treat as TBD
         if pool.opening_date <= today:
             if not pool.closing_date or pool.closing_date >= today:
+                # An active same-day/short-term schedule change (e.g. emergency
+                # closure) isn't "closed" in the season sense, but "open" would be
+                # misleading too — show it as opening_soon instead.
+                if getattr(pool, "active_schedule_change", None):
+                    return "opening_soon"
                 return "open"
             return "closed"  # closed this season
         return "opening_soon"
     return "no_date"
+
+
+def _annotate_active_schedule_changes(pools, today):
+    from django.db.models import Q
+
+    changes_by_pool = {}
+    changes = ScheduleChange.objects.filter(
+        Q(date_to__gte=today) | Q(date_to__isnull=True),
+        pool_id__in=[p.id for p in pools], date_from__lte=today,
+    ).order_by("date_from")
+    for change in changes:
+        changes_by_pool.setdefault(change.pool_id, change)
+    for pool in pools:
+        pool.active_schedule_change = changes_by_pool.get(pool.id)
 
 
 def _annotate_likes(pools, voter_id: str, year: int):
@@ -260,6 +279,7 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
         pools.sort(key=lambda p: p.name)
 
     today = timezone.localdate()
+    _annotate_active_schedule_changes(pools, today)
     if status_filter == "open":
         pools = [p for p in pools if _pool_map_status(p, today) == "open"]
     elif status_filter == "closed":
@@ -319,6 +339,7 @@ def index(request):
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
             "weekday_schedule": p.weekday_schedule or None,
             "weekend_schedule": p.weekend_schedule or None,
+            "active_schedule_change": p.active_schedule_change.description if p.active_schedule_change else None,
             "social_media_url": p.social_media_url or None,
             "phillypublicpools_url": p.phillypublicpools_url or None,
             "like_count": p.like_count,
@@ -372,6 +393,7 @@ def pools_json(request):
             "opening_date": p.opening_date.isoformat() if p.opening_date else None,
             "weekday_schedule": p.weekday_schedule or None,
             "weekend_schedule": p.weekend_schedule or None,
+            "active_schedule_change": p.active_schedule_change.description if p.active_schedule_change else None,
             "social_media_url": p.social_media_url or None,
             "phillypublicpools_url": p.phillypublicpools_url or None,
             "like_count": p.like_count,
@@ -420,10 +442,15 @@ def pool_detail_pk_redirect(request, pk):
 
 
 def pool_detail(request, slug):
+    from django.db.models import Q
+
     pool = get_object_or_404(Pool, slug=slug)
     today = timezone.localdate()
+    schedule_changes = pool.schedule_changes.filter(
+        Q(date_to__gte=today) | Q(date_to__isnull=True)
+    ).order_by("date_from")
+    pool.active_schedule_change = next((c for c in schedule_changes if c.date_from <= today), None)
     pool.map_status = _pool_map_status(pool, today)
-    schedule_changes = pool.schedule_changes.filter(date_to__gte=today).order_by("date_from")
     voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
     year = today.year
     last_year = year - 1

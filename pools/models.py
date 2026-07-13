@@ -175,7 +175,7 @@ class PoolLike(models.Model):
 class ScheduleChange(models.Model):
     pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="schedule_changes")
     date_from = models.DateField()
-    date_to = models.DateField()
+    date_to = models.DateField(null=True, blank=True, help_text="Leave blank for an open-ended change with no known end date")
     description = models.TextField()
     source_url = models.URLField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -184,7 +184,7 @@ class ScheduleChange(models.Model):
         ordering = ["date_from"]
 
     def __str__(self):
-        return f"{self.pool.name}: {self.date_from} – {self.date_to}"
+        return f"{self.pool.name}: {self.date_from} – {self.date_to or 'ongoing'}"
 
 
 class PoolAlternateName(models.Model):

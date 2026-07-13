@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -111,6 +113,30 @@ class Command(BaseCommand):
             Pool.objects.update(**updates)
 
         self.stdout.write(f"\n{prefix}Cleared season data on {cleared_pools} pools.")
+
+        # --- Step 3b: End open-ended schedule changes ---
+        # A ScheduleChange with no date_to is still "active" indefinitely. At season
+        # reset there's no new information coming to close it out, so we give it the
+        # pool's (pre-clear) closing date, or Dec 31 of the year it started if the
+        # pool never got a closing date recorded. This also makes it eligible for
+        # the past-change deletion in Step 4.
+        pools_by_id = {p.id: p for p in pools}
+        open_ended = ScheduleChange.objects.filter(date_to__isnull=True)
+        open_ended_count = 0
+        for change in open_ended:
+            pool = pools_by_id.get(change.pool_id)
+            end_date = (pool.closing_date if pool and pool.closing_date
+                        else date(change.date_from.year, 12, 31))
+            open_ended_count += 1
+            self.stdout.write(
+                f"  {prefix}Ending open-ended schedule change for "
+                f"{pool.name if pool else change.pool_id} → {end_date}"
+            )
+            if not dry_run:
+                change.date_to = end_date
+                change.save(update_fields=["date_to"])
+        if open_ended_count:
+            self.stdout.write(f"\n{prefix}Ended {open_ended_count} open-ended schedule change(s).\n")
 
         # --- Step 4: Delete past ScheduleChanges ---
         past_changes = ScheduleChange.objects.filter(date_to__lt=today)
