@@ -31,7 +31,7 @@ Or get the connection string from the Railway dashboard (Postgres service → Va
 pg_dump "<DATABASE_URL>" -Fc -f phillypools-$(date +%Y%m%d).dump
 ```
 
-Keep this `.dump` file somewhere safe — it contains all pool data, season history, and submission history. A password manager attachment or personal cloud storage works fine.
+Keep this `.dump` file somewhere safe — it's a full `pg_dump` of every table (pool data, season history, submission history, site announcements, etc.), so nothing needs separate handling. A password manager attachment or personal cloud storage works fine.
 
 ### 4. Record all environment variables
 
@@ -114,7 +114,7 @@ Get the new `DATABASE_URL` from the Railway Postgres service variables, then res
 pg_restore -d "<NEW_DATABASE_URL>" --no-owner phillypools-YYYYMMDD.dump
 ```
 
-This restores all pool records, season history, and previous submissions.
+This restores every table from the dump — pool records, season history, previous submissions, site announcements, etc.
 
 Verify the restore worked by visiting the Railway-provided URL for the web service and checking the admin.
 

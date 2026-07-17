@@ -67,3 +67,7 @@ If the scraper printed a "not found in current feed" warning, check each listed 
 ## 4. Check for pools whose active status changed
 
 The scraper updates `is_active` automatically from the city's data, but it's worth a quick scan in the admin (`/admin/pools/pool/`) for anything that looks wrong — a pool that was active last year but is now marked inactive (or vice versa) is worth a second look before the season starts.
+
+## 5. Review open-ended site announcements
+
+`reset_season` doesn't touch `SiteAnnouncement` — that's a separate, intentionally season-agnostic model. Check the admin (`/admin/pools/siteannouncement/`) for any announcement with no end date; it's still showing on the site and will keep showing into the new season unless you update or delete it.
