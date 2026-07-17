@@ -91,6 +91,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'pools.context_processors.heat_emergency_context',
+                'pools.context_processors.site_announcement_context',
             ],
         },
     },

@@ -337,6 +337,23 @@ class HeatEmergencyPressRelease(models.Model):
         return f"{self.title} ({self.detected_at:%Y-%m-%d})"
 
 
+class SiteAnnouncement(models.Model):
+    """An admin-created, site-wide banner shown for a fixed time window (e.g. a maintenance notice)."""
+    message = models.TextField(help_text="Shown in the banner on every page.")
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-starts_at"]
+
+    def __str__(self):
+        starts = timezone.localtime(self.starts_at).strftime("%b %-d, %-I%p")
+        ends = timezone.localtime(self.ends_at).strftime("%b %-d, %-I%p")
+        return f"{self.message[:50]} ({starts} – {ends})"
+
+
 class DigestState(models.Model):
     """Singleton row tracking when notification emails were last sent."""
     last_digest_sent_at = models.DateTimeField(

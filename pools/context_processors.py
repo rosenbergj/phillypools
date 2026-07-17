@@ -1,3 +1,4 @@
+from pools.services.announcements import get_active_announcement
 from pools.services.heat_alert import get_current_or_upcoming_emergency
 
 
@@ -7,4 +8,11 @@ def heat_emergency_context(request):
     return {
         "heat_emergency": emergency is not None,
         "heat_emergency_url": press_release.source_url if press_release else None,
+    }
+
+
+def site_announcement_context(request):
+    announcement = get_active_announcement()
+    return {
+        "site_announcement": announcement.message if announcement else None,
     }

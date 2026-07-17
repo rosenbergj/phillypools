@@ -12,7 +12,7 @@ from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
-from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, SiteAnnouncement, Submission
 
 
 class SubmissionImageWidget(forms.Widget):
@@ -781,6 +781,13 @@ class DigestStateAdmin(admin.ModelAdmin):
 class HeatHealthEmergencyAdmin(admin.ModelAdmin):
     list_display = ["__str__", "starts_at", "ends_at", "created_at"]
     fields = ["starts_at", "ends_at", "created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(SiteAnnouncement)
+class SiteAnnouncementAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "starts_at", "ends_at", "created_at"]
+    fields = ["message", "starts_at", "ends_at", "created_at", "updated_at"]
     readonly_fields = ["created_at", "updated_at"]
 
 

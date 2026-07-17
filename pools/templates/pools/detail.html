@@ -35,6 +35,12 @@
 <div class="container py-4" style="max-width: 720px">
   <a href="/" class="text-muted small text-decoration-none" onclick="sessionStorage.setItem('highlightPoolId','{{ pool.pk }}')">&larr; All pools</a>
 
+  {% if site_announcement %}
+  <div class="alert py-2 mt-3 mb-0" style="background-color: #dc3545; color: #fff; border-color: #bd2130;">
+    {{ site_announcement }}
+  </div>
+  {% endif %}
+
   {% if heat_emergency %}
   <div class="alert py-2 mt-3 mb-0" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
     During

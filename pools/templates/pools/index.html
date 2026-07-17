@@ -17,6 +17,12 @@
 {% block content %}
 <div class="container-fluid px-3 pt-3">
 
+  {% if site_announcement %}
+  <div class="alert py-2 mb-3" style="background-color: #dc3545; color: #fff; border-color: #bd2130;">
+    {{ site_announcement }}
+  </div>
+  {% endif %}
+
   {% if heat_emergency %}
   <div class="alert py-2 mb-3" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
     During
