@@ -35,11 +35,11 @@
 <div class="container py-4" style="max-width: 720px">
   <a href="/" class="text-muted small text-decoration-none" onclick="sessionStorage.setItem('highlightPoolId','{{ pool.pk }}')">&larr; All pools</a>
 
-  {% if site_announcement %}
-  <div class="alert py-2 mt-3 mb-0" style="{{ site_announcement_style }}">
-    {{ site_announcement }}
+  {% for a in site_detail_announcements %}
+  <div class="alert py-2{% if forloop.first %} mt-3{% else %} mt-2{% endif %}{% if forloop.last %} mb-0{% else %} mb-2{% endif %}{% if a.is_small %} small{% endif %}" style="{{ a.style }}">
+    {{ a.html }}
   </div>
-  {% endif %}
+  {% endfor %}
 
   {% if heat_emergency %}
   <div class="alert py-2 mt-3 mb-0" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">

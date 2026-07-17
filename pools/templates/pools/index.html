@@ -17,11 +17,11 @@
 {% block content %}
 <div class="container-fluid px-3 pt-3">
 
-  {% if site_announcement %}
-  <div class="alert py-2 mb-3" style="{{ site_announcement_style }}">
-    {{ site_announcement }}
+  {% for a in site_announcements %}
+  <div class="alert py-2 mb-3{% if a.is_small %} small{% endif %}" style="{{ a.style }}">
+    {{ a.html }}
   </div>
-  {% endif %}
+  {% endfor %}
 
   {% if heat_emergency %}
   <div class="alert py-2 mb-3" style="background-color: #fd7e14; color: #fff; border-color: #e07214;">
@@ -30,11 +30,6 @@
     most pools switch to Open Swim for their entire operating day.
   </div>
   {% endif %}
-
-  <div class="alert alert-info py-2 mb-3 small">
-    Schedule info here is crowd-sourced: It's only as current as what people share.
-    Have updated info? <a href="{% url 'submit' %}" class="alert-link">Submit an update.</a>
-  </div>
 
   <form method="get" class="row g-2 mb-3 align-items-end">
     <div class="col-sm-4 col-md-3">

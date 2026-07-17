@@ -1,6 +1,8 @@
 anthropic==0.109.1
 Pillow==12.2.0
 beautifulsoup4==4.15.0
+bleach==6.4.0
+Markdown==3.10.2
 Django==6.0.6
 django-environ==0.13.0
 gunicorn==26.0.0

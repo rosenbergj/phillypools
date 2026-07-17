@@ -1,4 +1,4 @@
-from pools.services.announcements import COLOR_STYLES, get_active_announcement
+from pools.services.announcements import COLOR_STYLES, get_active_announcements, render_message
 from pools.services.heat_alert import get_current_or_upcoming_emergency
 
 
@@ -12,8 +12,16 @@ def heat_emergency_context(request):
 
 
 def site_announcement_context(request):
-    announcement = get_active_announcement()
+    announcements = [
+        {
+            "html": render_message(a.message),
+            "style": COLOR_STYLES[a.color],
+            "is_small": a.color == "cyan",
+            "show_on_detail_pages": a.show_on_detail_pages,
+        }
+        for a in get_active_announcements()
+    ]
     return {
-        "site_announcement": announcement.message if announcement else None,
-        "site_announcement_style": COLOR_STYLES.get(announcement.color) if announcement else None,
+        "site_announcements": announcements,
+        "site_detail_announcements": [a for a in announcements if a["show_on_detail_pages"]],
     }

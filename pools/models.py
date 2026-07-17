@@ -345,8 +345,15 @@ class SiteAnnouncement(models.Model):
         ("orange", "Orange"),
         ("red", "Red"),
     ]
-    message = models.TextField(help_text="Shown in the banner on every page.")
+    message = models.TextField(
+        help_text="Shown in the banner on every page. Markdown links and bold/italic/code "
+                   "are supported; other HTML is stripped."
+    )
     color = models.CharField(max_length=10, choices=COLOR_CHOICES, default="red")
+    show_on_detail_pages = models.BooleanField(
+        default=True,
+        help_text="Also show on individual pool detail pages (always shown on the main page).",
+    )
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField(
         null=True, blank=True,
