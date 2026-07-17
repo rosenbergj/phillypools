@@ -1,4 +1,4 @@
-from pools.services.announcements import get_active_announcement
+from pools.services.announcements import COLOR_STYLES, get_active_announcement
 from pools.services.heat_alert import get_current_or_upcoming_emergency
 
 
@@ -15,4 +15,5 @@ def site_announcement_context(request):
     announcement = get_active_announcement()
     return {
         "site_announcement": announcement.message if announcement else None,
+        "site_announcement_style": COLOR_STYLES.get(announcement.color) if announcement else None,
     }

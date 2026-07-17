@@ -786,8 +786,8 @@ class HeatHealthEmergencyAdmin(admin.ModelAdmin):
 
 @admin.register(SiteAnnouncement)
 class SiteAnnouncementAdmin(admin.ModelAdmin):
-    list_display = ["__str__", "starts_at", "ends_at", "created_at"]
-    fields = ["message", "starts_at", "ends_at", "created_at", "updated_at"]
+    list_display = ["__str__", "color", "starts_at", "ends_at", "created_at"]
+    fields = ["message", "color", "starts_at", "ends_at", "created_at", "updated_at"]
     readonly_fields = ["created_at", "updated_at"]
 
 

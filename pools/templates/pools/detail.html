@@ -36,7 +36,7 @@
   <a href="/" class="text-muted small text-decoration-none" onclick="sessionStorage.setItem('highlightPoolId','{{ pool.pk }}')">&larr; All pools</a>
 
   {% if site_announcement %}
-  <div class="alert py-2 mt-3 mb-0" style="background-color: #dc3545; color: #fff; border-color: #bd2130;">
+  <div class="alert py-2 mt-3 mb-0" style="{{ site_announcement_style }}">
     {{ site_announcement }}
   </div>
   {% endif %}

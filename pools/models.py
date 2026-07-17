@@ -339,9 +339,19 @@ class HeatEmergencyPressRelease(models.Model):
 
 class SiteAnnouncement(models.Model):
     """An admin-created, site-wide banner shown for a fixed time window (e.g. a maintenance notice)."""
+    COLOR_CHOICES = [
+        ("cyan", "Cyan"),
+        ("yellow", "Yellow"),
+        ("orange", "Orange"),
+        ("red", "Red"),
+    ]
     message = models.TextField(help_text="Shown in the banner on every page.")
+    color = models.CharField(max_length=10, choices=COLOR_CHOICES, default="red")
     starts_at = models.DateTimeField()
-    ends_at = models.DateTimeField()
+    ends_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Leave blank to keep showing indefinitely.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -350,7 +360,7 @@ class SiteAnnouncement(models.Model):
 
     def __str__(self):
         starts = timezone.localtime(self.starts_at).strftime("%b %-d, %-I%p")
-        ends = timezone.localtime(self.ends_at).strftime("%b %-d, %-I%p")
+        ends = timezone.localtime(self.ends_at).strftime("%b %-d, %-I%p") if self.ends_at else "ongoing"
         return f"{self.message[:50]} ({starts} – {ends})"
 
 
