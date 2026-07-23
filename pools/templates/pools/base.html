@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Philly Pools{% endblock %}</title>
   {% load static %}
-  <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
+  {% block favicon %}<link rel="icon" type="image/png" href="{% static 'favicon.png' %}">{% endblock %}
   <link rel="manifest" href="{% static 'manifest.json' %}">
   <meta name="theme-color" content="#212529">
   <meta name="description" content="{% block meta_description %}Crowdsourced Philadelphia public pool schedules and locator. Find open pools near you.{% endblock %}">
