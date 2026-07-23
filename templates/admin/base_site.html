@@ -50,6 +50,11 @@
 {% endif %}
 {% endblock %}
 
+{% block userlinks %}
+<a href="{% url 'stats' %}">{% translate 'Site usage' %}</a> /
+{{ block.super }}
+{% endblock %}
+
 {% block messages %}
 {% if request.user.is_authenticated %}
 {% pending_submission_count as pending %}

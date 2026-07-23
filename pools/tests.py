@@ -216,7 +216,16 @@ class RollupTests(TestCase):
 
 
 class StatsPageTests(TestCase):
-    def test_requires_staff(self):
+    def test_anonymous_is_bounced_to_the_admin_login(self):
+        resp = self.client.get("/stats/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/admin/login/", resp["Location"])
+
+    def test_logged_in_non_staff_is_bounced_too(self):
+        """Being signed in is not enough — the page is staff-only."""
+        from django.contrib.auth.models import User
+        User.objects.create_user("regular", "r@example.com", "pw")
+        self.client.login(username="regular", password="pw")
         resp = self.client.get("/stats/")
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/admin/login/", resp["Location"])
