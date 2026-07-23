@@ -3,8 +3,8 @@ import logging
 from django.utils import timezone
 
 from pools.services.usage import (
-    classify_client,
     classify_device,
+    classify_request,
     clean_zip,
     referrer_host,
     visitor_hash,
@@ -70,7 +70,7 @@ class UsageMiddleware:
             neighborhood=request.GET.get("neighborhood", "")[:100],
             zip_searched=clean_zip(request.GET.get("zip", "")),
             visitor=visitor_hash(request, day),
-            client_class=classify_client(user_agent),
+            client_class=classify_request(request),
             device=classify_device(user_agent),
             referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
         )

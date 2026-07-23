@@ -78,7 +78,7 @@
       <div class="border rounded p-3 h-100">
         <div class="text-muted small">Visitors</div>
         <div class="fs-3 fw-semibold">{{ totals.visitors }}</div>
-        <div class="text-muted small">robots excluded</div>
+        <div class="text-muted small">robots excluded{% if totals.staff %}, includes {{ totals.staff }} signed-in staff{% endif %}</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
@@ -97,7 +97,7 @@
     </div>
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small">Robot visits</div>
+        <div class="text-muted small">Robot visitors</div>
         <div class="fs-3 fw-semibold">{{ totals.bots }}</div>
         <div class="text-muted small">crawlers, kept out of the numbers above</div>
       </div>

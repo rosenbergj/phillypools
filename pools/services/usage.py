@@ -113,6 +113,21 @@ def classify_client(user_agent: str) -> str:
     return "bot" if any(p in ua for p in _BOT_PATTERNS) else "unknown"
 
 
+def classify_request(request) -> str:
+    """
+    As classify_client, but recognises the site's own staff first.
+
+    Staff traffic stays inside the visitor totals — the admin browsing the live
+    site is still a real person using it — but is labelled so its share can be
+    seen and, if it ever grows enough to distort a number, subtracted after the
+    fact from data already collected.
+    """
+    user = getattr(request, "user", None)
+    if user is not None and user.is_authenticated and user.is_staff:
+        return "staff"
+    return classify_client(request.META.get("HTTP_USER_AGENT", ""))
+
+
 def classify_device(user_agent: str) -> str:
     ua = (user_agent or "").lower()
     if not ua:

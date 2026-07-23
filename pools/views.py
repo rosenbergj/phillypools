@@ -19,8 +19,8 @@ from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
     USAGE_RAW_RETENTION_DAYS,
-    classify_client,
     classify_device,
+    classify_request,
     get_client_ip as _get_client_ip,
     referrer_host,
     visitor_hash,
@@ -730,7 +730,7 @@ def record_pin_click(request):
         event="pin_click",
         key=slug,
         visitor=visitor,
-        client_class=classify_client(user_agent),
+        client_class=classify_request(request),
         device=classify_device(user_agent),
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )
@@ -788,6 +788,10 @@ def stats(request):
         UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="bot")
         .values("day", "visitors", "events")
     )
+    staff = list(
+        UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="staff")
+        .values("day", "visitors", "events")
+    )
 
     series = _daily_series(visitors, days)
     confirmed_by_day = {r["day"]: r["visitors"] for r in confirmed}
@@ -824,6 +828,7 @@ def stats(request):
             "confirmed": sum(r["confirmed"] for r in series),
             "bots": sum(r["bots"] for r in series),
             "events": sum(r["events"] for r in series),
+            "staff": sum(r["visitors"] for r in staff),
         },
         "peak_visitors": peak,
         "first_day": day_from,

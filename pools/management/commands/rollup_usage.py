@@ -92,6 +92,11 @@ class Command(BaseCommand):
         put("visitors", "bot",
             events.filter(client_class="bot").count(),
             events.filter(client_class="bot").values("visitor").distinct().count())
+        # Staff are deliberately inside the "visitors" total above, not subtracted
+        # from it — this is the share of it that was us.
+        put("visitors", "staff",
+            human.filter(client_class="staff").count(),
+            human.filter(client_class="staff").values("visitor").distinct().count())
 
         # A visitor is a confirmed browser once they hit an endpoint only the page's
         # own JavaScript requests. Everyone else is merely not-obviously-a-bot.

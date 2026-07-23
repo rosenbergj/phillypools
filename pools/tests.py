@@ -115,6 +115,17 @@ class MiddlewareTests(TestCase):
         self.client.get("/robots.txt")
         self.assertEqual(UsageEvent.objects.count(), 0)
 
+    def test_signed_in_staff_are_labelled(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin", "a@example.com", "pw")
+        self.client.login(username="admin", password="pw")
+        self.client.get("/")
+        self.assertEqual(UsageEvent.objects.get().client_class, "staff")
+
+    def test_ordinary_visitors_are_not_labelled_staff(self):
+        self.client.get("/", HTTP_USER_AGENT="Mozilla/5.0 (Macintosh)")
+        self.assertEqual(UsageEvent.objects.get().client_class, "unknown")
+
 
 class PinClickTests(TestCase):
     def setUp(self):
@@ -171,6 +182,18 @@ class RollupTests(TestCase):
         )
         self.assertEqual(
             UsageDaily.objects.get(day=self.today, metric="visitors", key="bot").visitors, 1
+        )
+
+    def test_staff_are_counted_as_visitors_and_broken_out(self):
+        """Staff stay inside the visitor total — the tile reports their share, not a deduction."""
+        self._event(self.today, visitor="aaa")
+        self._event(self.today, visitor="me", client_class="staff")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="").visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="staff").visitors, 1
         )
 
     def test_js_confirmed_requires_a_js_only_request(self):

@@ -433,7 +433,7 @@ class UsageEvent(models.Model):
     neighborhood = models.CharField(max_length=100, blank=True)
     zip_searched = models.CharField(max_length=5, blank=True)
     visitor = models.CharField(max_length=16, db_index=True, help_text="Daily-rotating pseudonym; not linkable across days")
-    client_class = models.CharField(max_length=10, default="unknown", help_text="'bot' or 'unknown' — never a positive 'human' claim")
+    client_class = models.CharField(max_length=10, default="unknown", help_text="'bot', 'staff' or 'unknown' — never a positive 'human' claim")
     device = models.CharField(max_length=10, blank=True)
     referrer_host = models.CharField(max_length=100, blank=True, help_text="Host only, and only for external referrers")
 
