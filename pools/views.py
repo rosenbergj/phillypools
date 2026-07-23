@@ -14,7 +14,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from pools.models import Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission, UsageDaily, UsageEvent
+from pools.models import (
+    Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission,
+    UsageDaily, UsageEvent, UsageRollupState,
+)
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
@@ -843,4 +846,5 @@ def stats(request):
         "events_by_type": events_by_type,
         "raw_retention_days": USAGE_RAW_RETENTION_DAYS,
         "raw_rows": UsageEvent.objects.count(),
+        "last_rollup_at": UsageRollupState.load().last_run_at,
     })

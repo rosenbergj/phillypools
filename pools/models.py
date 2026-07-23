@@ -465,3 +465,24 @@ class UsageDaily(models.Model):
 
     def __str__(self):
         return f"{self.day} {self.metric}:{self.key} = {self.visitors}"
+
+
+class UsageRollupState(models.Model):
+    """
+    Singleton row recording when the usage rollup last ran, so /stats/ can say how
+    current its numbers are.
+
+    Tracked separately from the UsageDaily rows rather than inferred from them: a
+    pass that finds no new traffic still means the figures are current as of now,
+    and a timestamp derived from the counts themselves would instead freeze at the
+    last time anybody visited.
+    """
+    last_run_at = models.DateTimeField(null=True, blank=True)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f"Usage rollup last run: {self.last_run_at or 'never'}"

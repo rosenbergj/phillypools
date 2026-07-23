@@ -4,7 +4,7 @@ from django.core.management import call_command
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
-from pools.models import Pool, UsageDaily, UsageEvent, VisitorSalt
+from pools.models import Pool, UsageDaily, UsageEvent, UsageRollupState, VisitorSalt
 from pools.services import usage
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
 
@@ -203,6 +203,16 @@ class RollupTests(TestCase):
         self.assertEqual(
             UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").visitors, 1
         )
+
+    def test_run_timestamp_is_recorded_even_with_no_traffic(self):
+        """A quiet pass still makes the numbers current, so the clock must advance."""
+        self.assertIsNone(UsageRollupState.load().last_run_at)
+        call_command("rollup_usage", verbosity=0)
+        first = UsageRollupState.load().last_run_at
+        self.assertIsNotNone(first)
+
+        call_command("rollup_usage", verbosity=0)
+        self.assertGreaterEqual(UsageRollupState.load().last_run_at, first)
 
     def test_rerunning_does_not_double_count(self):
         self._event(self.today, visitor="aaa")

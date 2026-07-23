@@ -12,7 +12,7 @@ from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 
-from pools.models import UsageDaily, UsageEvent
+from pools.models import UsageDaily, UsageEvent, UsageRollupState
 from pools.services.usage import JS_ONLY_EVENTS, USAGE_RAW_RETENTION_DAYS
 
 # (metric name, UsageEvent field) breakdowns rolled up verbatim, skipping blanks.
@@ -72,6 +72,12 @@ class Command(BaseCommand):
                 day__lt=cutoff, day__in=aggregated
             ).delete()
             self.stdout.write(f"Pruned {deleted} raw rows older than {cutoff}")
+
+        # Recorded even when there was nothing to aggregate: a quiet pass still
+        # means the figures on /stats/ are current as of now.
+        state = UsageRollupState.load()
+        state.last_run_at = timezone.now()
+        state.save(update_fields=["last_run_at"])
 
     @transaction.atomic
     def _rollup_day(self, day):
