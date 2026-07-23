@@ -1,0 +1,26 @@
+{% comment %}
+One ranked breakdown. Every bar is paired with its number, so the chart never has
+to be read by length alone. Expects: title, subtitle, rows (label/pct/visitors/events).
+{% endcomment %}
+<div class="col-12 col-lg-6">
+  <div class="border rounded p-3 h-100">
+    <h2 class="h6 mb-0">{{ title }}</h2>
+    <div class="text-muted small mb-2">{{ subtitle }}</div>
+    {% if rows %}
+      <div class="small text-muted d-flex">
+        <span class="rank-label"></span>
+        <span class="flex-fill"></span>
+        <span class="rank-value">visitors</span>
+      </div>
+      {% for row in rows %}
+        <div class="rank-row" title="{{ row.label }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.events }} interaction{{ row.events|pluralize }}">
+          <span class="rank-label small">{{ row.label }}</span>
+          <span class="rank-track"><span class="rank-fill" style="width: {{ row.pct }}%"></span></span>
+          <span class="rank-value small">{{ row.visitors }}</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-muted small mb-0">Nothing recorded yet.</p>
+    {% endif %}
+  </div>
+</div>

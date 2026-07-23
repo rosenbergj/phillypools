@@ -6,14 +6,25 @@ from datetime import timedelta
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
-from django.http import JsonResponse
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Sum
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from pools.models import Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission
+from pools.models import Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission, UsageDaily, UsageEvent
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
+from pools.services.usage import (
+    USAGE_RAW_RETENTION_DAYS,
+    classify_client,
+    classify_device,
+    get_client_ip as _get_client_ip,
+    referrer_host,
+    visitor_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +63,6 @@ def _is_image_bytes(data: bytes) -> bool:
         return True
     return False
 
-
-def _get_client_ip(request) -> str:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "unknown")
 
 _PHILLY_BOUNDARY = json.loads(
     (Path(__file__).parent.parent / "static" / "philly_boundary.json").read_text()
@@ -693,3 +698,144 @@ def submit(request):
 def submit_thanks(request):
     pool_id = request.GET.get("pool", "")
     return render(request, "pools/submit_thanks.html", {"pool_id": pool_id if pool_id.isdigit() else ""})
+
+
+# Map pin clicks never reach the server on their own, so this is the one place we
+# ask the browser to tell us something. Cap what a single visitor can report in a
+# day: the endpoint is unauthenticated and writable by anyone, so without a limit
+# it is trivial to inflate a pool's numbers or pad the table.
+PIN_CLICK_DAILY_MAX = 400
+
+
+@require_POST
+def record_pin_click(request):
+    """
+    Record that a map pin was clicked. CSRF-protected like the like button, and
+    silently ignores anything it can't make sense of — a measurement endpoint
+    should never give a caller a reason to retry or a signal to probe with.
+    """
+    slug = request.POST.get("slug", "")[:100]
+    if not slug or not Pool.objects.filter(slug=slug).exists():
+        return HttpResponse(status=204)
+
+    day = timezone.localdate()
+    visitor = visitor_hash(request, day)
+    already = UsageEvent.objects.filter(day=day, visitor=visitor, event="pin_click").count()
+    if already >= PIN_CLICK_DAILY_MAX:
+        return HttpResponse(status=429)
+
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    UsageEvent.objects.create(
+        day=day,
+        event="pin_click",
+        key=slug,
+        visitor=visitor,
+        client_class=classify_client(user_agent),
+        device=classify_device(user_agent),
+        referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
+    )
+    return HttpResponse(status=204)
+
+
+def _daily_series(rows, days):
+    """Turn (day -> count) rows into a dense list over `days`, so gaps read as zeroes."""
+    by_day = {r["day"]: r for r in rows}
+    today = timezone.localdate()
+    out = []
+    for offset in range(days - 1, -1, -1):
+        d = today - timedelta(days=offset)
+        row = by_day.get(d)
+        out.append({
+            "day": d,
+            "visitors": row["visitors"] if row else 0,
+            "events": row["events"] if row else 0,
+        })
+    return out
+
+
+def _top(day_from, metric, limit=15):
+    """Ranked breakdown for one metric, with each row's bar width relative to the leader."""
+    rows = list(
+        UsageDaily.objects.filter(day__gte=day_from, metric=metric)
+        .values("key")
+        .annotate(visitors=Sum("visitors"), events=Sum("events"))
+        .order_by("-visitors")[:limit]
+    )
+    top = max([r["visitors"] for r in rows] + [1])
+    for row in rows:
+        row["pct"] = round(100 * row["visitors"] / top, 1)
+        row["label"] = row["key"]
+    return rows
+
+
+@staff_member_required
+def stats(request):
+    try:
+        days = max(1, min(365, int(request.GET.get("days", 30))))
+    except ValueError:
+        days = 30
+    day_from = timezone.localdate() - timedelta(days=days - 1)
+
+    visitors = list(
+        UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="")
+        .values("day", "visitors", "events")
+    )
+    confirmed = list(
+        UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="js_confirmed")
+        .values("day", "visitors", "events")
+    )
+    bots = list(
+        UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="bot")
+        .values("day", "visitors", "events")
+    )
+
+    series = _daily_series(visitors, days)
+    confirmed_by_day = {r["day"]: r["visitors"] for r in confirmed}
+    bots_by_day = {r["day"]: r["visitors"] for r in bots}
+    peak = max([r["visitors"] for r in series] + [1])
+    for row in series:
+        row["confirmed"] = confirmed_by_day.get(row["day"], 0)
+        row["bots"] = bots_by_day.get(row["day"], 0)
+        # Bar heights as a share of the busiest day. `confirmed` is a subset of
+        # `visitors`, so it's drawn nested inside the same bar, never stacked on
+        # top of it — stacking would imply a total that double-counts people.
+        row["pct"] = round(100 * row["visitors"] / peak, 1)
+        row["confirmed_pct"] = round(100 * row["confirmed"] / peak, 1)
+
+    # Pool rows are keyed by slug so the rollup needs no join. Resolve to names here,
+    # falling back to the raw slug for a pool that has since been renamed or removed —
+    # last season's history keeps whatever slug was current when it was recorded.
+    pools_by_slug = {p.slug: p.name for p in Pool.objects.all()}
+    pool_views = _top(day_from, "pool_view")
+    pin_clicks = _top(day_from, "pin_click")
+    for row in pool_views + pin_clicks:
+        row["label"] = pools_by_slug.get(row["key"], row["key"])
+
+    event_names = dict(UsageEvent.EVENT_CHOICES)
+    events_by_type = _top(day_from, "event")
+    for row in events_by_type:
+        row["label"] = event_names.get(row["key"], row["key"])
+
+    return render(request, "pools/stats.html", {
+        "days": days,
+        "series": series,
+        "totals": {
+            "visitors": sum(r["visitors"] for r in series),
+            "confirmed": sum(r["confirmed"] for r in series),
+            "bots": sum(r["bots"] for r in series),
+            "events": sum(r["events"] for r in series),
+        },
+        "peak_visitors": peak,
+        "first_day": day_from,
+        "last_day": timezone.localdate(),
+        "pool_views": pool_views,
+        "pin_clicks": pin_clicks,
+        "status_filters": _top(day_from, "status_filter"),
+        "neighborhoods": _top(day_from, "neighborhood"),
+        "zips": _top(day_from, "zip"),
+        "referrers": _top(day_from, "referrer"),
+        "devices": _top(day_from, "device"),
+        "events_by_type": events_by_type,
+        "raw_retention_days": USAGE_RAW_RETENTION_DAYS,
+        "raw_rows": UsageEvent.objects.count(),
+    })

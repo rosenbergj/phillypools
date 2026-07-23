@@ -76,6 +76,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Last, so request.resolver_match is populated by the time it records. Below
+    # WhiteNoise on purpose: static file requests never reach it.
+    'pools.middleware.UsageMiddleware',
 ]
 
 ROOT_URLCONF = 'phillypools.urls'

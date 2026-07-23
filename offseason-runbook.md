@@ -16,7 +16,24 @@ Review and resolve all pending submissions in the admin (`/admin/pools/submissio
 
 Visit `/admin/pools/monitoredpage/` and delete all monitored pages. The URLs being watched are likely to change year to year (PPR updates their site, pool social links change, etc.), so it's cleaner to start fresh next season than to restore stale ones from the backup. Do this before the database dump so they don't end up in the backup.
 
-### 3. Back up the database
+### 3. Aggregate and clear raw usage data
+
+The `/stats/` page is backed by two tables: `UsageEvent` (one row per interaction,
+carrying a daily-rotating visitor pseudonym) and `UsageDaily` (permanent counts, no
+pseudonyms). Roll everything up and drop the raw rows *before* the backup, so the
+`.dump` you keep long-term contains counts only:
+
+```bash
+railway ssh --service web -- python manage.py rollup_usage --all
+railway ssh --service web -- python manage.py shell -c \
+  "from pools.models import UsageEvent, VisitorSalt; UsageEvent.objects.all().delete(); VisitorSalt.objects.all().delete()"
+```
+
+`rollup_usage --all` aggregates every day that still has raw rows, so nothing is
+lost by deleting them. `UsageDaily` is what makes year-over-year comparison
+possible next season — it must stay.
+
+### 4. Back up the database
 
 From your local machine with the Railway CLI installed:
 
@@ -33,7 +50,7 @@ pg_dump "<DATABASE_URL>" -Fc -f phillypools-$(date +%Y%m%d).dump
 
 Keep this `.dump` file somewhere safe — it's a full `pg_dump` of every table (pool data, season history, submission history, site announcements, etc.), so nothing needs separate handling. A password manager attachment or personal cloud storage works fine.
 
-### 4. Record all environment variables
+### 5. Record all environment variables
 
 From the Railway dashboard, copy every env var from both the **web service** and the **cron service** to your password manager or a secure note. The ones that matter and won't be auto-regenerated:
 
@@ -55,17 +72,17 @@ From the Railway dashboard, copy every env var from both the **web service** and
 
 > **Note:** R2 media uploads (pool photos, submission images) live in Cloudflare R2 independently of Railway and don't need to be backed up — they'll still be there next season.
 
-### 5. Deploy the offseason page to Cloudflare Pages
+### 6. Deploy the offseason page to Cloudflare Pages
 
 If not already set up as a Cloudflare Pages project, create one pointing at the `offseason/` directory (via `wrangler pages deploy offseason/` or the Cloudflare dashboard → Pages → upload `offseason/`). Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Pages project.
 
 If it was set up last offseason, no redeployment is needed unless you changed `offseason/index.html`. You can preview it via the Cloudflare Pages URL before switching DNS in the next step.
 
-### 6. Switch DNS to Cloudflare Pages
+### 7. Switch DNS to Cloudflare Pages
 
 In your DNS provider, update both the `phillypools.app` and `www.phillypools.app` records to point to the Cloudflare Pages URL instead of the Railway-provided domain. Verify the offseason page loads correctly on both.
 
-### 7. Delete the Railway project
+### 8. Delete the Railway project
 
 Once DNS has propagated and you've confirmed the offseason page is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
 
@@ -115,6 +132,13 @@ pg_restore -d "<NEW_DATABASE_URL>" --no-owner phillypools-YYYYMMDD.dump
 ```
 
 This restores every table from the dump — pool records, season history, previous submissions, site announcements, etc.
+
+Last season's `/stats/` history comes back with it, so year-over-year comparison
+works immediately. Nothing needs configuring: `UsageEvent` starts empty (you cleared
+it in Part 1), the nightly visitor salt regenerates itself on the first request, and
+the rollup runs off the existing cron service rather than a schedule of its own.
+Note that per-pool history is keyed by slug, so a pool renamed between seasons shows
+its old slug for last season's rows and its new name for this season's.
 
 Verify the restore worked by visiting the Railway-provided URL for the web service and checking the admin.
 

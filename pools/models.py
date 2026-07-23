@@ -389,3 +389,79 @@ class DigestState(models.Model):
 
     def __str__(self):
         return "Digest state"
+
+
+class VisitorSalt(models.Model):
+    """
+    The random salt used to pseudonymize today's visitors (see pools/services/usage.py).
+
+    Exactly one row exists at a time — writing today's salt deletes every other
+    day's — so a stolen database, or the offseason backup, never contains the salt
+    needed to link a stored visitor hash back to an IP address.
+    """
+    day = models.DateField(unique=True)
+    salt = models.CharField(max_length=64)
+
+    def __str__(self):
+        return f"Visitor salt for {self.day}"
+
+
+class UsageEvent(models.Model):
+    """
+    One recorded interaction. Deliberately holds no IP, user-agent or full referrer:
+    see the module docstring in pools/services/usage.py.
+
+    These rows are raw material, pruned after USAGE_RAW_RETENTION_DAYS. Anything
+    meant to survive the season goes into UsageDaily.
+    """
+    EVENT_CHOICES = [
+        ("index", "Main page"),
+        ("pool_view", "Pool detail page"),
+        ("filter", "Filter / search (JSON fetch)"),
+        ("map_pick", "Neighborhood picked on map"),
+        ("pin_click", "Map pin clicked"),
+        ("submit_view", "Submit form viewed"),
+        ("submit_done", "Submission completed"),
+        ("other", "Other page"),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    day = models.DateField(db_index=True, help_text="Local date, so grouping needs no timezone math")
+    event = models.CharField(max_length=20, choices=EVENT_CHOICES, db_index=True)
+    key = models.CharField(max_length=100, blank=True, help_text="Pool slug for pool views and pin clicks")
+    status_filter = models.CharField(max_length=20, blank=True)
+    neighborhood = models.CharField(max_length=100, blank=True)
+    zip_searched = models.CharField(max_length=5, blank=True)
+    visitor = models.CharField(max_length=16, db_index=True, help_text="Daily-rotating pseudonym; not linkable across days")
+    client_class = models.CharField(max_length=10, default="unknown", help_text="'bot' or 'unknown' — never a positive 'human' claim")
+    device = models.CharField(max_length=10, blank=True)
+    referrer_host = models.CharField(max_length=100, blank=True, help_text="Host only, and only for external referrers")
+
+    class Meta:
+        indexes = [models.Index(fields=["day", "event"])]
+
+    def __str__(self):
+        return f"{self.day} {self.event} {self.key}".strip()
+
+
+class UsageDaily(models.Model):
+    """
+    Permanent, aggregate-only usage history: counts per day, with no visitor
+    pseudonyms. This is the table that survives the offseason backup and makes
+    year-over-year comparison possible.
+
+    Long format (metric + key) rather than fixed columns so a new breakdown is a
+    rollup change rather than a migration.
+    """
+    day = models.DateField(db_index=True)
+    metric = models.CharField(max_length=32, help_text="e.g. 'visitors', 'pool_view', 'status_filter', 'zip'")
+    key = models.CharField(max_length=100, blank=True, help_text="The specific pool slug, filter value, zip, etc.")
+    events = models.IntegerField(default=0, help_text="Number of interactions")
+    visitors = models.IntegerField(default=0, help_text="Number of distinct visitors that day")
+
+    class Meta:
+        unique_together = [("day", "metric", "key")]
+        ordering = ["-day", "metric", "-visitors"]
+
+    def __str__(self):
+        return f"{self.day} {self.metric}:{self.key} = {self.visitors}"

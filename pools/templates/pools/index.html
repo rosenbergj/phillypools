@@ -177,6 +177,24 @@
     return '/admin/pools/pool/' + id + '/change/';
   }
 
+  // Opening a pin's popup is the one thing the server never hears about otherwise:
+  // someone can find their pool's hours on the map and leave perfectly satisfied
+  // without ever loading another page. Counted once per pool per page load — a
+  // second click on the same pin is the same person still looking at the same pool.
+  const pinClicksSent = new Set();
+  function recordPinClick(slug) {
+    if (!slug || pinClicksSent.has(slug)) return;
+    pinClicksSent.add(slug);
+    const body = new FormData();
+    body.append('slug', slug);
+    fetch('/pin-click/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCookie('csrftoken') },
+      body: body,
+      keepalive: true,
+    }).catch(() => {});  // Never let measurement break the map.
+  }
+
   function makePopupContent(pool) {
     const today = new Date();
     const dow = today.getDay();
@@ -302,6 +320,7 @@
       markerById[pool.id] = marker;
       marker.on('click', () => {
         markerWasClicked = true;
+        recordPinClick(pool.slug);
         const el = document.getElementById('pool-' + pool.id);
         if (el) {
           el.scrollIntoView({behavior: 'smooth', block: 'nearest'});

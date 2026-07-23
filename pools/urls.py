@@ -12,4 +12,6 @@ urlpatterns = [
     path("pools/<int:pk>/like/", views.toggle_like, name="toggle_like"),
     path("submit/thanks/", views.submit_thanks, name="submit_thanks"),
     path("submit/", views.submit, name="submit"),
+    path("pin-click/", views.record_pin_click, name="record_pin_click"),
+    path("stats/", views.stats, name="stats"),
 ]

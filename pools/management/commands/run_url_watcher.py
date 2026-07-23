@@ -8,6 +8,10 @@ from pools.services.digest import send_digest_if_needed
 
 CHECK_COMMANDS = ["check_pool_schedule", "check_heat_emergency"]
 
+# Runs alongside the checks rather than on its own schedule: it's idempotent, so
+# every pass just refreshes the current day's counts and prunes expired raw rows.
+MAINTENANCE_COMMANDS = ["rollup_usage"]
+
 
 class Command(BaseCommand):
     help = (
@@ -24,7 +28,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         errors = []
-        for name in CHECK_COMMANDS:
+        for name in CHECK_COMMANDS + MAINTENANCE_COMMANDS:
             stderr = io.StringIO()
             try:
                 call_command(name, stdout=self.stdout, stderr=stderr)

@@ -1,0 +1,156 @@
+{% extends "pools/base.html" %}
+
+{% block title %}Site usage — Philly Pools{% endblock %}
+{% block robots_meta %}noindex, nofollow{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* One hue in two steps: the bar is all visitors, the darker portion nested
+     inside it is the confirmed-browser subset. Same hue on purpose — these are
+     two levels of one measure, not two categories, so they must not read as
+     rival colors. Robots are deliberately absent from this chart. */
+  :root {
+    --usage-total: #6ea8fe;
+    --usage-confirmed: #0a58ca;
+  }
+  .usage-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;                  /* surface gap so adjacent days stay separable */
+    height: 180px;
+    overflow-x: auto;
+    padding-top: .5rem;
+  }
+  .usage-day {
+    flex: 1 0 10px;
+    min-width: 10px;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    position: relative;
+  }
+  .usage-bar {
+    width: 100%;
+    background: var(--usage-total);
+    border-radius: 4px 4px 0 0;   /* rounded data-end, square on the baseline */
+    position: relative;
+    min-height: 1px;
+  }
+  .usage-bar-confirmed {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background: var(--usage-confirmed);
+    border-radius: 4px 4px 0 0;
+  }
+  .usage-day:hover .usage-bar { filter: brightness(.92); }
+  .usage-baseline {
+    border-top: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+  }
+  .rank-row { display: flex; align-items: center; gap: .5rem; padding: .15rem 0; }
+  .rank-label { flex: 0 0 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank-track { flex: 1; background: #f1f3f5; border-radius: 4px; height: 14px; }
+  /* display:block matters — an inline span ignores width and the bar vanishes. */
+  .rank-fill { display: block; background: var(--usage-total); border-radius: 4px; height: 100%; }
+  .rank-value { flex: 0 0 5rem; text-align: right; font-variant-numeric: tabular-nums; }
+  .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h3 mb-0">Site usage</h1>
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="?days=7" class="btn btn-outline-secondary{% if days == 7 %} active{% endif %}">7 days</a>
+      <a href="?days=30" class="btn btn-outline-secondary{% if days == 30 %} active{% endif %}">30 days</a>
+      <a href="?days=90" class="btn btn-outline-secondary{% if days == 90 %} active{% endif %}">90 days</a>
+      <a href="?days=365" class="btn btn-outline-secondary{% if days == 365 %} active{% endif %}">Season</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small">Visitors</div>
+        <div class="fs-3 fw-semibold">{{ totals.visitors }}</div>
+        <div class="text-muted small">robots excluded</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small">Confirmed browsers</div>
+        <div class="fs-3 fw-semibold">{{ totals.confirmed }}</div>
+        <div class="text-muted small">ran the page's JavaScript</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small">Interactions</div>
+        <div class="fs-3 fw-semibold">{{ totals.events }}</div>
+        <div class="text-muted small">page views, filters, pin clicks</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small">Robot visits</div>
+        <div class="fs-3 fw-semibold">{{ totals.bots }}</div>
+        <div class="text-muted small">crawlers, kept out of the numbers above</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="border rounded p-3 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+      <h2 class="h6 mb-0">Visitors per day</h2>
+      <div class="small text-muted">
+        <span class="legend-swatch" style="background: var(--usage-total)"></span> all visitors
+        <span class="legend-swatch ms-3" style="background: var(--usage-confirmed)"></span> of which confirmed browsers
+      </div>
+    </div>
+    <div class="usage-chart">
+      {% for row in series %}
+        <div class="usage-day" title="{{ row.day|date:'D M j' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
+          <div class="usage-bar" style="height: {{ row.pct }}%">
+            <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="usage-baseline small text-muted pt-1">
+      <span>{{ first_day|date:"M j" }}</span>
+      <span>peak {{ peak_visitors }}/day</span>
+      <span>{{ last_day|date:"M j" }}</span>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    {% include "pools/_stats_table.html" with title="Pools viewed" subtitle="Detail page opened" rows=pool_views %}
+    {% include "pools/_stats_table.html" with title="Map pins clicked" subtitle="Popup opened on the map" rows=pin_clicks %}
+    {% include "pools/_stats_table.html" with title="Filters used" subtitle="Status dropdown, including Zumba" rows=status_filters %}
+    {% include "pools/_stats_table.html" with title="Zip codes searched" subtitle="Typed into the zip box" rows=zips %}
+    {% include "pools/_stats_table.html" with title="Neighborhoods chosen" subtitle="Dropdown or map pick" rows=neighborhoods %}
+    {% include "pools/_stats_table.html" with title="Where people came from" subtitle="External referrers only" rows=referrers %}
+    {% include "pools/_stats_table.html" with title="Devices" subtitle="Coarse guess from the browser" rows=devices %}
+    {% include "pools/_stats_table.html" with title="Interaction types" subtitle="What visitors did" rows=events_by_type %}
+  </div>
+
+  <div class="border-top mt-4 pt-3 text-muted small">
+    <p class="mb-1"><strong>How this is measured.</strong> No cookies are set for this and no
+    third-party analytics are used. Visitors are counted with a hash of IP address and browser
+    that is re-salted every night, so the same person is countable within a day and unlinkable
+    across days; IP addresses and browser strings are never stored.</p>
+    <p class="mb-1">&ldquo;Confirmed browsers&rdquo; are visitors seen requesting an endpoint only
+    the page's own JavaScript calls &mdash; proof a real browser ran the page. Visitors who load a
+    page and never filter or click a pin can't be confirmed either way, so the true human number
+    sits between the two figures.</p>
+    <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
+    ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
+  </div>
+
+</div>
+{% endblock %}
