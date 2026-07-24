@@ -420,6 +420,7 @@ class UsageEvent(models.Model):
         ("filter", "Filter / search (JSON fetch)"),
         ("map_pick", "Neighborhood picked on map"),
         ("pin_click", "Map pin clicked"),
+        ("pageview_js", "Page loaded (browser confirmed)"),
         ("submit_view", "Submit form viewed"),
         ("submit_done", "Submission completed"),
         ("other", "Other page"),

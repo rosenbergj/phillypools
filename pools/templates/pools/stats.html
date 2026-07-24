@@ -3,6 +3,10 @@
 {% block title %}Site usage — Philly Pools{% endblock %}
 {% block robots_meta %}noindex, nofollow{% endblock %}
 
+{# The stats page must not measure itself: a staff view here isn't a public page
+   view, and firing the beacon would pad the confirmed figure with our own visits. #}
+{% block usage_beacon %}{% endblock %}
+
 {# Wears the admin favicon: this is a staff page reached from the admin header,
    and the tab should read as such rather than as the public site. #}
 {% block favicon %}{% load static %}<link rel="icon" type="image/png" href="{% static 'favicon-admin.png' %}">{% endblock %}

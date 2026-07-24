@@ -740,6 +740,41 @@ def record_pin_click(request):
     return HttpResponse(status=204)
 
 
+# The page-load beacon fires once per page in every visitor's browser, so its
+# ceiling is higher than the pin's, but it still needs one: the endpoint is
+# unauthenticated and writable, and without a cap a single caller could pad the
+# confirmed-browser figure indefinitely.
+PAGEVIEW_JS_DAILY_MAX = 200
+
+
+@require_POST
+def record_page_view(request):
+    """
+    A browser telling us it ran this page's JavaScript. This is the only signal
+    that separates a human who merely reads a page from a bot that fetched the HTML
+    and ran nothing — anyone who filters or clicks a pin already announces
+    themselves, but a passive reader otherwise would not. It carries no key and
+    records nothing a caller could use; like the pin beacon it stays silent so it
+    never gives one a reason to retry or a signal to probe with.
+    """
+    day = timezone.localdate()
+    visitor = visitor_hash(request, day)
+    already = UsageEvent.objects.filter(day=day, visitor=visitor, event="pageview_js").count()
+    if already >= PAGEVIEW_JS_DAILY_MAX:
+        return HttpResponse(status=204)
+
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    UsageEvent.objects.create(
+        day=day,
+        event="pageview_js",
+        visitor=visitor,
+        client_class=classify_request(request),
+        device=classify_device(user_agent),
+        referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
+    )
+    return HttpResponse(status=204)
+
+
 def _daily_series(rows, days):
     """Turn (day -> count) rows into a dense list over `days`, so gaps read as zeroes."""
     by_day = {r["day"]: r for r in rows}

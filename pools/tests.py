@@ -159,6 +159,48 @@ class PinClickTests(TestCase):
         self.assertEqual(resp.status_code, 429)
 
 
+class PageViewBeaconTests(TestCase):
+    def setUp(self):
+        _reset_salt_cache()
+
+    def test_beacon_confirms_a_passive_visitor(self):
+        """A reader who never filters or clicks is confirmable only through this."""
+        resp = self.client.post("/page-loaded/", HTTP_USER_AGENT="Mozilla/5.0 (Macintosh)")
+        self.assertEqual(resp.status_code, 204)
+        event = UsageEvent.objects.get(event="pageview_js")
+        self.assertEqual(event.client_class, "unknown")
+        self.assertEqual(event.key, "")
+
+    def test_beacon_promotes_the_visitor_to_confirmed(self):
+        """The whole point: a bare page load now counts toward confirmed browsers."""
+        self.client.post("/page-loaded/", HTTP_USER_AGENT="Mozilla/5.0 (Macintosh)")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=timezone.localdate(), metric="visitors", key="js_confirmed"
+            ).visitors,
+            1,
+        )
+
+    def test_get_is_rejected(self):
+        self.assertEqual(self.client.get("/page-loaded/").status_code, 405)
+
+    def test_rate_limit_caps_a_single_visitor(self):
+        from pools.views import PAGEVIEW_JS_DAILY_MAX
+        day = timezone.localdate()
+        visitor = usage.visitor_hash(_fake_request(ip="127.0.0.1", ua=""), day)
+        UsageEvent.objects.bulk_create([
+            UsageEvent(day=day, event="pageview_js", visitor=visitor)
+            for _ in range(PAGEVIEW_JS_DAILY_MAX)
+        ])
+        # The cap is silent — a beacon has no reason to signal back to its caller.
+        resp = self.client.post("/page-loaded/", REMOTE_ADDR="127.0.0.1", HTTP_USER_AGENT="")
+        self.assertEqual(resp.status_code, 204)
+        self.assertEqual(
+            UsageEvent.objects.filter(event="pageview_js").count(), PAGEVIEW_JS_DAILY_MAX
+        )
+
+
 class RollupTests(TestCase):
     def setUp(self):
         _reset_salt_cache()

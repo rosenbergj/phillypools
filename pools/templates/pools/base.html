@@ -64,6 +64,22 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% block usage_beacon %}
+  <script>
+    // Tell the server a real browser ran this page. Without it, a visitor who
+    // just reads the page — never filtering or clicking a pin — is indistinguishable
+    // from a bot that fetched the HTML and ran nothing. First-party and same-origin;
+    // it reports only "a browser was here," against the same nightly-salted visitor
+    // hash as every other event, and stores no IP, user-agent, or fingerprint.
+    // Emitting the csrf_token here also guarantees the CSRF cookie on pages that
+    // don't otherwise render the token. Fire-and-forget: failures are swallowed.
+    fetch('/page-loaded/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+      keepalive: true,
+    }).catch(() => {});
+  </script>
+  {% endblock %}
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

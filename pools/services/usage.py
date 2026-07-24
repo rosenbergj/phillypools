@@ -44,7 +44,9 @@ _MOBILE_PATTERNS = ["mobi", "android", "iphone", "ipad", "ipod", "windows phone"
 # from any page and not in the sitemap, so a hit here is proof that a real browser
 # rendered and ran the page — a JS check that costs no extra request. Used by the
 # rollup to distinguish confirmed browsers from merely not-obviously-a-bot traffic.
-JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click"}
+# "pageview_js" is the page-load beacon: it confirms passive readers who never
+# filter or click a pin, who otherwise leave no JS trace at all.
+JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "pageview_js"}
 
 _SITE_HOSTS = {"phillypools.app", "www.phillypools.app", "localhost", "127.0.0.1"}
 
