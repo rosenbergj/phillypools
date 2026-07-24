@@ -161,10 +161,11 @@
     third-party analytics are used. Visitors are counted with a hash of IP address and browser
     that is re-salted every night, so the same person is countable within a day and unlinkable
     across days; IP addresses and browser strings are never stored.</p>
-    <p class="mb-1">&ldquo;Confirmed browsers&rdquo; are visitors seen requesting an endpoint only
-    the page's own JavaScript calls &mdash; proof a real browser ran the page. Visitors who load a
-    page and never filter or click a pin can't be confirmed either way, so the true human number
-    sits between the two figures.</p>
+    <p class="mb-1">&ldquo;Confirmed browsers&rdquo; are visitors whose browser ran the page's own
+    JavaScript &mdash; proof a real browser rendered the page, not just a bot that fetched the HTML.
+    Every page load now reports this, so the gap to the visitor count is mostly people with
+    JavaScript disabled or blocked, plus any bot that slipped past the crawler check without running
+    scripts. The true human number sits between the two figures, nearer the confirmed one.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
     ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
   </div>
