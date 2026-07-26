@@ -46,18 +46,19 @@ _MOBILE_PATTERNS = ["mobi", "android", "iphone", "ipad", "ipod", "windows phone"
 # rollup to distinguish confirmed browsers from merely not-obviously-a-bot traffic.
 # "pageview_js" is the page-load beacon: it confirms passive readers who never
 # filter or click a pin, who otherwise leave no JS trace at all.
-JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "pageview_js"}
+JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "pageview_js"}
 
 # Requests for a rendered HTML page, as opposed to the JSON and beacon endpoints
 # the page calls afterwards. Counted distinct-by-(event, key), so reloading one
 # page is still one page but index -> a pool detail is two.
 PAGE_EVENTS = {"index", "pool_view", "submit_view", "submit_done", "other"}
 
-# Doing something with the page rather than only reading it: the map pin popups,
-# picking a neighborhood off the map, and the zip/status/neighborhood filters
-# (which redraw the markers, so they are map use too). "pageview_js" is
-# deliberately absent — it fires on its own and proves only that a browser loaded.
-INTERACTION_EVENTS = {"filter", "map_pick", "pin_click"}
+# Doing something with the page rather than only reading it: opening a pool's
+# popup from either the map or the list, picking a neighborhood off the map, and
+# the zip/status/neighborhood filters (which redraw the markers, so they are map
+# use too). "pageview_js" is deliberately absent — it fires on its own and proves
+# only that a browser loaded.
+INTERACTION_EVENTS = {"filter", "map_pick", "pin_click", "card_click"}
 
 # How a confirmed browser spent their day. Ordered most to least engaged, which is
 # the order /stats/ shows them in.

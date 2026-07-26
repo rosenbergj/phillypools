@@ -143,7 +143,9 @@ class Command(BaseCommand):
         ):
             put("event", row["event"], row["events"], row["visitors"])
 
-        for event_name, metric in [("pool_view", "pool_view"), ("pin_click", "pin_click")]:
+        for event_name, metric in [
+            ("pool_view", "pool_view"), ("pin_click", "pin_click"), ("card_click", "card_click"),
+        ]:
             for row in human.filter(event=event_name).exclude(key="").values("key").annotate(
                 events=Count("id"), visitors=Count("visitor", distinct=True)
             ):

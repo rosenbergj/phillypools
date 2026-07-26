@@ -706,19 +706,19 @@ def submit_thanks(request):
     return render(request, "pools/submit_thanks.html", {"pool_id": pool_id if pool_id.isdigit() else ""})
 
 
-# Map pin clicks never reach the server on their own, so this is the one place we
-# ask the browser to tell us something. Cap what a single visitor can report in a
-# day: the endpoint is unauthenticated and writable by anyone, so without a limit
-# it is trivial to inflate a pool's numbers or pad the table.
-PIN_CLICK_DAILY_MAX = 400
+# Opening a pool's popup never reaches the server on its own, from the map or from
+# the list, so these are the one place we ask the browser to tell us something. Cap
+# what a single visitor can report in a day per kind: the endpoints are
+# unauthenticated and writable by anyone, so without a limit it is trivial to
+# inflate a pool's numbers or pad the table.
+POOL_CLICK_DAILY_MAX = 400
 
 
-@require_POST
-def record_pin_click(request):
+def _record_pool_click(request, event):
     """
-    Record that a map pin was clicked. CSRF-protected like the like button, and
-    silently ignores anything it can't make sense of — a measurement endpoint
-    should never give a caller a reason to retry or a signal to probe with.
+    Shared body of the two popup beacons. Silently ignores anything it can't make
+    sense of — a measurement endpoint should never give a caller a reason to retry
+    or a signal to probe with.
     """
     slug = request.POST.get("slug", "")[:100]
     if not slug or not Pool.objects.filter(slug=slug).exists():
@@ -726,14 +726,14 @@ def record_pin_click(request):
 
     day = timezone.localdate()
     visitor = visitor_hash(request, day)
-    already = UsageEvent.objects.filter(day=day, visitor=visitor, event="pin_click").count()
-    if already >= PIN_CLICK_DAILY_MAX:
+    already = UsageEvent.objects.filter(day=day, visitor=visitor, event=event).count()
+    if already >= POOL_CLICK_DAILY_MAX:
         return HttpResponse(status=429)
 
     user_agent = request.META.get("HTTP_USER_AGENT", "")
     UsageEvent.objects.create(
         day=day,
-        event="pin_click",
+        event=event,
         key=slug,
         visitor=visitor,
         client_class=classify_request(request),
@@ -741,6 +741,23 @@ def record_pin_click(request):
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )
     return HttpResponse(status=204)
+
+
+@require_POST
+def record_pin_click(request):
+    """A pin on the map was clicked and its popup opened. CSRF-protected like the like button."""
+    return _record_pool_click(request, "pin_click")
+
+
+@require_POST
+def record_card_click(request):
+    """
+    A pool in the list was clicked, which flies the map over and opens that same
+    popup. Kept as its own event rather than folded into pin_click: the two end in
+    the same place, but only this one says the list is how people are navigating,
+    and merging them would break comparison with the pin figures already collected.
+    """
+    return _record_pool_click(request, "card_click")
 
 
 # The page-load beacon fires once per page in every visitor's browser, so its
@@ -853,7 +870,8 @@ def stats(request):
     pools_by_slug = {p.slug: p.name for p in Pool.objects.all()}
     pool_views = _top(day_from, "pool_view")
     pin_clicks = _top(day_from, "pin_click")
-    for row in pool_views + pin_clicks:
+    card_clicks = _top(day_from, "card_click")
+    for row in pool_views + pin_clicks + card_clicks:
         row["label"] = pools_by_slug.get(row["key"], row["key"])
 
     # How confirmed browsers spent their visit. Summed over the window like every
@@ -878,7 +896,7 @@ def stats(request):
             (JOURNEY_MULTI_PAGE, "Looked at more than one page",
              "Opened a pool's detail page, the submit form, or came back to the map"),
             (JOURNEY_SINGLE_ENGAGED, "One page, but used it",
-             "Clicked a pin, picked a neighborhood off the map, or filtered"),
+             "Opened a popup from the map or the list, picked a neighborhood, or filtered"),
             (JOURNEY_SINGLE_PASSIVE, "One page, then left",
              "Read what loaded and did nothing else we can see"),
         ]
@@ -904,6 +922,7 @@ def stats(request):
         "last_day": timezone.localdate(),
         "pool_views": pool_views,
         "pin_clicks": pin_clicks,
+        "card_clicks": card_clicks,
         "status_filters": _top(day_from, "status_filter"),
         "neighborhoods": _top(day_from, "neighborhood"),
         "zips": _top(day_from, "zip"),

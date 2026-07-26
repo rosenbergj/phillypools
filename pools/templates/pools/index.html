@@ -80,7 +80,7 @@
           {% if show_distance %}sorted by distance from {{ center_label }}{% endif %}
         </p>
         {% for pool in pools %}
-          <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded">
+          <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded" data-slug="{{ pool.slug }}">
             <div class="d-flex justify-content-between align-items-start">
               <div class="d-flex align-items-baseline">
                 <a href="{{ pool.get_absolute_url }}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>{% if pool.like_count %}<span class="text-muted small ms-2 pool-like-count">&#9829; {{ pool.like_count }}</span>{% endif %}
@@ -177,23 +177,27 @@
     return '/admin/pools/pool/' + id + '/change/';
   }
 
-  // Opening a pin's popup is the one thing the server never hears about otherwise:
-  // someone can find their pool's hours on the map and leave perfectly satisfied
-  // without ever loading another page. Counted once per pool per page load — a
-  // second click on the same pin is the same person still looking at the same pool.
-  const pinClicksSent = new Set();
-  function recordPinClick(slug) {
-    if (!slug || pinClicksSent.has(slug)) return;
-    pinClicksSent.add(slug);
+  // Opening a pool's popup is the one thing the server never hears about otherwise:
+  // someone can find their pool's hours here and leave perfectly satisfied without
+  // ever loading another page. It happens two ways — the pin on the map and the
+  // entry in the list — reported to separate endpoints so the two stay tellable
+  // apart. Counted once per pool per way per page load: a second click on the same
+  // pin is the same person still looking at the same pool.
+  const clicksSent = new Set();
+  function recordPoolClick(url, slug) {
+    if (!slug || clicksSent.has(url + '|' + slug)) return;
+    clicksSent.add(url + '|' + slug);
     const body = new FormData();
     body.append('slug', slug);
-    fetch('/pin-click/', {
+    fetch(url, {
       method: 'POST',
       headers: { 'X-CSRFToken': getCookie('csrftoken') },
       body: body,
       keepalive: true,
     }).catch(() => {});  // Never let measurement break the map.
   }
+  const recordPinClick = slug => recordPoolClick('/pin-click/', slug);
+  const recordCardClick = slug => recordPoolClick('/card-click/', slug);
 
   function makePopupContent(pool) {
     const today = new Date();
@@ -368,7 +372,7 @@
     const labelHtml = pool.label_text
       ? `<div class="small" style="color:${escHtml(pool.label_color)}${pool.label_bold ? ';font-weight:600' : ''}">${escHtml(pool.label_text)}</div>`
       : '';
-    return `<div id="pool-${pool.id}" class="pool-card p-2 mb-1 rounded">
+    return `<div id="pool-${pool.id}" class="pool-card p-2 mb-1 rounded" data-slug="${escHtml(pool.slug)}">
       <div class="d-flex justify-content-between align-items-start">
         <div class="d-flex align-items-baseline">
           <a href="${poolUrl(pool.slug)}" class="fw-semibold text-decoration-none">${escHtml(pool.name)}</a>${pool.like_count > 0 ? `<span class="text-muted small ms-2 pool-like-count">&#9829; ${pool.like_count}</span>` : ''}
@@ -390,7 +394,11 @@
         if (e.target.closest('a')) return;
         const poolId = parseInt(card.id.replace('pool-', ''));
         const marker = markerById[poolId];
+        // Reported only once a popup is actually going to open, so this counts the
+        // same thing a pin click does. A pool with no coordinates has no marker and
+        // nothing happens on click, which is not a popup and is not counted.
         if (!marker) return;
+        recordCardClick(card.dataset.slug);
         if (boundaryLayer) boundaryLayer.setStyle({opacity: 0, fillOpacity: 0});
         map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), {duration: 0.5});
         map.once('moveend', () => {

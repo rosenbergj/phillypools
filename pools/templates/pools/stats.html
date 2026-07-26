@@ -119,7 +119,7 @@
       <div class="border rounded p-3 h-100">
         <div class="text-muted small">Interactions</div>
         <div class="fs-3 fw-semibold">{{ totals.events }}</div>
-        <div class="text-muted small">page views, filters, pin clicks</div>
+        <div class="text-muted small">page views, filters, popups opened</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
@@ -184,7 +184,8 @@
 
   <div class="row g-4">
     {% include "pools/_stats_table.html" with title="Pools viewed" subtitle="Detail page opened" rows=pool_views %}
-    {% include "pools/_stats_table.html" with title="Map pins clicked" subtitle="Popup opened on the map" rows=pin_clicks %}
+    {% include "pools/_stats_table.html" with title="Map pins clicked" subtitle="Popup opened from the map" rows=pin_clicks %}
+    {% include "pools/_stats_table.html" with title="Pools clicked in the list" subtitle="Same popup, opened from the list" rows=card_clicks %}
     {% include "pools/_stats_table.html" with title="Filters used" subtitle="Status dropdown, including Zumba" rows=status_filters %}
     {% include "pools/_stats_table.html" with title="Zip codes searched" subtitle="Typed into the zip box" rows=zips %}
     {% include "pools/_stats_table.html" with title="Neighborhoods chosen" subtitle="Dropdown or map pick" rows=neighborhoods %}
@@ -205,7 +206,10 @@
     scripts. The true human number sits between the two figures, nearer the confirmed one.</p>
     <p class="mb-1">The three-way split counts a page as a distinct URL, so reloading the map is
     still one page while the map plus a pool's detail page is two, and it counts as
-    &ldquo;used it&rdquo; a pin click, a neighborhood picked off the map, or any filter. Only
+    &ldquo;used it&rdquo; a popup opened from either the map or the list, a neighborhood picked
+    off the map, or any filter. Clicking a pool in the list opens the same popup a pin does,
+    but it only began being recorded on Jul 25, 2026 &mdash; before that it left no trace at all,
+    so earlier days undercount it and overstate &ldquo;one page, then left&rdquo;. Only
     confirmed browsers are split: for anyone else, doing nothing is indistinguishable from
     running no JavaScript, which would file every crawler as a reader who lost interest.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days

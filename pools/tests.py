@@ -127,7 +127,12 @@ class MiddlewareTests(TestCase):
         self.assertEqual(UsageEvent.objects.get().client_class, "unknown")
 
 
-class PinClickTests(TestCase):
+class PoolClickTests(TestCase):
+    """Both popup beacons: the pin on the map and the entry in the list."""
+
+    # (endpoint, event recorded) — every case below runs against both.
+    ROUTES = [("/pin-click/", "pin_click"), ("/card-click/", "card_click")]
+
     def setUp(self):
         _reset_salt_cache()
         self.pool = Pool.objects.create(
@@ -135,28 +140,58 @@ class PinClickTests(TestCase):
         )
 
     def test_click_is_recorded(self):
-        resp = self.client.post("/pin-click/", {"slug": "test-pool"})
-        self.assertEqual(resp.status_code, 204)
-        self.assertEqual(UsageEvent.objects.filter(event="pin_click", key="test-pool").count(), 1)
+        for url, event in self.ROUTES:
+            with self.subTest(url=url):
+                resp = self.client.post(url, {"slug": "test-pool"})
+                self.assertEqual(resp.status_code, 204)
+                self.assertEqual(
+                    UsageEvent.objects.filter(event=event, key="test-pool").count(), 1
+                )
+
+    def test_the_two_routes_stay_separate(self):
+        """Same pool, same popup, but the map and the list must remain tellable apart."""
+        self.client.post("/pin-click/", {"slug": "test-pool"})
+        self.client.post("/card-click/", {"slug": "test-pool"})
+        self.assertEqual(UsageEvent.objects.filter(event="pin_click").count(), 1)
+        self.assertEqual(UsageEvent.objects.filter(event="card_click").count(), 1)
 
     def test_unknown_slug_is_ignored_without_error(self):
-        resp = self.client.post("/pin-click/", {"slug": "no-such-pool"})
-        self.assertEqual(resp.status_code, 204)
-        self.assertEqual(UsageEvent.objects.count(), 0)
+        for url, _ in self.ROUTES:
+            with self.subTest(url=url):
+                resp = self.client.post(url, {"slug": "no-such-pool"})
+                self.assertEqual(resp.status_code, 204)
+                self.assertEqual(UsageEvent.objects.count(), 0)
 
     def test_get_is_rejected(self):
-        self.assertEqual(self.client.get("/pin-click/").status_code, 405)
+        for url, _ in self.ROUTES:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 405)
 
     def test_rate_limit_caps_a_single_visitor(self):
-        from pools.views import PIN_CLICK_DAILY_MAX
+        from pools.views import POOL_CLICK_DAILY_MAX
+        day = timezone.localdate()
+        visitor = usage.visitor_hash(_fake_request(ip="127.0.0.1", ua=""), day)
+        for url, event in self.ROUTES:
+            with self.subTest(url=url):
+                UsageEvent.objects.bulk_create([
+                    UsageEvent(day=day, event=event, key="test-pool", visitor=visitor)
+                    for _ in range(POOL_CLICK_DAILY_MAX)
+                ])
+                resp = self.client.post(url, {"slug": "test-pool"})
+                self.assertEqual(resp.status_code, 429)
+
+    def test_each_route_has_its_own_budget(self):
+        """A visitor who has exhausted their pin clicks can still report a list click."""
+        from pools.views import POOL_CLICK_DAILY_MAX
         day = timezone.localdate()
         visitor = usage.visitor_hash(_fake_request(ip="127.0.0.1", ua=""), day)
         UsageEvent.objects.bulk_create([
             UsageEvent(day=day, event="pin_click", key="test-pool", visitor=visitor)
-            for _ in range(PIN_CLICK_DAILY_MAX)
+            for _ in range(POOL_CLICK_DAILY_MAX)
         ])
-        resp = self.client.post("/pin-click/", {"slug": "test-pool"})
-        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(
+            self.client.post("/card-click/", {"slug": "test-pool"}).status_code, 204
+        )
 
 
 class PageViewBeaconTests(TestCase):
@@ -283,6 +318,22 @@ class RollupTests(TestCase):
             self._journey(k) for k in ("multi_page", "single_engaged", "single_passive")
         )
         self.assertEqual(total, confirmed)
+
+    def test_a_list_click_counts_as_using_the_page(self):
+        """Browsing by list card used to be invisible and filed as 'read one page and left'."""
+        self._event(self.today, visitor="lister", event="pageview_js")
+        self._event(self.today, visitor="lister", event="card_click", key="p")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._journey("single_engaged"), 1)
+        self.assertEqual(self._journey("single_passive"), 0)
+
+    def test_list_clicks_are_broken_down_per_pool(self):
+        self._event(self.today, visitor="aaa", event="card_click", key="mander")
+        self._event(self.today, visitor="bbb", event="card_click", key="mander")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="card_click", key="mander").visitors, 2
+        )
 
     def test_unconfirmed_visitors_are_left_out_of_the_split(self):
         """A no-JS client can't be told apart from a reader who did nothing."""
