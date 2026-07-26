@@ -279,6 +279,31 @@ class MiddlewareTests(TestCase):
         self.assertEqual(event.ua_family, "chrome/130")
         self.assertNotIn("Windows", " ".join(str(v) for v in event.__dict__.values()))
 
+    def test_speculative_fetches_are_not_visits(self):
+        """A prefetch is a guess about what someone might do, not something they did."""
+        for header, value in [
+            ("HTTP_SEC_PURPOSE", "prefetch;anonymous-client-ip"),
+            ("HTTP_SEC_PURPOSE", "prerender"),
+            ("HTTP_PURPOSE", "prefetch"),
+            ("HTTP_X_MOZ", "prefetch"),
+            ("HTTP_X_PURPOSE", "preview"),
+        ]:
+            with self.subTest(header=f"{header}: {value}"):
+                UsageEvent.objects.all().delete()
+                self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, **{header: value})
+                self.assertEqual(UsageEvent.objects.count(), 0)
+
+    def test_a_prefetch_the_visitor_then_opens_is_counted_once_they_open_it(self):
+        """Dropping the guess must not cost us the real visit that follows it."""
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, HTTP_SEC_PURPOSE="prefetch")
+        self.assertEqual(UsageEvent.objects.count(), 0)
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(UsageEvent.objects.filter(event="index").count(), 1)
+
+    def test_an_ordinary_request_is_still_recorded(self):
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, HTTP_SEC_FETCH_MODE="navigate")
+        self.assertEqual(UsageEvent.objects.filter(event="index").count(), 1)
+
     def test_a_scanner_probe_marks_the_visitor(self):
         resp = self.client.get("/wp-admin/install.php", HTTP_USER_AGENT=_REAL_CHROME)
         self.assertEqual(resp.status_code, 404)

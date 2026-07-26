@@ -63,7 +63,15 @@
     </div>
   </footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% comment %}
+  Deferred so it stops blocking the parser, and with it the beacon below: without
+  this, a page cannot report that a browser ran it until a third-party CDN answers,
+  which puts someone else's uptime on the critical path of our own measurement and
+  widens the window in which a fast visitor leaves uncounted. Nothing on the site
+  uses the bundle's JavaScript — no data-bs-* attributes, no bootstrap.* calls, only
+  the stylesheet above — so deferring it can't reorder anything that matters.
+  {% endcomment %}
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   {% block usage_beacon %}
   <script>
     // Tell the server a real browser ran this page. Without it, a visitor who

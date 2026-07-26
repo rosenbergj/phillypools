@@ -86,6 +86,37 @@ _PROBE_PATTERNS = [
 ]
 
 
+# Headers a client sets when it is fetching a page on the chance it will be needed,
+# rather than because anyone asked for it: Chrome and the standard use Sec-Purpose,
+# older Chrome sent Purpose, Firefox sends X-Moz and Safari X-Purpose. Google's
+# prefetch proxy carries these too, which is what makes it recognisable at all —
+# the user-agent it forwards is the real browser's and gives nothing away.
+_SPECULATIVE_HEADERS = [
+    ("HTTP_SEC_PURPOSE", ("prefetch", "prerender")),
+    ("HTTP_PURPOSE", ("prefetch",)),
+    ("HTTP_X_MOZ", ("prefetch", "prerender")),
+    ("HTTP_X_PURPOSE", ("preview", "prefetch")),
+]
+
+
+def is_speculative(request) -> bool:
+    """
+    True if this fetch is a guess about what someone might do next, not something
+    they did.
+
+    Nobody has seen the page at this point and may never; if they do go on to open
+    it, the beacon fires from their own browser and counts them properly then. So
+    these are dropped rather than filed as robots: the fetch may well come from the
+    visitor's own machine, and calling it a robot would discredit the real visit
+    they are about to make.
+    """
+    for header, needles in _SPECULATIVE_HEADERS:
+        value = request.META.get(header, "").lower()
+        if any(n in value for n in needles):
+            return True
+    return False
+
+
 def is_probe_path(path: str) -> bool:
     """True if a 404 for `path` is a scanner working through a list, not a bad link."""
     path = (path or "").lower()

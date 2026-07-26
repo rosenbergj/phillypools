@@ -8,6 +8,7 @@ from pools.services.usage import (
     classify_request,
     clean_zip,
     is_probe_path,
+    is_speculative,
     referrer_host,
     ua_family,
     visitor_hash,
@@ -53,6 +54,9 @@ class UsageMiddleware:
 
     def _record(self, request, response):
         if request.method != "GET":
+            return
+        # A page fetched on spec is not a page anybody has looked at yet.
+        if is_speculative(request):
             return
         if response.status_code == 404:
             self._record_probe(request)
