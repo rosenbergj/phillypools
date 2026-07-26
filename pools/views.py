@@ -21,6 +21,8 @@ from pools.models import (
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
+    AUDIENCE_CONFIRMED,
+    AUDIENCES,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
     JOURNEY_SINGLE_PASSIVE,
@@ -811,7 +813,7 @@ def _daily_series(rows, days):
     return out
 
 
-def _top(day_from, metric, limit=15, exclude_keys=()):
+def _top(day_from, metric, audience, limit=15, exclude_keys=()):
     """
     Ranked breakdown for one metric, with each row's bar width relative to the leader.
 
@@ -819,7 +821,7 @@ def _top(day_from, metric, limit=15, exclude_keys=()):
     which stay whole for anything that wants them later.
     """
     rows = list(
-        UsageDaily.objects.filter(day__gte=day_from, metric=metric)
+        UsageDaily.objects.filter(day__gte=day_from, metric=metric, audience=audience)
         .exclude(key__in=exclude_keys)
         .values("key")
         .annotate(visitors=Sum("visitors"), events=Sum("events"))
@@ -839,6 +841,15 @@ def stats(request):
     except ValueError:
         days = 30
     day_from = timezone.localdate() - timedelta(days=days - 1)
+
+    # Which audience the ranked breakdowns below count. Confirmed browsers by default:
+    # a visitor who never ran any of the page's JavaScript is more likely an uncaught
+    # crawler than a person browsing with it switched off, and letting that traffic into
+    # the rankings quietly overstates how much anything was used. The tiles and the
+    # per-day chart are unaffected — they report both populations side by side already.
+    audience = request.GET.get("audience", AUDIENCE_CONFIRMED)
+    if audience not in AUDIENCES:
+        audience = AUDIENCE_CONFIRMED
 
     visitors = list(
         UsageDaily.objects.filter(day__gte=day_from, metric="visitors", key="")
@@ -874,9 +885,9 @@ def stats(request):
     # falling back to the raw slug for a pool that has since been renamed or removed —
     # last season's history keeps whatever slug was current when it was recorded.
     pools_by_slug = {p.slug: p.name for p in Pool.objects.all()}
-    pool_views = _top(day_from, "pool_view")
-    pin_clicks = _top(day_from, "pin_click")
-    card_clicks = _top(day_from, "card_click")
+    pool_views = _top(day_from, "pool_view", audience)
+    pin_clicks = _top(day_from, "pin_click", audience)
+    card_clicks = _top(day_from, "card_click", audience)
     for row in pool_views + pin_clicks + card_clicks:
         row["label"] = pools_by_slug.get(row["key"], row["key"])
 
@@ -921,7 +932,7 @@ def stats(request):
     # The beacon is left out for the same reason it is left out of the tile above: it
     # fires on its own on every page load, so it would top this chart while describing
     # nothing anybody chose to do.
-    events_by_type = _top(day_from, "event", exclude_keys=["pageview_js"])
+    events_by_type = _top(day_from, "event", audience, exclude_keys=["pageview_js"])
     for row in events_by_type:
         row["label"] = event_names.get(row["key"], row["key"])
 
@@ -944,14 +955,15 @@ def stats(request):
         "pool_views": pool_views,
         "pin_clicks": pin_clicks,
         "card_clicks": card_clicks,
-        "status_filters": _top(day_from, "status_filter"),
-        "neighborhoods": _top(day_from, "neighborhood"),
-        "zips": _top(day_from, "zip"),
-        "referrers": _top(day_from, "referrer"),
-        "devices": _top(day_from, "device"),
+        "status_filters": _top(day_from, "status_filter", audience),
+        "neighborhoods": _top(day_from, "neighborhood", audience),
+        "zips": _top(day_from, "zip", audience),
+        "referrers": _top(day_from, "referrer", audience),
+        "devices": _top(day_from, "device", audience),
         "events_by_type": events_by_type,
         "journeys": journeys,
         "journey_total": journey_total,
+        "audience": audience,
         "collection_start": collection_start,
         "raw_retention_days": USAGE_RAW_RETENTION_DAYS,
         "raw_rows": UsageEvent.objects.count(),

@@ -14,6 +14,8 @@ from django.utils import timezone
 
 from pools.models import UsageDaily, UsageEvent, UsageRollupState
 from pools.services.usage import (
+    AUDIENCE_CONFIRMED,
+    AUDIENCE_HUMAN,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
     JOURNEY_SINGLE_PASSIVE,
@@ -98,8 +100,8 @@ class Command(BaseCommand):
         human = events.exclude(client_class="bot")
         rows = {}
 
-        def put(metric, key, events_count, visitors_count):
-            rows[(metric, key or "")] = (events_count, visitors_count)
+        def put(metric, key, events_count, visitors_count, audience=AUDIENCE_HUMAN):
+            rows[(metric, key or "", audience)] = (events_count, visitors_count)
 
         put("visitors", "", human.count(), human.values("visitor").distinct().count())
         put("visitors", "bot",
@@ -122,7 +124,7 @@ class Command(BaseCommand):
         # plain "visitors" row above, this one is deliberately not a raw event count.
         put("visitors", "js_confirmed",
             human.filter(visitor__in=confirmed).exclude(event="pageview_js").count(),
-            len(confirmed))
+            len(confirmed), audience=AUDIENCE_CONFIRMED)
 
         # How far each confirmed browser got: more than one page, one page but they
         # used the map or filters, or one page and nothing else. Only confirmed
@@ -141,30 +143,39 @@ class Command(BaseCommand):
 
         for journey, visitors in journeys.items():
             put("journey", journey,
-                sum(len(by_visitor[v]) for v in visitors), len(visitors))
+                sum(len(by_visitor[v]) for v in visitors), len(visitors),
+                audience=AUDIENCE_CONFIRMED)
 
-        for row in human.values("event").annotate(
-            events=Count("id"), visitors=Count("visitor", distinct=True)
+        # Every ranked breakdown is stored twice: once for all non-robot visitors and
+        # once for confirmed browsers alone. /stats/ defaults to the confirmed view and
+        # offers the wider one, and storing both now is the only way to keep that choice
+        # available after the raw rows have been pruned.
+        for audience, audience_events in (
+            (AUDIENCE_HUMAN, human),
+            (AUDIENCE_CONFIRMED, human.filter(visitor__in=confirmed)),
         ):
-            put("event", row["event"], row["events"], row["visitors"])
-
-        for event_name, metric in [
-            ("pool_view", "pool_view"), ("pin_click", "pin_click"), ("card_click", "card_click"),
-        ]:
-            for row in human.filter(event=event_name).exclude(key="").values("key").annotate(
+            for row in audience_events.values("event").annotate(
                 events=Count("id"), visitors=Count("visitor", distinct=True)
             ):
-                put(metric, row["key"], row["events"], row["visitors"])
+                put("event", row["event"], row["events"], row["visitors"], audience)
 
-        for metric, field in _FIELD_METRICS:
-            for row in human.exclude(**{field: ""}).values(field).annotate(
-                events=Count("id"), visitors=Count("visitor", distinct=True)
-            ):
-                put(metric, row[field], row["events"], row["visitors"])
+            for event_name, metric in [
+                ("pool_view", "pool_view"), ("pin_click", "pin_click"), ("card_click", "card_click"),
+            ]:
+                for row in audience_events.filter(event=event_name).exclude(key="").values(
+                    "key"
+                ).annotate(events=Count("id"), visitors=Count("visitor", distinct=True)):
+                    put(metric, row["key"], row["events"], row["visitors"], audience)
+
+            for metric, field in _FIELD_METRICS:
+                for row in audience_events.exclude(**{field: ""}).values(field).annotate(
+                    events=Count("id"), visitors=Count("visitor", distinct=True)
+                ):
+                    put(metric, row[field], row["events"], row["visitors"], audience)
 
         UsageDaily.objects.filter(day=day).delete()
         UsageDaily.objects.bulk_create([
-            UsageDaily(day=day, metric=metric, key=key, events=e, visitors=v)
-            for (metric, key), (e, v) in rows.items()
+            UsageDaily(day=day, metric=metric, key=key, audience=audience, events=e, visitors=v)
+            for (metric, key, audience), (e, v) in rows.items()
         ])
         return len(rows)

@@ -458,15 +458,21 @@ class UsageDaily(models.Model):
     day = models.DateField(db_index=True)
     metric = models.CharField(max_length=32, help_text="e.g. 'visitors', 'pool_view', 'status_filter', 'zip'")
     key = models.CharField(max_length=100, blank=True, help_text="The specific pool slug, filter value, zip, etc.")
+    audience = models.CharField(
+        max_length=10,
+        default="human",
+        help_text="Who was counted: 'human' is every visitor the crawler check let "
+                  "through, 'confirmed' only those whose browser ran the page's JavaScript",
+    )
     events = models.IntegerField(default=0, help_text="Number of interactions")
     visitors = models.IntegerField(default=0, help_text="Number of distinct visitors that day")
 
     class Meta:
-        unique_together = [("day", "metric", "key")]
+        unique_together = [("day", "metric", "key", "audience")]
         ordering = ["-day", "metric", "-visitors"]
 
     def __str__(self):
-        return f"{self.day} {self.metric}:{self.key} = {self.visitors}"
+        return f"{self.day} {self.metric}:{self.key} ({self.audience}) = {self.visitors}"
 
 
 class UsageRollupState(models.Model):

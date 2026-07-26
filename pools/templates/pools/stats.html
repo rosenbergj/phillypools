@@ -96,12 +96,13 @@
         {% endif %}
       </div>
     </div>
+    {# Each control carries the other's current value, or switching one would reset it. #}
     <div class="btn-group btn-group-sm" role="group">
-      <a href="?days=1" class="btn btn-outline-secondary{% if days == 1 %} active{% endif %}">Today</a>
-      <a href="?days=7" class="btn btn-outline-secondary{% if days == 7 %} active{% endif %}">7 days</a>
-      <a href="?days=30" class="btn btn-outline-secondary{% if days == 30 %} active{% endif %}">30 days</a>
-      <a href="?days=90" class="btn btn-outline-secondary{% if days == 90 %} active{% endif %}">90 days</a>
-      <a href="?days=365" class="btn btn-outline-secondary{% if days == 365 %} active{% endif %}">Season</a>
+      <a href="?days=1&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 1 %} active{% endif %}">Today</a>
+      <a href="?days=7&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 7 %} active{% endif %}">7 days</a>
+      <a href="?days=30&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 30 %} active{% endif %}">30 days</a>
+      <a href="?days=90&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 90 %} active{% endif %}">90 days</a>
+      <a href="?days=365&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 365 %} active{% endif %}">Season</a>
     </div>
   </div>
 
@@ -186,6 +187,25 @@
       </div>
     {% endfor %}
   </div>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h2 class="h6 mb-0">Breakdowns</h2>
+    <form method="get" class="d-flex align-items-center gap-2">
+      <input type="hidden" name="days" value="{{ days }}">
+      <label class="small text-muted" for="audience-select">Counting</label>
+      <select class="form-select form-select-sm w-auto" id="audience-select" name="audience"
+              onchange="this.form.submit()">
+        <option value="confirmed"{% if audience == "confirmed" %} selected{% endif %}>Confirmed browsers only</option>
+        <option value="human"{% if audience == "human" %} selected{% endif %}>Confirmed and unknown visitors</option>
+      </select>
+      {# The select submits itself; this is the fallback when scripting is off. #}
+      <noscript><button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button></noscript>
+    </form>
+  </div>
+  {% if audience == "human" %}
+    <p class="text-muted small">Including visitors whose browser never ran the page's JavaScript. Robots
+    that identified themselves are still excluded, but any that did not are counted here.</p>
+  {% endif %}
 
   <div class="row g-4">
     {% include "pools/_stats_table.html" with title="Pools viewed" subtitle="Detail page opened" rows=pool_views %}

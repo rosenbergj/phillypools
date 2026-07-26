@@ -60,6 +60,16 @@ PAGE_EVENTS = {"index", "pool_view", "submit_view", "submit_done", "other"}
 # only that a browser loaded.
 INTERACTION_EVENTS = {"filter", "map_pick", "pin_click", "card_click"}
 
+# Who a stored breakdown counts. Every ranked breakdown is rolled up once for each,
+# so /stats/ can switch between them long after the raw rows are gone. "human" is
+# everyone the crawler check did not catch; "confirmed" is the subset whose browser
+# ran the page's JavaScript, and is what /stats/ shows unless asked otherwise —
+# traffic that never ran a line of it is more likely an uncaught crawler than a
+# person browsing with JavaScript off.
+AUDIENCE_HUMAN = "human"
+AUDIENCE_CONFIRMED = "confirmed"
+AUDIENCES = (AUDIENCE_CONFIRMED, AUDIENCE_HUMAN)
+
 # How a confirmed browser spent their day. Ordered most to least engaged, which is
 # the order /stats/ shows them in.
 JOURNEY_MULTI_PAGE = "multi_page"

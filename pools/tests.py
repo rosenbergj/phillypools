@@ -331,8 +331,11 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="aaa", event="card_click", key="mander")
         self._event(self.today, visitor="bbb", event="card_click", key="mander")
         call_command("rollup_usage", verbosity=0)
+        # A card click is itself proof of JavaScript, so both audiences agree here.
         self.assertEqual(
-            UsageDaily.objects.get(day=self.today, metric="card_click", key="mander").visitors, 2
+            UsageDaily.objects.get(
+                day=self.today, metric="card_click", key="mander", audience="confirmed"
+            ).visitors, 2
         )
 
     def test_unconfirmed_visitors_are_left_out_of_the_split(self):
@@ -356,6 +359,24 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="aaa", event="pageview_js")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._journey("multi_page"), 1)
+
+    def test_ranked_breakdowns_are_stored_for_both_audiences(self):
+        """Both populations must be written now — the raw rows to recompute them expire."""
+        self._event(self.today, visitor="js", event="pageview_js")
+        self._event(self.today, visitor="js", event="pool_view", key="seen")
+        self._event(self.today, visitor="nojs", event="pool_view", key="seen")
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="pool_view", key="seen", audience="human"
+            ).visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="pool_view", key="seen", audience="confirmed"
+            ).visitors, 1
+        )
 
     def test_confirmed_event_count_leaves_out_the_page_load_beacon(self):
         """The beacon duplicates the page view it rides along with, so counting it doubles."""
@@ -447,8 +468,13 @@ class StatsPageTests(TestCase):
         pool = Pool.objects.create(
             ppr_amenity_id="t1", name="Test Pool", address="1 Main St", slug="test-pool"
         )
+        # The beacon matters: the breakdowns show confirmed browsers by default, so a
+        # visitor with no JavaScript trace would leave the pool tables empty.
         UsageEvent.objects.create(
             day=timezone.localdate(), event="pool_view", key=pool.slug, visitor="aaa"
+        )
+        UsageEvent.objects.create(
+            day=timezone.localdate(), event="pageview_js", visitor="aaa"
         )
         call_command("rollup_usage", verbosity=0)
         resp = self.client.get("/stats/")
@@ -469,6 +495,31 @@ class StatsPageTests(TestCase):
         resp = self.client.get("/stats/?days=7")
         self.assertEqual(resp.context["totals"]["confirmed_events"], 2)
         self.assertEqual(resp.context["totals"]["events"], 4)   # every human row
+
+    def test_breakdowns_default_to_confirmed_browsers(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin6", "a6@example.com", "pw")
+        self.client.login(username="admin6", password="pw")
+        day = timezone.localdate()
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="js")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="js")
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="nojs")
+        call_command("rollup_usage", verbosity=0)
+
+        default = self.client.get("/stats/?days=7")
+        self.assertEqual(default.context["audience"], "confirmed")
+        self.assertEqual(default.context["pool_views"][0]["visitors"], 1)
+
+        wider = self.client.get("/stats/?days=7&audience=human")
+        self.assertEqual(wider.context["audience"], "human")
+        self.assertEqual(wider.context["pool_views"][0]["visitors"], 2)
+
+    def test_unknown_audience_falls_back_to_confirmed(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin7", "a7@example.com", "pw")
+        self.client.login(username="admin7", password="pw")
+        resp = self.client.get("/stats/?audience=everyone")
+        self.assertEqual(resp.context["audience"], "confirmed")
 
     def test_interaction_types_chart_leaves_out_the_beacon(self):
         from django.contrib.auth.models import User
