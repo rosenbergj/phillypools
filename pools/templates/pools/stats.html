@@ -64,6 +64,13 @@
   /* display:block matters — an inline span ignores width and the bar vanishes. */
   .rank-fill { display: block; background: var(--usage-total); border-radius: 4px; height: 100%; }
   .rank-value { flex: 0 0 5rem; text-align: right; font-variant-numeric: tabular-nums; }
+  /* The ranked tables truncate to one line; these three rows carry a second line
+     of explanation and must be allowed to wrap instead. */
+  /* min-width:0 keeps the label column at its 45% basis: without it the longest
+     label widens its own row and the three bars start at different places, which
+     reads as a difference in the data. */
+  .journey-row .rank-label { white-space: normal; overflow: visible; min-width: 0; }
+  .journey-row .rank-value { flex: 0 0 6rem; }
   .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
 </style>
 {% endblock %}
@@ -74,6 +81,8 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <h1 class="h3 mb-0">Site usage</h1>
+      {# With the per-day chart hidden there is nothing else naming the day in view. #}
+      {% if first_day == last_day %}<div class="text-muted small">{{ last_day|date:"D M j, Y" }}</div>{% endif %}
       <div class="text-muted small">
         {% if last_rollup_at %}
           Current as of {{ last_rollup_at|date:"M j, Y, g:i A" }}
@@ -83,6 +92,7 @@
       </div>
     </div>
     <div class="btn-group btn-group-sm" role="group">
+      <a href="?days=1" class="btn btn-outline-secondary{% if days == 1 %} active{% endif %}">Today</a>
       <a href="?days=7" class="btn btn-outline-secondary{% if days == 7 %} active{% endif %}">7 days</a>
       <a href="?days=30" class="btn btn-outline-secondary{% if days == 30 %} active{% endif %}">30 days</a>
       <a href="?days=90" class="btn btn-outline-secondary{% if days == 90 %} active{% endif %}">90 days</a>
@@ -121,6 +131,11 @@
     </div>
   </div>
 
+  {% comment %}
+    A one-day window has nothing to chart: a single bar is always full height,
+    because the only day in view is also the peak. The tiles above say it better.
+  {% endcomment %}
+  {% if series|length > 1 %}
   <div class="border rounded p-3 mb-4">
     <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
       <h2 class="h6 mb-0">Visitors per day</h2>
@@ -144,6 +159,28 @@
       <span>{{ last_day|date:"M j" }}</span>
     </div>
   </div>
+  {% endif %}
+
+  <div class="border rounded p-3 mb-4">
+    <h2 class="h6 mb-1">How far confirmed browsers got</h2>
+    <div class="text-muted small mb-2">
+      {% if journey_total %}
+        {{ journey_total }} confirmed visit{{ journey_total|pluralize }} in this window, split three ways
+      {% else %}
+        No confirmed browsers in this window yet
+      {% endif %}
+    </div>
+    {% for row in journeys %}
+      <div class="rank-row journey-row">
+        <div class="rank-label">
+          {{ row.label }}
+          <div class="text-muted small text-truncate">{{ row.detail }}</div>
+        </div>
+        <div class="rank-track"><span class="rank-fill" style="width: {{ row.pct }}%; background: var(--usage-confirmed)"></span></div>
+        <div class="rank-value">{{ row.visitors }} &middot; {{ row.pct }}%</div>
+      </div>
+    {% endfor %}
+  </div>
 
   <div class="row g-4">
     {% include "pools/_stats_table.html" with title="Pools viewed" subtitle="Detail page opened" rows=pool_views %}
@@ -166,6 +203,11 @@
     Every page load now reports this, so the gap to the visitor count is mostly people with
     JavaScript disabled or blocked, plus any bot that slipped past the crawler check without running
     scripts. The true human number sits between the two figures, nearer the confirmed one.</p>
+    <p class="mb-1">The three-way split counts a page as a distinct URL, so reloading the map is
+    still one page while the map plus a pool's detail page is two, and it counts as
+    &ldquo;used it&rdquo; a pin click, a neighborhood picked off the map, or any filter. Only
+    confirmed browsers are split: for anyone else, doing nothing is indistinguishable from
+    running no JavaScript, which would file every crawler as a reader who lost interest.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
     ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
   </div>

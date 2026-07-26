@@ -21,6 +21,9 @@ from pools.models import (
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
+    JOURNEY_MULTI_PAGE,
+    JOURNEY_SINGLE_ENGAGED,
+    JOURNEY_SINGLE_PASSIVE,
     USAGE_RAW_RETENTION_DAYS,
     classify_device,
     classify_request,
@@ -853,6 +856,34 @@ def stats(request):
     for row in pool_views + pin_clicks:
         row["label"] = pools_by_slug.get(row["key"], row["key"])
 
+    # How confirmed browsers spent their visit. Summed over the window like every
+    # other figure here, so a person who came back on three days counts three times;
+    # the shares are what this is for, not the absolute number.
+    journey_counts = {
+        row["key"]: row["visitors"]
+        for row in UsageDaily.objects.filter(day__gte=day_from, metric="journey")
+        .values("key")
+        .annotate(visitors=Sum("visitors"))
+    }
+    journey_total = sum(journey_counts.values())
+    journeys = [
+        {
+            "key": key,
+            "label": label,
+            "detail": detail,
+            "visitors": journey_counts.get(key, 0),
+            "pct": round(100 * journey_counts.get(key, 0) / (journey_total or 1)),
+        }
+        for key, label, detail in [
+            (JOURNEY_MULTI_PAGE, "Looked at more than one page",
+             "Opened a pool's detail page, the submit form, or came back to the map"),
+            (JOURNEY_SINGLE_ENGAGED, "One page, but used it",
+             "Clicked a pin, picked a neighborhood off the map, or filtered"),
+            (JOURNEY_SINGLE_PASSIVE, "One page, then left",
+             "Read what loaded and did nothing else we can see"),
+        ]
+    ]
+
     event_names = dict(UsageEvent.EVENT_CHOICES)
     events_by_type = _top(day_from, "event")
     for row in events_by_type:
@@ -879,6 +910,8 @@ def stats(request):
         "referrers": _top(day_from, "referrer"),
         "devices": _top(day_from, "device"),
         "events_by_type": events_by_type,
+        "journeys": journeys,
+        "journey_total": journey_total,
         "raw_retention_days": USAGE_RAW_RETENTION_DAYS,
         "raw_rows": UsageEvent.objects.count(),
         "last_rollup_at": UsageRollupState.load().last_run_at,

@@ -246,6 +246,66 @@ class RollupTests(TestCase):
             UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").visitors, 1
         )
 
+    def _journey(self, key):
+        return UsageDaily.objects.get(day=self.today, metric="journey", key=key).visitors
+
+    def test_journeys_split_confirmed_browsers_three_ways(self):
+        # Two pages, so multi-page whether or not they touched anything.
+        self._event(self.today, visitor="multi")
+        self._event(self.today, visitor="multi", event="pageview_js")
+        self._event(self.today, visitor="multi", event="pool_view", key="p")
+        # One page, but clicked a pin.
+        self._event(self.today, visitor="engaged")
+        self._event(self.today, visitor="engaged", event="pin_click", key="p")
+        # One page, beacon only.
+        self._event(self.today, visitor="passive")
+        self._event(self.today, visitor="passive", event="pageview_js")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._journey("multi_page"), 1)
+        self.assertEqual(self._journey("single_engaged"), 1)
+        self.assertEqual(self._journey("single_passive"), 1)
+
+    def test_journeys_add_back_up_to_the_confirmed_total(self):
+        """The three buckets partition confirmed browsers — no one counted twice or lost."""
+        self._event(self.today, visitor="aaa", event="pageview_js")
+        self._event(self.today, visitor="bbb", event="filter")
+        self._event(self.today, visitor="ccc", event="pageview_js")
+        self._event(self.today, visitor="ccc", event="pool_view", key="p")
+
+        call_command("rollup_usage", verbosity=0)
+
+        confirmed = UsageDaily.objects.get(
+            day=self.today, metric="visitors", key="js_confirmed"
+        ).visitors
+        total = sum(
+            self._journey(k) for k in ("multi_page", "single_engaged", "single_passive")
+        )
+        self.assertEqual(total, confirmed)
+
+    def test_unconfirmed_visitors_are_left_out_of_the_split(self):
+        """A no-JS client can't be told apart from a reader who did nothing."""
+        self._event(self.today, visitor="quiet")            # HTML only, never confirmed
+        self._event(self.today, visitor="bot1", client_class="bot", event="pageview_js")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._journey("single_passive"), 0)
+
+    def test_reloading_one_page_is_not_two_pages(self):
+        self._event(self.today, visitor="aaa", event="pageview_js")
+        self._event(self.today, visitor="aaa")
+        self._event(self.today, visitor="aaa")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._journey("single_passive"), 1)
+        self.assertEqual(self._journey("multi_page"), 0)
+
+    def test_two_different_pool_pages_count_as_two_pages(self):
+        self._event(self.today, visitor="aaa", event="pool_view", key="one")
+        self._event(self.today, visitor="aaa", event="pool_view", key="two")
+        self._event(self.today, visitor="aaa", event="pageview_js")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._journey("multi_page"), 1)
+
     def test_run_timestamp_is_recorded_even_with_no_traffic(self):
         """A quiet pass still makes the numbers current, so the clock must advance."""
         self.assertIsNone(UsageRollupState.load().last_run_at)
@@ -319,3 +379,19 @@ class StatsPageTests(TestCase):
         resp = self.client.get("/stats/")
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Test Pool")
+
+    def test_today_window_renders_a_single_day(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin2", "a2@example.com", "pw")
+        self.client.login(username="admin2", password="pw")
+        UsageEvent.objects.create(
+            day=timezone.localdate() - timedelta(days=3), event="index", visitor="old"
+        )
+        UsageEvent.objects.create(day=timezone.localdate(), event="index", visitor="new")
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context["series"]), 1)
+        self.assertEqual(resp.context["totals"]["visitors"], 1)
+        self.assertEqual(resp.context["first_day"], timezone.localdate())

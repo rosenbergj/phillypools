@@ -48,6 +48,39 @@ _MOBILE_PATTERNS = ["mobi", "android", "iphone", "ipad", "ipod", "windows phone"
 # filter or click a pin, who otherwise leave no JS trace at all.
 JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "pageview_js"}
 
+# Requests for a rendered HTML page, as opposed to the JSON and beacon endpoints
+# the page calls afterwards. Counted distinct-by-(event, key), so reloading one
+# page is still one page but index -> a pool detail is two.
+PAGE_EVENTS = {"index", "pool_view", "submit_view", "submit_done", "other"}
+
+# Doing something with the page rather than only reading it: the map pin popups,
+# picking a neighborhood off the map, and the zip/status/neighborhood filters
+# (which redraw the markers, so they are map use too). "pageview_js" is
+# deliberately absent — it fires on its own and proves only that a browser loaded.
+INTERACTION_EVENTS = {"filter", "map_pick", "pin_click"}
+
+# How a confirmed browser spent their day. Ordered most to least engaged, which is
+# the order /stats/ shows them in.
+JOURNEY_MULTI_PAGE = "multi_page"
+JOURNEY_SINGLE_ENGAGED = "single_engaged"
+JOURNEY_SINGLE_PASSIVE = "single_passive"
+
+
+def classify_journey(events) -> str:
+    """
+    Bucket one visitor's day from the set of event names (with keys) they produced.
+
+    `events` is an iterable of (event, key) pairs. A visitor with no page event at
+    all — possible if the beacon lands but the page request itself wasn't recorded
+    — counts as single-page: they are certainly not known to have seen two.
+    """
+    pages = {(e, k) for e, k in events if e in PAGE_EVENTS}
+    if len(pages) > 1:
+        return JOURNEY_MULTI_PAGE
+    if any(e in INTERACTION_EVENTS for e, _ in events):
+        return JOURNEY_SINGLE_ENGAGED
+    return JOURNEY_SINGLE_PASSIVE
+
 _SITE_HOSTS = {"phillypools.app", "www.phillypools.app", "localhost", "127.0.0.1"}
 
 _salt_lock = threading.Lock()

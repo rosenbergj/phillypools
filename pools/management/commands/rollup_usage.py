@@ -13,7 +13,14 @@ from django.db.models import Count
 from django.utils import timezone
 
 from pools.models import UsageDaily, UsageEvent, UsageRollupState
-from pools.services.usage import JS_ONLY_EVENTS, USAGE_RAW_RETENTION_DAYS
+from pools.services.usage import (
+    JOURNEY_MULTI_PAGE,
+    JOURNEY_SINGLE_ENGAGED,
+    JOURNEY_SINGLE_PASSIVE,
+    JS_ONLY_EVENTS,
+    USAGE_RAW_RETENTION_DAYS,
+    classify_journey,
+)
 
 # (metric name, UsageEvent field) breakdowns rolled up verbatim, skipping blanks.
 _FIELD_METRICS = [
@@ -111,6 +118,25 @@ class Command(BaseCommand):
         )
         put("visitors", "js_confirmed",
             human.filter(visitor__in=confirmed).count(), len(confirmed))
+
+        # How far each confirmed browser got: more than one page, one page but they
+        # used the map or filters, or one page and nothing else. Only confirmed
+        # browsers are split — for anyone else "did nothing" can't be told apart
+        # from "ran no JavaScript", which would file every bot as a bored reader.
+        # The three buckets partition `confirmed`, so they add back up to it.
+        by_visitor = {}
+        for visitor, event, key in human.filter(visitor__in=confirmed).values_list(
+            "visitor", "event", "key"
+        ):
+            by_visitor.setdefault(visitor, []).append((event, key))
+
+        journeys = {JOURNEY_MULTI_PAGE: [], JOURNEY_SINGLE_ENGAGED: [], JOURNEY_SINGLE_PASSIVE: []}
+        for visitor, events in by_visitor.items():
+            journeys[classify_journey(events)].append(visitor)
+
+        for journey, visitors in journeys.items():
+            put("journey", journey,
+                sum(len(by_visitor[v]) for v in visitors), len(visitors))
 
         for row in human.values("event").annotate(
             events=Count("id"), visitors=Count("visitor", distinct=True)
