@@ -18,6 +18,7 @@ from pools.models import (
     Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission,
     UsageDaily, UsageEvent, UsageRollupState,
 )
+from pools.services.datacenter import is_datacenter_ip
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
@@ -741,6 +742,7 @@ def _record_pool_click(request, event):
         visitor=visitor,
         client_class=classify_request(request),
         ua_family=ua_family(user_agent),
+        datacenter=is_datacenter_ip(_get_client_ip(request)),
         device=classify_device(user_agent),
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )
@@ -794,6 +796,7 @@ def record_page_view(request):
         visitor=visitor,
         client_class=classify_request(request),
         ua_family=ua_family(user_agent),
+        datacenter=is_datacenter_ip(_get_client_ip(request)),
         device=classify_device(user_agent),
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )

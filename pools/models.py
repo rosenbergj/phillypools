@@ -438,6 +438,7 @@ class UsageEvent(models.Model):
     visitor = models.CharField(max_length=16, db_index=True, help_text="Daily-rotating pseudonym; not linkable across days")
     client_class = models.CharField(max_length=10, default="unknown", help_text="'bot', 'staff' or 'unknown' — never a positive 'human' claim")
     ua_family = models.CharField(max_length=20, blank=True, help_text="What the user-agent claimed to be, e.g. 'chrome/129' — the claim, not the verdict, and never the string itself")
+    datacenter = models.BooleanField(default=False, help_text="Whether the request came from a hosting provider's address range. The address itself is read once and never stored")
     device = models.CharField(max_length=10, blank=True)
     referrer_host = models.CharField(max_length=100, blank=True, help_text="Host only, and only for external referrers")
 

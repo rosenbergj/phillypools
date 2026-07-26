@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from pools.models import Pool, UsageDaily, UsageEvent, UsageRollupState, VisitorSalt
-from pools.services import usage
+from pools.services import datacenter, usage
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
 
 
@@ -220,6 +220,46 @@ class ForgedHeaderTests(TestCase):
         self.assertFalse(usage.forged_browser_headers(req))
 
 
+class DatacenterRangeTests(TestCase):
+    def test_hosting_providers_are_recognised(self):
+        for ip, provider in [
+            ("43.164.1.211", "Tencent Cloud"),
+            ("49.51.243.156", "Tencent Cloud"),
+            ("172.236.148.120", "Linode"),
+            ("3.14.15.92", "AWS"),
+            ("20.1.2.3", "Azure"),
+            ("159.65.1.1", "DigitalOcean"),
+        ]:
+            with self.subTest(provider=provider):
+                self.assertTrue(datacenter.is_datacenter_ip(ip))
+
+    def test_people_are_not(self):
+        for ip, isp in [
+            ("73.30.56.95", "Comcast"),
+            ("96.245.3.232", "Verizon FiOS"),
+            ("174.198.198.96", "Verizon Wireless"),
+            ("8.8.8.8", "Google public DNS"),
+            ("1.1.1.1", "Cloudflare resolver"),
+        ]:
+            with self.subTest(isp=isp):
+                self.assertFalse(datacenter.is_datacenter_ip(ip))
+
+    def test_unparseable_input_is_not_an_error(self):
+        """Measurement must never be the reason a page fails to load."""
+        for value in ["", "not-an-ip", "999.1.1.1", None]:
+            with self.subTest(value=value):
+                self.assertFalse(datacenter.is_datacenter_ip(value))
+
+    def test_ipv6_answers_no_rather_than_guessing(self):
+        self.assertFalse(datacenter.is_datacenter_ip("2606:4700::1"))
+
+    def test_relay_and_cdn_networks_are_left_out(self):
+        """They carry real people; catching them would erase privacy-conscious visitors."""
+        for ip, network in [("104.28.1.1", "Cloudflare"), ("151.101.1.1", "Fastly")]:
+            with self.subTest(network=network):
+                self.assertFalse(datacenter.is_datacenter_ip(ip))
+
+
 class ProbePathTests(TestCase):
     def test_scanner_paths_are_recognised(self):
         for path in ["/wp-admin/install.php", "/.env", "/vendor/phpunit/x", "/.git/config"]:
@@ -303,6 +343,16 @@ class MiddlewareTests(TestCase):
     def test_an_ordinary_request_is_still_recorded(self):
         self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, HTTP_SEC_FETCH_MODE="navigate")
         self.assertEqual(UsageEvent.objects.filter(event="index").count(), 1)
+
+    def test_the_hosting_verdict_is_stored_but_not_the_address(self):
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, REMOTE_ADDR="43.164.1.211")
+        event = UsageEvent.objects.get()
+        self.assertTrue(event.datacenter)
+        self.assertNotIn("43.164.1.211", " ".join(str(v) for v in event.__dict__.values()))
+
+    def test_a_home_address_is_not_flagged(self):
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME, REMOTE_ADDR="73.30.56.95")
+        self.assertFalse(UsageEvent.objects.get().datacenter)
 
     def test_a_scanner_probe_marks_the_visitor(self):
         resp = self.client.get("/wp-admin/install.php", HTTP_USER_AGENT=_REAL_CHROME)
@@ -594,6 +644,27 @@ class RollupTests(TestCase):
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._visitors(), 1)
         self.assertEqual(self._visitors("staff"), 1)
+
+    def test_a_rack_that_never_ran_the_page_is_a_bot(self):
+        self._event(self.today, visitor="scraper", datacenter=True)
+        self._event(self.today, visitor="person")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 1)
+
+    def test_a_vpn_user_who_ran_the_page_is_not(self):
+        """People browse from behind relays in those same ranges; running the JS settles it."""
+        self._event(self.today, visitor="behind_vpn", datacenter=True)
+        self._event(self.today, visitor="behind_vpn", event="pageview_js", datacenter=True)
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 0)
+
+    def test_staff_from_a_hosting_range_are_still_staff(self):
+        self._event(self.today, visitor="me", client_class="staff", datacenter=True)
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors("staff"), 1)
+        self.assertEqual(self._visitors("bot"), 0)
 
     def test_browsers_are_broken_down(self):
         self._event(self.today, visitor="aaa", event="pageview_js", ua_family="chrome/130")

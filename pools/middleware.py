@@ -2,11 +2,13 @@ import logging
 
 from django.utils import timezone
 
+from pools.services.datacenter import is_datacenter_ip
 from pools.services.usage import (
     PAGE_EVENTS,
     classify_device,
     classify_request,
     clean_zip,
+    get_client_ip,
     is_probe_path,
     is_speculative,
     referrer_host,
@@ -86,6 +88,7 @@ class UsageMiddleware:
             # the JSON endpoints below are fetch() calls with a narrower set.
             client_class=classify_request(request, navigation=event in PAGE_EVENTS),
             ua_family=ua_family(user_agent),
+            datacenter=is_datacenter_ip(get_client_ip(request)),
             device=classify_device(user_agent),
             referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
         )
@@ -113,6 +116,7 @@ class UsageMiddleware:
             defaults={
                 "client_class": classify_request(request, navigation=True),
                 "ua_family": ua_family(user_agent),
+                "datacenter": is_datacenter_ip(get_client_ip(request)),
                 "device": classify_device(user_agent),
             },
         )

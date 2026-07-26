@@ -241,10 +241,14 @@
     so earlier days undercount it and overstate &ldquo;one page, then left&rdquo;. Only
     confirmed browsers are split: for anyone else, doing nothing is indistinguishable from
     running no JavaScript, which would file every crawler as a reader who lost interest.</p>
-    <p class="mb-1">Robots are spotted three ways: they name themselves, their browser string
-    contradicts itself in a way no real browser's would, or they ask for a path only a
-    vulnerability scanner asks for. Anyone caught is counted as a robot for that whole day,
-    including the ordinary-looking requests they made alongside. Traffic recorded before those
+    <p class="mb-1">Robots are spotted four ways: they name themselves, their browser string
+    contradicts itself in a way no real browser's would, they ask for a path only a
+    vulnerability scanner asks for, or they arrive from a hosting company's address range
+    and never run a line of the page's JavaScript. That last one is asked only about visitors
+    who were never confirmed, since people do browse from behind VPNs and relays in those same
+    ranges; the address is checked in memory and never stored, only the yes or no. Anyone
+    caught is counted as a robot for that whole day, including the ordinary-looking requests
+    they made alongside. Traffic recorded before those
     checks existed, on Jul 26, 2026 and earlier, could never be run against them &mdash; if it
     also never ran any JavaScript it is counted as a robot too, which is right about four times
     in five and wrong the fifth. &ldquo;Browsers&rdquo; below is what the browser string claimed

@@ -12,6 +12,10 @@ Design constraints (see the discussion in offseason-runbook.md / README for why)
   the day it belongs to. Same person on the same day hashes the same (so daily
   uniques and per-visitor journeys work); the next day they are unlinkable, and
   once the salt is gone the hash cannot be worked backwards even by us.
+* Both are read for narrow derived facts and then dropped: a browser family and
+  major version from the user-agent, and from the address a single yes/no for
+  whether it belongs to a hosting provider (see services/datacenter.py). Neither
+  the address nor the string reaches the database in any form.
 * Raw rows are pruned after USAGE_RAW_RETENTION_DAYS; permanent history lives in
   the aggregated UsageDaily table, which contains counts only.
 """

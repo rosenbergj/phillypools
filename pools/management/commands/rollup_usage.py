@@ -124,14 +124,29 @@ class Command(BaseCommand):
         # Self-limiting: raw rows expire, and once a day's have gone it is never
         # recomputed, so this can only ever touch the handful of days that predate the
         # column and still have raw rows to be rebuilt from.
+        staff_visitors = set(
+            rest.filter(client_class="staff").values_list("visitor", flat=True).distinct()
+        )
         legacy = (
             set(rest.values_list("visitor", flat=True).distinct())
             - set(rest.exclude(ua_family="").values_list("visitor", flat=True).distinct())
             - confirmed
-            - set(rest.filter(client_class="staff").values_list("visitor", flat=True).distinct())
+            - staff_visitors
         )
 
-        bot_visitors = caught | legacy
+        # Unconfirmed traffic arriving from a hosting provider's address range. The
+        # gate on `confirmed` is the whole point of the rule rather than a caveat to
+        # it: people really do browse from behind VPNs and relays that live in those
+        # same ranges, and anyone whose browser ran the page has already proved they
+        # are not the thing this is looking for. What is left is a machine that
+        # fetched HTML from a rack and did nothing a browser does.
+        datacenter = (
+            set(rest.filter(datacenter=True).values_list("visitor", flat=True).distinct())
+            - confirmed
+            - staff_visitors
+        )
+
+        bot_visitors = caught | legacy | datacenter
         # Bots are counted, not discarded — their crawl pattern is the only view we
         # have of what Googlebot actually fetches — but they are kept out of every
         # human-facing metric below.
