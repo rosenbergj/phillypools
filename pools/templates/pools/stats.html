@@ -83,6 +83,9 @@
       <h1 class="h3 mb-0">Site usage</h1>
       {# With the per-day chart hidden there is nothing else naming the day in view. #}
       {% if first_day == last_day %}<div class="text-muted small">{{ last_day|date:"D M j, Y" }}</div>{% endif %}
+      {% if collection_start %}
+        <div class="text-muted small">Collection began {{ collection_start|date:"M j, Y" }} &mdash; nothing before that was recorded</div>
+      {% endif %}
       <div class="text-muted small">
         {% if last_rollup_at %}
           Current as of {{ last_rollup_at|date:"M j, Y, g:i A" }}

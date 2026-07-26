@@ -7,7 +7,7 @@ from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Sum
+from django.db.models import Min, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
@@ -902,6 +902,15 @@ def stats(request):
         ]
     ]
 
+    # The first day anything was recorded, read from the permanent daily table rather
+    # than hardcoded: it survives a season rollover, and re-derives itself if the
+    # tables are ever cleared again. Only worth saying when the chosen window reaches
+    # back that far — otherwise the window is entirely inside the collected period and
+    # the note would just be noise.
+    collection_start = UsageDaily.objects.aggregate(first=Min("day"))["first"]
+    if collection_start is None or day_from > collection_start:
+        collection_start = None
+
     event_names = dict(UsageEvent.EVENT_CHOICES)
     events_by_type = _top(day_from, "event")
     for row in events_by_type:
@@ -931,6 +940,7 @@ def stats(request):
         "events_by_type": events_by_type,
         "journeys": journeys,
         "journey_total": journey_total,
+        "collection_start": collection_start,
         "raw_retention_days": USAGE_RAW_RETENTION_DAYS,
         "raw_rows": UsageEvent.objects.count(),
         "last_rollup_at": UsageRollupState.load().last_run_at,

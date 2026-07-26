@@ -431,6 +431,22 @@ class StatsPageTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Test Pool")
 
+    def test_collection_start_shows_only_when_the_window_reaches_it(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin3", "a3@example.com", "pw")
+        self.client.login(username="admin3", password="pw")
+        began = timezone.localdate() - timedelta(days=5)
+        UsageEvent.objects.create(day=began, event="index", visitor="aaa")
+        call_command("rollup_usage", all=True, verbosity=0)
+
+        # A 30-day window reaches past the first day recorded, so say where it starts.
+        reaching = self.client.get("/stats/?days=30")
+        self.assertEqual(reaching.context["collection_start"], began)
+
+        # A 3-day window sits entirely inside the collected period; the note would mislead.
+        inside = self.client.get("/stats/?days=3")
+        self.assertIsNone(inside.context["collection_start"])
+
     def test_today_window_renders_a_single_day(self):
         from django.contrib.auth.models import User
         User.objects.create_superuser("admin2", "a2@example.com", "pw")
