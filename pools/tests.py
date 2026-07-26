@@ -140,6 +140,20 @@ class UaFamilyTests(TestCase):
             with self.subTest(ua=ua[:40]):
                 self.assertEqual(usage.ua_family(ua), expected)
 
+    def test_ios_browsers_are_not_all_called_safari(self):
+        """Every browser on iOS is WebKit underneath and signs off with Safari's token."""
+        ios = ("Mozilla/5.0 (iPhone; CPU iPhone OS 26_5_2 like Mac OS X) AppleWebKit/605.1.15 "
+               "(KHTML, like Gecko) {} Mobile/15E148 Safari/604.1")
+        for token, expected in [
+            ("CriOS/150.0.7871.113", "chrome-ios/150"),
+            ("FxiOS/145.0", "firefox-ios/145"),
+            ("EdgiOS/140.0.0.0", "edge-ios/140"),
+            ("Version/26.5", "safari/26"),
+        ]:
+            with self.subTest(token=token):
+                self.assertEqual(usage.ua_family(ios.format(token)), expected)
+                self.assertEqual(usage.classify_client(ios.format(token)), "unknown")
+
     def test_chromium_relatives_are_not_all_called_chrome(self):
         """Edge, Opera and Samsung all carry a Chrome token, so order of testing matters."""
         edge = _REAL_CHROME + " Edg/130.0.0.0"

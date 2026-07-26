@@ -94,10 +94,15 @@ def is_probe_path(path: str) -> bool:
 
 _MOBILE_PATTERNS = ["mobi", "android", "iphone", "ipad", "ipod", "windows phone"]
 
-# Browser families, in the order they must be tested: Edge, Opera and Samsung all
+# Browser families, in the order they must be tested. Two orderings matter: iOS
+# builds go first, since every browser on iOS is WebKit underneath and signs off
+# with the same Safari token as Safari itself; and Edge, Opera and Samsung all
 # carry a Chrome token too, so Chrome has to be tried last of the Chromium four.
 _CHROME_VERSION = re.compile(r"chrome/(\d+)")
 _UA_FAMILIES = [
+    ("chrome-ios", re.compile(r"crios/(\d+)")),
+    ("firefox-ios", re.compile(r"fxios/(\d+)")),
+    ("edge-ios", re.compile(r"edgios/(\d+)")),
     ("edge", re.compile(r"edga?/(\d+)")),
     ("opera", re.compile(r"opr/(\d+)")),
     ("samsung", re.compile(r"samsungbrowser/(\d+)")),
