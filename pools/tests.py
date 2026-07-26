@@ -86,6 +86,139 @@ class ClassificationTests(TestCase):
         self.assertEqual(usage.clean_zip("not-a-zip"), "")
 
 
+# A real, current Chrome on Windows, used below as the thing the forgeries imitate.
+_REAL_CHROME = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+
+
+class ForgedUserAgentTests(TestCase):
+    """Strings no shipped browser sends, whatever they claim to be."""
+
+    def test_self_contradicting_agents_are_flagged(self):
+        for ua in [
+            # A scanner announcing the payload it is probing for.
+            "http://phillypools.app/wp-admin/install.php?step=1",
+            # Chromium always ends its WebKit claim at 537.36; this one is a digit short.
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.3",
+            # Gecko and WebKit in the same breath.
+            "Mozilla/5.0 (Windows NT 6.2; x86) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Firefox/91.0.0.0 Safari/537.36",
+            # Safari with no version at all.
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Safari",
+        ]:
+            with self.subTest(ua=ua[:40]):
+                self.assertEqual(usage.classify_client(ua), "bot")
+
+    def test_the_genuine_article_still_passes(self):
+        self.assertEqual(usage.classify_client(_REAL_CHROME), "unknown")
+
+    def test_newly_listed_agents_that_name_themselves(self):
+        for ua in [
+            "Hello from Palo Alto Networks, find out more about our scans in https://example",
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +http://x)",
+            "NetworkingExtension/8624.2.5.10.8 Network/5812.122.1 iOS/26.5.2",
+        ]:
+            with self.subTest(ua=ua[:40]):
+                self.assertEqual(usage.classify_client(ua), "bot")
+
+
+class UaFamilyTests(TestCase):
+    def test_families_and_major_versions(self):
+        cases = [
+            (_REAL_CHROME, "chrome/130"),
+            ("Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 "
+             "(KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1", "safari/13"),
+            ("Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0",
+             "firefox/142"),
+            ("", ""),
+            ("Uptime-Kuma/1.23.17", "other"),
+        ]
+        for ua, expected in cases:
+            with self.subTest(ua=ua[:40]):
+                self.assertEqual(usage.ua_family(ua), expected)
+
+    def test_chromium_relatives_are_not_all_called_chrome(self):
+        """Edge, Opera and Samsung all carry a Chrome token, so order of testing matters."""
+        edge = _REAL_CHROME + " Edg/130.0.0.0"
+        self.assertEqual(usage.ua_family(edge), "edge/130")
+        self.assertEqual(usage.ua_family(_REAL_CHROME + " OPR/115.0.0.0"), "opera/115")
+
+    def test_the_string_itself_is_never_returned(self):
+        family = usage.ua_family(_REAL_CHROME)
+        self.assertNotIn("Windows", family)
+        self.assertLess(len(family), 20)
+
+
+class ForgedHeaderTests(TestCase):
+    """A copied user-agent is one line of work; the headers around it are not."""
+
+    def _request(self, ua=_REAL_CHROME, secure=False, **headers):
+        req = RequestFactory().get("/", secure=secure, HTTP_USER_AGENT=ua, **headers)
+        return req
+
+    def _real_browser_headers(self):
+        return {
+            "HTTP_ACCEPT": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "HTTP_ACCEPT_LANGUAGE": "en-US,en;q=0.9",
+            "HTTP_SEC_CH_UA": '"Chromium";v="130", "Google Chrome";v="130"',
+        }
+
+    def test_a_complete_browser_passes(self):
+        req = self._request(secure=True, **self._real_browser_headers())
+        self.assertFalse(usage.forged_browser_headers(req))
+        self.assertEqual(usage.classify_request(req, navigation=True), "unknown")
+
+    def test_chrome_without_client_hints_is_forged(self):
+        headers = self._real_browser_headers()
+        del headers["HTTP_SEC_CH_UA"]
+        req = self._request(secure=True, **headers)
+        self.assertEqual(usage.classify_request(req, navigation=True), "bot")
+
+    def test_client_hints_are_only_expected_over_https(self):
+        """They are a secure-context feature, so plain HTTP — local dev — must not trip it."""
+        headers = self._real_browser_headers()
+        del headers["HTTP_SEC_CH_UA"]
+        req = self._request(secure=False, **headers)
+        self.assertEqual(usage.classify_request(req, navigation=True), "unknown")
+
+    def test_missing_language_or_wildcard_accept_is_forged(self):
+        for drop, replace in [("HTTP_ACCEPT_LANGUAGE", None), ("HTTP_ACCEPT", "*/*")]:
+            with self.subTest(header=drop):
+                headers = self._real_browser_headers()
+                if replace is None:
+                    del headers[drop]
+                else:
+                    headers[drop] = replace
+                req = self._request(secure=True, **headers)
+                self.assertEqual(usage.classify_request(req, navigation=True), "bot")
+
+    def test_only_navigations_are_checked(self):
+        """The site's own fetch() calls send a narrower header set and must not be caught."""
+        req = self._request(secure=True)
+        self.assertEqual(usage.classify_request(req, navigation=False), "unknown")
+
+    def test_a_client_claiming_nothing_is_not_accused_of_lying(self):
+        """No browser claim means no contradiction — it stays merely unknown."""
+        req = self._request(ua="Mozilla/5.0 (Macintosh)", secure=True)
+        self.assertFalse(usage.forged_browser_headers(req))
+
+
+class ProbePathTests(TestCase):
+    def test_scanner_paths_are_recognised(self):
+        for path in ["/wp-admin/install.php", "/.env", "/vendor/phpunit/x", "/.git/config"]:
+            with self.subTest(path=path):
+                self.assertTrue(usage.is_probe_path(path))
+
+    def test_a_plausible_wrong_guess_is_not_a_probe(self):
+        """Someone typing a page we might have had is looking for something, not rattling doors."""
+        for path in ["/contact", "/contact-us", "/pools/no-such-pool/", "/about"]:
+            with self.subTest(path=path):
+                self.assertFalse(usage.is_probe_path(path))
+
+
 class MiddlewareTests(TestCase):
     def setUp(self):
         _reset_salt_cache()
@@ -125,6 +258,32 @@ class MiddlewareTests(TestCase):
     def test_ordinary_visitors_are_not_labelled_staff(self):
         self.client.get("/", HTTP_USER_AGENT="Mozilla/5.0 (Macintosh)")
         self.assertEqual(UsageEvent.objects.get().client_class, "unknown")
+
+    def test_the_browser_family_is_recorded_but_not_the_string(self):
+        self.client.get("/", HTTP_USER_AGENT=_REAL_CHROME)
+        event = UsageEvent.objects.get()
+        self.assertEqual(event.ua_family, "chrome/130")
+        self.assertNotIn("Windows", " ".join(str(v) for v in event.__dict__.values()))
+
+    def test_a_scanner_probe_marks_the_visitor(self):
+        resp = self.client.get("/wp-admin/install.php", HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(UsageEvent.objects.filter(event="probe").count(), 1)
+
+    def test_a_burst_of_probes_records_one_row(self):
+        """A scanner works through hundreds of paths; the table only needs to know it happened."""
+        for path in ["/wp-admin/install.php", "/.env", "/vendor/phpunit/x", "/xmlrpc.php"]:
+            self.client.get(path, HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(UsageEvent.objects.filter(event="probe").count(), 1)
+
+    def test_an_ordinary_404_is_not_a_probe(self):
+        self.client.get("/pools/no-such-pool/", HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(UsageEvent.objects.count(), 0)
+
+    def test_the_probe_path_itself_is_not_stored(self):
+        self.client.get("/wp-admin/install.php", HTTP_USER_AGENT=_REAL_CHROME)
+        event = UsageEvent.objects.get(event="probe")
+        self.assertNotIn("wp-admin", " ".join(str(v) for v in event.__dict__.values()))
 
 
 class PoolClickTests(TestCase):
@@ -241,9 +400,15 @@ class RollupTests(TestCase):
         _reset_salt_cache()
         self.today = timezone.localdate()
 
-    def _event(self, day, event="index", visitor="aaa", client_class="unknown", **kw):
+    # ua_family defaults to something set, standing in for a row recorded under the
+    # current rules. A blank one means "written before the user-agent checks existed",
+    # which the rollup reads as an uncheckable visitor and files as a bot — so a test
+    # that wants an ordinary visitor has to look like a row from after the change.
+    def _event(self, day, event="index", visitor="aaa", client_class="unknown",
+               ua_family="chrome/130", **kw):
         return UsageEvent.objects.create(
-            day=day, event=event, visitor=visitor, client_class=client_class, **kw
+            day=day, event=event, visitor=visitor, client_class=client_class,
+            ua_family=ua_family, **kw
         )
 
     def test_visitors_are_counted_distinctly_and_bots_excluded(self):
@@ -344,6 +509,62 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="bot1", client_class="bot", event="pageview_js")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._journey("single_passive"), 0)
+
+    def _visitors(self, key=""):
+        return UsageDaily.objects.get(day=self.today, metric="visitors", key=key).visitors
+
+    def test_a_probe_discredits_everything_else_that_visitor_did(self):
+        """The scanner also fetched the front page; that request is not a visit either."""
+        self._event(self.today, visitor="scanner", event="index")
+        self._event(self.today, visitor="scanner", event="probe")
+        self._event(self.today, visitor="real", event="index")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 1)
+
+    def test_one_bot_row_taints_the_whole_visit(self):
+        """The forgery check only runs on navigations, so a spoofer's beacon must not readmit them."""
+        self._event(self.today, visitor="spoofer", event="index", client_class="bot")
+        self._event(self.today, visitor="spoofer", event="pageview_js")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 0)
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="visitors", key="js_confirmed"
+            ).visitors, 0
+        )
+
+    def test_traffic_predating_the_agent_checks_is_written_off(self):
+        """No family recorded means the new rules can never be run against it."""
+        self._event(self.today, visitor="legacy", ua_family="")
+        self._event(self.today, visitor="current", ua_family="chrome/130")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 1)
+
+    def test_a_confirmed_browser_survives_the_write_off(self):
+        """Running the page's JavaScript settles it, whenever the row was recorded."""
+        self._event(self.today, visitor="old_but_real", ua_family="")
+        self._event(self.today, visitor="old_but_real", event="pageview_js", ua_family="")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 0)
+
+    def test_staff_survive_the_write_off_too(self):
+        self._event(self.today, visitor="me", client_class="staff", ua_family="")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("staff"), 1)
+
+    def test_browsers_are_broken_down(self):
+        self._event(self.today, visitor="aaa", event="pageview_js", ua_family="chrome/130")
+        self._event(self.today, visitor="bbb", event="pageview_js", ua_family="safari/18")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="browser", key="chrome/130", audience="confirmed"
+            ).visitors, 1
+        )
 
     def test_reloading_one_page_is_not_two_pages(self):
         self._event(self.today, visitor="aaa", event="pageview_js")
@@ -471,25 +692,40 @@ class StatsPageTests(TestCase):
         # The beacon matters: the breakdowns show confirmed browsers by default, so a
         # visitor with no JavaScript trace would leave the pool tables empty.
         UsageEvent.objects.create(
-            day=timezone.localdate(), event="pool_view", key=pool.slug, visitor="aaa"
+            day=timezone.localdate(), event="pool_view", key=pool.slug, visitor="aaa",
+            ua_family="chrome/130",
         )
         UsageEvent.objects.create(
-            day=timezone.localdate(), event="pageview_js", visitor="aaa"
+            day=timezone.localdate(), event="pageview_js", visitor="aaa",
+            ua_family="chrome/130",
         )
         call_command("rollup_usage", verbosity=0)
         resp = self.client.get("/stats/")
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Test Pool")
 
+    def test_the_browsers_table_reports_the_claim(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin7", "a7@example.com", "pw")
+        self.client.login(username="admin7", password="pw")
+        day = timezone.localdate()
+        UsageEvent.objects.create(
+            day=day, event="pageview_js", visitor="aaa", ua_family="safari/13"
+        )
+        call_command("rollup_usage", verbosity=0)
+        resp = self.client.get("/stats/")
+        self.assertContains(resp, "Browsers")
+        self.assertContains(resp, "safari/13")
+
     def test_interaction_tile_reports_confirmed_browsers_only(self):
         from django.contrib.auth.models import User
         User.objects.create_superuser("admin4", "a4@example.com", "pw")
         self.client.login(username="admin4", password="pw")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="index", visitor="aaa")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa")
-        UsageEvent.objects.create(day=day, event="filter", visitor="aaa")
-        UsageEvent.objects.create(day=day, event="index", visitor="nojs")
+        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="filter", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="index", visitor="nojs", ua_family="chrome/130")
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=7")
@@ -501,9 +737,9 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin6", "a6@example.com", "pw")
         self.client.login(username="admin6", password="pw")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="js")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="js")
-        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="nojs")
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="js", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="js", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="nojs", ua_family="chrome/130")
         call_command("rollup_usage", verbosity=0)
 
         default = self.client.get("/stats/?days=7")
@@ -527,8 +763,8 @@ class StatsPageTests(TestCase):
         self.client.login(username="admin5", password="pw")
         day = timezone.localdate()
         for n in range(5):
-            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}")
-            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}")
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}", ua_family="chrome/130")
+            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}", ua_family="chrome/130")
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=7")
@@ -545,7 +781,7 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin3", "a3@example.com", "pw")
         self.client.login(username="admin3", password="pw")
         began = timezone.localdate() - timedelta(days=5)
-        UsageEvent.objects.create(day=began, event="index", visitor="aaa")
+        UsageEvent.objects.create(day=began, event="index", visitor="aaa", ua_family="chrome/130")
         call_command("rollup_usage", all=True, verbosity=0)
 
         # A 30-day window reaches past the first day recorded, so say where it starts.
@@ -561,9 +797,12 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin2", "a2@example.com", "pw")
         self.client.login(username="admin2", password="pw")
         UsageEvent.objects.create(
-            day=timezone.localdate() - timedelta(days=3), event="index", visitor="old"
+            day=timezone.localdate() - timedelta(days=3), event="index", visitor="old",
+            ua_family="chrome/130",
         )
-        UsageEvent.objects.create(day=timezone.localdate(), event="index", visitor="new")
+        UsageEvent.objects.create(
+            day=timezone.localdate(), event="index", visitor="new", ua_family="chrome/130"
+        )
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=1")

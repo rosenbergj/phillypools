@@ -36,9 +36,102 @@ _BOT_PATTERNS = [
     "go-http", "libwww", "lighthouse", "headless", "phantomjs", "preview",
     "facebookexternalhit", "embedly", "quora link", "whatsapp", "telegram",
     "slackbot", "discord", "skypeuripreview", "pingdom", "uptime", "railway",
+    # Security and inventory scanners, SEO crawlers, AI agents, and link-preview
+    # fetchers seen identifying themselves in the live logs but slipping past the
+    # list above. "networkingextension" is Apple's preview fetcher, which loads the
+    # og: image when someone shares the link in Messages — a share is worth knowing
+    # about, but the fetch is not a visit.
+    "scan", "xpanse", "censys", "shodan", "zgrab", "masscan", "nuclei", "nmap",
+    "netcraft", "read-aloud", "networkingextension", "ahrefs", "semrush",
+    "dataprovider", "archive.org", "site24x7", "statuscake",
+    "openai", "anthropic", "perplexity",
 ]
 
+# Ways a user-agent can contradict itself. A string that no shipped browser would
+# ever send is a spoof attempt, and a spoof attempt is a bot however plausible the
+# rest of it reads — these catch clients that copy a browser's UA but get a detail
+# wrong, which no substring list ever will.
+_CHROMIUM_SUFFIX = re.compile(r"safari/537\.36\b")
+
+
+def _forged_ua(ua: str) -> bool:
+    """True if `ua` (already lowercased) is not a string any real browser sends."""
+    # A URL where the product token belongs: vulnerability scanners announcing the
+    # payload they are probing for.
+    if ua.startswith("http://") or ua.startswith("https://"):
+        return True
+    # Every Chromium build, on every platform, ends its WebKit claim at Safari/537.36.
+    # Anything else claiming Chrome typed the string by hand.
+    if "chrome/" in ua and "safari/" in ua and not _CHROMIUM_SUFFIX.search(ua):
+        return True
+    # Gecko and WebKit are different engines; no build reports both products.
+    if "firefox/" in ua and "applewebkit" in ua:
+        return True
+    # A bare "Safari" with no version, which the real one always carries.
+    if "safari" in ua and "safari/" not in ua:
+        return True
+    return False
+
+
+# Fragments of paths this site has never served, and that no link anywhere points
+# at: PHP, WordPress, and the usual leaked-secret filenames. Only ever tested
+# against a request that already 404'd, so a real URL can never match one, and
+# deliberately narrow — a plausible guess at a page we might have had, like
+# /contact, is somebody looking for something, not somebody rattling doorknobs.
+_PROBE_PATTERNS = [
+    ".php", ".asp", ".jsp", ".cgi", "/wp-", "/wordpress", "/xmlrpc",
+    "/.env", "/.git", "/.aws", "/.ssh", "/vendor/", "/cgi-bin/",
+    "/phpmyadmin", "/administrator", "/adminer", "/telescope", "/actuator",
+    "/config.json", "/credentials", "/backup",
+]
+
+
+def is_probe_path(path: str) -> bool:
+    """True if a 404 for `path` is a scanner working through a list, not a bad link."""
+    path = (path or "").lower()
+    return any(p in path for p in _PROBE_PATTERNS)
+
+
 _MOBILE_PATTERNS = ["mobi", "android", "iphone", "ipad", "ipod", "windows phone"]
+
+# Browser families, in the order they must be tested: Edge, Opera and Samsung all
+# carry a Chrome token too, so Chrome has to be tried last of the Chromium four.
+_CHROME_VERSION = re.compile(r"chrome/(\d+)")
+_UA_FAMILIES = [
+    ("edge", re.compile(r"edga?/(\d+)")),
+    ("opera", re.compile(r"opr/(\d+)")),
+    ("samsung", re.compile(r"samsungbrowser/(\d+)")),
+    ("chrome", _CHROME_VERSION),
+    ("firefox", re.compile(r"firefox/(\d+)")),
+    ("safari", re.compile(r"version/(\d+)[\d.]*\s+(?:mobile/\S+\s+)?safari/")),
+]
+
+
+def ua_family(user_agent: str) -> str:
+    """
+    A low-cardinality description of what the user-agent claims to be, like
+    "chrome/129" or "safari/13" — never the string itself.
+
+    Purely descriptive: it records the claim, while `classify_client` records the
+    verdict, so a breakdown can show that traffic calling itself a current Chrome
+    was still classified as a crawler. The major version is worth the handful of
+    extra values it costs, because a frozen version is the clearest tell a scraper
+    leaves — a fleet announcing iOS 13 years after the fact stands out at a glance,
+    where a bare "safari" would hide in with everyone's phone. Browser and major
+    version alone carry far too little entropy to identify anyone.
+
+    Anything unrecognised, including every self-identified bot, folds into "other":
+    naming individual crawlers is a different question than this column answers,
+    and letting their version strings in here would blow the cardinality open.
+    """
+    ua = (user_agent or "").lower()
+    if not ua:
+        return ""
+    for family, pattern in _UA_FAMILIES:
+        match = pattern.search(ua)
+        if match:
+            return f"{family}/{match.group(1)}"
+    return "other"
 
 # Endpoints only ever requested by the site's own JavaScript. They are not linked
 # from any page and not in the sitemap, so a hit here is proof that a real browser
@@ -156,12 +249,48 @@ def classify_client(user_agent: str) -> str:
     if not user_agent:
         return "bot"
     ua = user_agent.lower()
-    return "bot" if any(p in ua for p in _BOT_PATTERNS) else "unknown"
+    if any(p in ua for p in _BOT_PATTERNS) or _forged_ua(ua):
+        return "bot"
+    return "unknown"
 
 
-def classify_request(request) -> str:
+def forged_browser_headers(request) -> bool:
     """
-    As classify_client, but recognises the site's own staff first.
+    True if the request's headers contradict the browser its user-agent claims to be.
+
+    A scraper can copy a user-agent string in one line; sending everything else a
+    real browser sends takes real effort, so the headers around the claim are a far
+    better lie detector than the claim itself. Checked only on page navigations:
+    the site's own fetch() calls send a different and narrower header set, and a
+    client that reached one of those endpoints has already proved it runs the page.
+
+    Nothing here is recorded — the headers are read for a yes/no and dropped.
+    """
+    ua = request.META.get("HTTP_USER_AGENT", "").lower()
+    if not ua or ua_family(ua) in ("", "other"):
+        return False  # Not claiming to be a browser, so there is nothing to contradict.
+
+    # Every Chromium since 90 sends client hints, but only over HTTPS — so this can
+    # only be asked of a secure request, and never of local development over HTTP.
+    if request.is_secure() and "chrome/" in ua and not request.META.get("HTTP_SEC_CH_UA"):
+        match = _CHROME_VERSION.search(ua)
+        if match and int(match.group(1)) >= 90:
+            return True
+
+    # A browser asks for a language and says it wants HTML. A script asks for
+    # anything and doesn't care what it gets.
+    if not request.META.get("HTTP_ACCEPT_LANGUAGE"):
+        return True
+    accept = request.META.get("HTTP_ACCEPT", "")
+    if not accept or accept.strip() == "*/*":
+        return True
+    return False
+
+
+def classify_request(request, navigation: bool = False) -> str:
+    """
+    As classify_client, but recognises the site's own staff first, and on page
+    navigations also cross-checks the user-agent against the rest of the headers.
 
     Staff traffic stays inside the visitor totals — the admin browsing the live
     site is still a real person using it — but is labelled so its share can be
@@ -171,7 +300,10 @@ def classify_request(request) -> str:
     user = getattr(request, "user", None)
     if user is not None and user.is_authenticated and user.is_staff:
         return "staff"
-    return classify_client(request.META.get("HTTP_USER_AGENT", ""))
+    verdict = classify_client(request.META.get("HTTP_USER_AGENT", ""))
+    if verdict == "unknown" and navigation and forged_browser_headers(request):
+        return "bot"
+    return verdict
 
 
 def classify_device(user_agent: str) -> str:

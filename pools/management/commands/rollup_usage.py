@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from pools.models import UsageDaily, UsageEvent, UsageRollupState
@@ -31,6 +31,7 @@ _FIELD_METRICS = [
     ("zip", "zip_searched"),
     ("referrer", "referrer_host"),
     ("device", "device"),
+    ("browser", "ua_family"),
 ]
 
 
@@ -94,30 +95,61 @@ class Command(BaseCommand):
         if not events.exists():
             return 0
 
+        # A bot verdict belongs to the visitor, not to the one request that earned it.
+        # Two things make that necessary: the header forgery check only runs on page
+        # navigations, so a spoofed browser's own beacon POST would come back
+        # "unknown" and quietly readmit it; and a scanner's probe has to discredit the
+        # ordinary-looking requests it made alongside. One bot row taints the day.
+        caught = set(
+            events.filter(Q(client_class="bot") | Q(event="probe"))
+            .values_list("visitor", flat=True)
+            .distinct()
+        )
+        rest = events.exclude(visitor__in=caught)
+
+        # A visitor is a confirmed browser once they hit an endpoint only the page's
+        # own JavaScript requests. Everyone else is merely not-obviously-a-bot.
+        confirmed = set(
+            rest.filter(event__in=JS_ONLY_EVENTS).values_list("visitor", flat=True).distinct()
+        )
+
+        # Rows written before the user-agent checks shipped carry no ua_family; every
+        # row since carries at least "other". So a visitor with no family on any row is
+        # one the old, weaker rules let through, and one the new ones can never be run
+        # against — the headers they would have been judged on were never stored.
+        # Sampling the live logs when those rules were written put roughly four in five
+        # of that leftover traffic squarely in the scanner camp, so it is filed as bot
+        # rather than left inflating the visitor count. The minority that were people
+        # browsing with JavaScript off are lost to it; that is the price of not knowing.
+        # Self-limiting: raw rows expire, and once a day's have gone it is never
+        # recomputed, so this can only ever touch the handful of days that predate the
+        # column and still have raw rows to be rebuilt from.
+        legacy = (
+            set(rest.values_list("visitor", flat=True).distinct())
+            - set(rest.exclude(ua_family="").values_list("visitor", flat=True).distinct())
+            - confirmed
+            - set(rest.filter(client_class="staff").values_list("visitor", flat=True).distinct())
+        )
+
+        bot_visitors = caught | legacy
         # Bots are counted, not discarded — their crawl pattern is the only view we
         # have of what Googlebot actually fetches — but they are kept out of every
         # human-facing metric below.
-        human = events.exclude(client_class="bot")
+        bots = events.filter(visitor__in=bot_visitors)
+        human = events.exclude(visitor__in=bot_visitors)
         rows = {}
 
         def put(metric, key, events_count, visitors_count, audience=AUDIENCE_HUMAN):
             rows[(metric, key or "", audience)] = (events_count, visitors_count)
 
         put("visitors", "", human.count(), human.values("visitor").distinct().count())
-        put("visitors", "bot",
-            events.filter(client_class="bot").count(),
-            events.filter(client_class="bot").values("visitor").distinct().count())
+        put("visitors", "bot", bots.count(), len(bot_visitors))
         # Staff are deliberately inside the "visitors" total above, not subtracted
         # from it — this is the share of it that was us.
         put("visitors", "staff",
             human.filter(client_class="staff").count(),
             human.filter(client_class="staff").values("visitor").distinct().count())
 
-        # A visitor is a confirmed browser once they hit an endpoint only the page's
-        # own JavaScript requests. Everyone else is merely not-obviously-a-bot.
-        confirmed = set(
-            human.filter(event__in=JS_ONLY_EVENTS).values_list("visitor", flat=True).distinct()
-        )
         # `events` here is what confirmed browsers did, minus the page-load beacon:
         # it fires by itself on every page and duplicates the page view it
         # accompanies, so counting it would roughly double the figure. Unlike the

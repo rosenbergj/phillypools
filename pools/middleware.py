@@ -3,10 +3,13 @@ import logging
 from django.utils import timezone
 
 from pools.services.usage import (
+    PAGE_EVENTS,
     classify_device,
     classify_request,
     clean_zip,
+    is_probe_path,
     referrer_host,
+    ua_family,
     visitor_hash,
 )
 
@@ -49,7 +52,12 @@ class UsageMiddleware:
         return response
 
     def _record(self, request, response):
-        if request.method != "GET" or response.status_code >= 400:
+        if request.method != "GET":
+            return
+        if response.status_code == 404:
+            self._record_probe(request)
+            return
+        if response.status_code >= 400:
             return
         match = getattr(request, "resolver_match", None)
         if match is None:
@@ -70,7 +78,37 @@ class UsageMiddleware:
             neighborhood=request.GET.get("neighborhood", "")[:100],
             zip_searched=clean_zip(request.GET.get("zip", "")),
             visitor=visitor_hash(request, day),
-            client_class=classify_request(request),
+            # Only a page navigation carries the headers the forgery check reads;
+            # the JSON endpoints below are fetch() calls with a narrower set.
+            client_class=classify_request(request, navigation=event in PAGE_EVENTS),
+            ua_family=ua_family(user_agent),
             device=classify_device(user_agent),
             referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
+        )
+
+    def _record_probe(self, request):
+        """
+        Mark a visitor who asked for something only a vulnerability scanner asks for.
+
+        One row per visitor per day, not one per probe: a scanner works through
+        hundreds of paths in a burst, and all the rollup needs from them is the fact
+        that this visitor is a scanner — everything else it did that day is discounted
+        along with it. The path itself is never stored, only that there was one.
+        """
+        if not is_probe_path(request.path):
+            return
+
+        from pools.models import UsageEvent
+
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
+        day = timezone.localdate()
+        UsageEvent.objects.get_or_create(
+            day=day,
+            visitor=visitor_hash(request, day),
+            event="probe",
+            defaults={
+                "client_class": classify_request(request, navigation=True),
+                "ua_family": ua_family(user_agent),
+                "device": classify_device(user_agent),
+            },
         )

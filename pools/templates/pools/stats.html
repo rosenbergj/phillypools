@@ -216,6 +216,7 @@
     {% include "pools/_stats_table.html" with title="Neighborhoods chosen" subtitle="Dropdown or map pick" rows=neighborhoods %}
     {% include "pools/_stats_table.html" with title="Where people came from" subtitle="External referrers only" rows=referrers %}
     {% include "pools/_stats_table.html" with title="Devices" subtitle="Coarse guess from the browser" rows=devices %}
+    {% include "pools/_stats_table.html" with title="Browsers" subtitle="What the browser claimed to be" rows=browsers %}
     {% include "pools/_stats_table.html" with title="Interaction types" subtitle="What visitors did" rows=events_by_type %}
   </div>
 
@@ -240,6 +241,14 @@
     so earlier days undercount it and overstate &ldquo;one page, then left&rdquo;. Only
     confirmed browsers are split: for anyone else, doing nothing is indistinguishable from
     running no JavaScript, which would file every crawler as a reader who lost interest.</p>
+    <p class="mb-1">Robots are spotted three ways: they name themselves, their browser string
+    contradicts itself in a way no real browser's would, or they ask for a path only a
+    vulnerability scanner asks for. Anyone caught is counted as a robot for that whole day,
+    including the ordinary-looking requests they made alongside. Traffic recorded before those
+    checks existed, on Jul 26, 2026 and earlier, could never be run against them &mdash; if it
+    also never ran any JavaScript it is counted as a robot too, which is right about four times
+    in five and wrong the fifth. &ldquo;Browsers&rdquo; below is what the browser string claimed
+    to be, not what it was judged to be, so an unlikely claim stays visible.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
     ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
   </div>

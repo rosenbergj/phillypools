@@ -31,6 +31,7 @@ from pools.services.usage import (
     classify_request,
     get_client_ip as _get_client_ip,
     referrer_host,
+    ua_family,
     visitor_hash,
 )
 
@@ -739,6 +740,7 @@ def _record_pool_click(request, event):
         key=slug,
         visitor=visitor,
         client_class=classify_request(request),
+        ua_family=ua_family(user_agent),
         device=classify_device(user_agent),
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )
@@ -791,6 +793,7 @@ def record_page_view(request):
         event="pageview_js",
         visitor=visitor,
         client_class=classify_request(request),
+        ua_family=ua_family(user_agent),
         device=classify_device(user_agent),
         referrer_host=referrer_host(request.META.get("HTTP_REFERER", "")),
     )
@@ -960,6 +963,7 @@ def stats(request):
         "zips": _top(day_from, "zip", audience),
         "referrers": _top(day_from, "referrer", audience),
         "devices": _top(day_from, "device", audience),
+        "browsers": _top(day_from, "browser", audience),
         "events_by_type": events_by_type,
         "journeys": journeys,
         "journey_total": journey_total,
