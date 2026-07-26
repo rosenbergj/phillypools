@@ -811,10 +811,16 @@ def _daily_series(rows, days):
     return out
 
 
-def _top(day_from, metric, limit=15):
-    """Ranked breakdown for one metric, with each row's bar width relative to the leader."""
+def _top(day_from, metric, limit=15, exclude_keys=()):
+    """
+    Ranked breakdown for one metric, with each row's bar width relative to the leader.
+
+    `exclude_keys` drops rows from the display without touching the stored counts,
+    which stay whole for anything that wants them later.
+    """
     rows = list(
         UsageDaily.objects.filter(day__gte=day_from, metric=metric)
+        .exclude(key__in=exclude_keys)
         .values("key")
         .annotate(visitors=Sum("visitors"), events=Sum("events"))
         .order_by("-visitors")[:limit]
@@ -912,7 +918,10 @@ def stats(request):
         collection_start = None
 
     event_names = dict(UsageEvent.EVENT_CHOICES)
-    events_by_type = _top(day_from, "event")
+    # The beacon is left out for the same reason it is left out of the tile above: it
+    # fires on its own on every page load, so it would top this chart while describing
+    # nothing anybody chose to do.
+    events_by_type = _top(day_from, "event", exclude_keys=["pageview_js"])
     for row in events_by_type:
         row["label"] = event_names.get(row["key"], row["key"])
 
@@ -924,6 +933,9 @@ def stats(request):
             "confirmed": sum(r["confirmed"] for r in series),
             "bots": sum(r["bots"] for r in series),
             "events": sum(r["events"] for r in series),
+            # Confirmed browsers only, so traffic that never ran a line of JavaScript —
+            # most of which is probably uncaught crawlers — cannot pad the figure.
+            "confirmed_events": sum(r["events"] for r in confirmed),
             "staff": sum(r["visitors"] for r in staff),
         },
         "peak_visitors": peak,

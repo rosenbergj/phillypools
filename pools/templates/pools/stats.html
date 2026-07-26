@@ -58,17 +58,19 @@
     display: flex;
     justify-content: space-between;
   }
+  /* Two lines are reserved on every tile heading so the four big numbers sit on one
+     line, whether or not a given heading wraps. */
+  .tile-label { min-height: 2.6em; }
   .rank-row { display: flex; align-items: center; gap: .5rem; padding: .15rem 0; }
   .rank-label { flex: 0 0 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rank-track { flex: 1; background: #f1f3f5; border-radius: 4px; height: 14px; }
   /* display:block matters — an inline span ignores width and the bar vanishes. */
   .rank-fill { display: block; background: var(--usage-total); border-radius: 4px; height: 100%; }
   .rank-value { flex: 0 0 5rem; text-align: right; font-variant-numeric: tabular-nums; }
-  /* The ranked tables truncate to one line; these three rows carry a second line
-     of explanation and must be allowed to wrap instead. */
-  /* min-width:0 keeps the label column at its 45% basis: without it the longest
-     label widens its own row and the three bars start at different places, which
-     reads as a difference in the data. */
+  /* The ranked tables truncate to one line; these three rows carry a second line of
+     explanation and must wrap instead. min-width:0 keeps the label column at its 45%
+     basis: without it the longest label widens its own row and the three bars start
+     at different places, which reads as a difference in the data. */
   .journey-row .rank-label { white-space: normal; overflow: visible; min-width: 0; }
   .journey-row .rank-value { flex: 0 0 6rem; }
   .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
@@ -106,28 +108,28 @@
   <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small">Visitors</div>
+        <div class="text-muted small tile-label">Visitors</div>
         <div class="fs-3 fw-semibold">{{ totals.visitors }}</div>
         <div class="text-muted small">robots excluded{% if totals.staff %}, includes {{ totals.staff }} signed-in staff{% endif %}</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small">Confirmed browsers</div>
+        <div class="text-muted small tile-label">Confirmed browsers</div>
         <div class="fs-3 fw-semibold">{{ totals.confirmed }}</div>
         <div class="text-muted small">ran the page's JavaScript</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small">Interactions</div>
-        <div class="fs-3 fw-semibold">{{ totals.events }}</div>
+        <div class="text-muted small tile-label">Confirmed browser interactions</div>
+        <div class="fs-3 fw-semibold">{{ totals.confirmed_events }}</div>
         <div class="text-muted small">page views, filters, popups opened</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small">Robot visitors</div>
+        <div class="text-muted small tile-label">Robot visitors</div>
         <div class="fs-3 fw-semibold">{{ totals.bots }}</div>
         <div class="text-muted small">crawlers, kept out of the numbers above</div>
       </div>
@@ -206,7 +208,10 @@
     JavaScript &mdash; proof a real browser rendered the page, not just a bot that fetched the HTML.
     Every page load now reports this, so the gap to the visitor count is mostly people with
     JavaScript disabled or blocked, plus any bot that slipped past the crawler check without running
-    scripts. The true human number sits between the two figures, nearer the confirmed one.</p>
+    scripts. The true human number sits between the two figures, nearer the confirmed one.
+    The interaction tile counts only what confirmed browsers did, so unconfirmed traffic
+    cannot pad it; the page-load beacon is left out of that count, since it fires on its own
+    and would otherwise count each page twice.</p>
     <p class="mb-1">The three-way split counts a page as a distinct URL, so reloading the map is
     still one page while the map plus a pool's detail page is two, and it counts as
     &ldquo;used it&rdquo; a popup opened from either the map or the list, a neighborhood picked

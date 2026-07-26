@@ -357,6 +357,30 @@ class RollupTests(TestCase):
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._journey("multi_page"), 1)
 
+    def test_confirmed_event_count_leaves_out_the_page_load_beacon(self):
+        """The beacon duplicates the page view it rides along with, so counting it doubles."""
+        self._event(self.today, visitor="aaa")                        # page view
+        self._event(self.today, visitor="aaa", event="pageview_js")   # its beacon
+        self._event(self.today, visitor="aaa", event="filter")        # a real interaction
+        call_command("rollup_usage", verbosity=0)
+
+        row = UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed")
+        self.assertEqual(row.events, 2)
+        # The all-visitors row is still a raw count, beacon included.
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="").events, 3
+        )
+
+    def test_confirmed_event_count_excludes_unconfirmed_visitors(self):
+        self._event(self.today, visitor="aaa", event="pageview_js")
+        self._event(self.today, visitor="aaa", event="pin_click", key="p")
+        self._event(self.today, visitor="nojs")     # never ran any JavaScript
+        self._event(self.today, visitor="nojs", event="pool_view", key="p")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").events, 1
+        )
+
     def test_run_timestamp_is_recorded_even_with_no_traffic(self):
         """A quiet pass still makes the numbers current, so the clock must advance."""
         self.assertIsNone(UsageRollupState.load().last_run_at)
@@ -430,6 +454,40 @@ class StatsPageTests(TestCase):
         resp = self.client.get("/stats/")
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Test Pool")
+
+    def test_interaction_tile_reports_confirmed_browsers_only(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin4", "a4@example.com", "pw")
+        self.client.login(username="admin4", password="pw")
+        day = timezone.localdate()
+        UsageEvent.objects.create(day=day, event="index", visitor="aaa")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa")
+        UsageEvent.objects.create(day=day, event="filter", visitor="aaa")
+        UsageEvent.objects.create(day=day, event="index", visitor="nojs")
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=7")
+        self.assertEqual(resp.context["totals"]["confirmed_events"], 2)
+        self.assertEqual(resp.context["totals"]["events"], 4)   # every human row
+
+    def test_interaction_types_chart_leaves_out_the_beacon(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin5", "a5@example.com", "pw")
+        self.client.login(username="admin5", password="pw")
+        day = timezone.localdate()
+        for n in range(5):
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}")
+            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}")
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=7")
+        keys = [r["key"] for r in resp.context["events_by_type"]]
+        self.assertNotIn("pageview_js", keys)
+        self.assertIn("index", keys)
+        # Dropped from the chart only — the stored count is still there.
+        self.assertTrue(
+            UsageDaily.objects.filter(day=day, metric="event", key="pageview_js").exists()
+        )
 
     def test_collection_start_shows_only_when_the_window_reaches_it(self):
         from django.contrib.auth.models import User

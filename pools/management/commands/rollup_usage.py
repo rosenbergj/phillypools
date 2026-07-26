@@ -116,8 +116,13 @@ class Command(BaseCommand):
         confirmed = set(
             human.filter(event__in=JS_ONLY_EVENTS).values_list("visitor", flat=True).distinct()
         )
+        # `events` here is what confirmed browsers did, minus the page-load beacon:
+        # it fires by itself on every page and duplicates the page view it
+        # accompanies, so counting it would roughly double the figure. Unlike the
+        # plain "visitors" row above, this one is deliberately not a raw event count.
         put("visitors", "js_confirmed",
-            human.filter(visitor__in=confirmed).count(), len(confirmed))
+            human.filter(visitor__in=confirmed).exclude(event="pageview_js").count(),
+            len(confirmed))
 
         # How far each confirmed browser got: more than one page, one page but they
         # used the map or filters, or one page and nothing else. Only confirmed
