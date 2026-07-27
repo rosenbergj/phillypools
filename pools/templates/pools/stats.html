@@ -171,7 +171,7 @@
     <h2 class="h6 mb-1">How far confirmed browsers got</h2>
     <div class="text-muted small mb-2">
       {% if journey_total %}
-        {{ journey_total }} confirmed visit{{ journey_total|pluralize }} in this window, split {{ journeys|length }} ways
+        {{ journey_total }} confirmed visit{{ journey_total|pluralize }} in this window, split three ways
       {% else %}
         No confirmed browsers in this window yet
       {% endif %}
@@ -182,6 +182,25 @@
           {{ row.label }}
           <div class="text-muted small text-truncate">{{ row.detail }}</div>
         </div>
+        <div class="rank-track"><span class="rank-fill" style="width: {{ row.pct }}%; background: var(--usage-confirmed)"></span></div>
+        <div class="rank-value">{{ row.visitors }} &middot; {{ row.pct }}%</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="border rounded p-3 mb-4">
+    <h2 class="h6 mb-1">One-page, no-interaction visits</h2>
+    <div class="text-muted small mb-2">
+      Confirmed browsers only —
+      {% if one_page_total %}
+        {{ one_page_total }} of them read exactly one page and did nothing else this window, by which page
+      {% else %}
+        none in this window yet
+      {% endif %}
+    </div>
+    {% for row in one_page_breakdown %}
+      <div class="rank-row journey-row">
+        <div class="rank-label">{{ row.label }}</div>
         <div class="rank-track"><span class="rank-fill" style="width: {{ row.pct }}%; background: var(--usage-confirmed)"></span></div>
         <div class="rank-value">{{ row.visitors }} &middot; {{ row.pct }}%</div>
       </div>

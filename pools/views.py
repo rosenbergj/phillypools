@@ -909,30 +909,50 @@ def stats(request):
         .annotate(visitors=Sum("visitors"))
     }
     journey_total = sum(journey_counts.values())
+    # The three passive, single-page keys are stored separately (so the panel below
+    # can break them down by which page it was) but collapse back into one row here
+    # — this panel is about how far someone got, not which page they stalled on.
+    passive_total = (
+        journey_counts.get(JOURNEY_SINGLE_PASSIVE_LIST, 0)
+        + journey_counts.get(JOURNEY_SINGLE_PASSIVE_DETAIL, 0)
+        + journey_counts.get(JOURNEY_SINGLE_PASSIVE_OTHER, 0)
+    )
     journeys = [
         {
-            "key": key,
             "label": label,
             "detail": detail,
-            "visitors": journey_counts.get(key, 0),
-            "pct": round(100 * journey_counts.get(key, 0) / (journey_total or 1)),
+            "visitors": visitors,
+            "pct": round(100 * visitors / (journey_total or 1)),
         }
-        for key, label, detail in [
-            (JOURNEY_MULTI_PAGE, "Looked at more than one page",
-             "Opened a pool's detail page, the submit form, or came back to the map"),
-            (JOURNEY_SINGLE_ENGAGED, "One page, but used it",
-             "Opened a popup from the map or the list, picked a neighborhood, or filtered"),
-            (JOURNEY_SINGLE_PASSIVE_LIST, "Just pool list page",
-             "Read what loaded and did nothing else we can see"),
-            (JOURNEY_SINGLE_PASSIVE_DETAIL, "Just pool detail page",
-             "Read what loaded and did nothing else we can see"),
-            (JOURNEY_SINGLE_PASSIVE_OTHER, "Just some other page",
-             "Read what loaded and did nothing else we can see"),
+        for label, detail, visitors in [
+            ("Looked at more than one page",
+             "Opened a pool's detail page, the submit form, or came back to the map",
+             journey_counts.get(JOURNEY_MULTI_PAGE, 0)),
+            ("One page, but used it",
+             "Opened a popup from the map or the list, picked a neighborhood, or filtered",
+             journey_counts.get(JOURNEY_SINGLE_ENGAGED, 0)),
+            ("One page, then left",
+             "Read what loaded and did nothing else we can see",
+             passive_total),
         ]
-        # "Other" (submit form/confirmation, or no page event at all) is expected to
-        # always be empty — shown only if it ever isn't, so a real stray case can't
-        # go unnoticed but a permanent zero row doesn't clutter the normal view.
-        if key != JOURNEY_SINGLE_PASSIVE_OTHER or journey_counts.get(key, 0) > 0
+    ]
+
+    # How those one-page, no-interaction visits split by which page it was. Its own
+    # panel because it answers a different question than the one above — not how
+    # far someone got, but which single page they were reading when they stopped.
+    # Confirmed browsers only, same as the panel above.
+    one_page_total = passive_total
+    one_page_breakdown = [
+        {
+            "label": label,
+            "visitors": visitors,
+            "pct": round(100 * visitors / (one_page_total or 1)),
+        }
+        for label, visitors in [
+            ("Pool list page", journey_counts.get(JOURNEY_SINGLE_PASSIVE_LIST, 0)),
+            ("Pool detail page", journey_counts.get(JOURNEY_SINGLE_PASSIVE_DETAIL, 0)),
+            ("Other/unknown", journey_counts.get(JOURNEY_SINGLE_PASSIVE_OTHER, 0)),
+        ]
     ]
 
     # The first day anything was recorded, read from the permanent daily table rather
@@ -980,6 +1000,8 @@ def stats(request):
         "events_by_type": events_by_type,
         "journeys": journeys,
         "journey_total": journey_total,
+        "one_page_breakdown": one_page_breakdown,
+        "one_page_total": one_page_total,
         "audience": audience,
         "collection_start": collection_start,
         "raw_retention_days": USAGE_RAW_RETENTION_DAYS,

@@ -896,6 +896,35 @@ class StatsPageTests(TestCase):
             UsageDaily.objects.filter(day=day, metric="event", key="pageview_js").exists()
         )
 
+    def test_one_page_visits_are_collapsed_above_and_split_below(self):
+        """The main journey panel shows one passive-visit row; the new panel breaks it down."""
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin8", "a8@example.com", "pw")
+        self.client.login(username="admin8", password="pw")
+        day = timezone.localdate()
+        UsageEvent.objects.create(day=day, event="index", visitor="lister", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="lister", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pool_view", key="p", visitor="detailer", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="detailer", ua_family="chrome/130")
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=7")
+
+        journey_labels = [row["label"] for row in resp.context["journeys"]]
+        self.assertEqual(journey_labels, [
+            "Looked at more than one page", "One page, but used it", "One page, then left",
+        ])
+        passive_row = resp.context["journeys"][-1]
+        self.assertEqual(passive_row["visitors"], 2)
+
+        breakdown = {row["label"]: row["visitors"] for row in resp.context["one_page_breakdown"]}
+        self.assertEqual(breakdown, {
+            "Pool list page": 1, "Pool detail page": 1, "Other/unknown": 0,
+        })
+        self.assertEqual(resp.context["one_page_total"], 2)
+        self.assertContains(resp, "One-page, no-interaction visits")
+        self.assertContains(resp, "Confirmed browsers only")
+
     def test_collection_start_shows_only_when_the_window_reaches_it(self):
         from django.contrib.auth.models import User
         User.objects.create_superuser("admin3", "a3@example.com", "pw")
