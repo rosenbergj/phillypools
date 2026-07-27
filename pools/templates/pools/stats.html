@@ -171,7 +171,7 @@
     <h2 class="h6 mb-1">How far confirmed browsers got</h2>
     <div class="text-muted small mb-2">
       {% if journey_total %}
-        {{ journey_total }} confirmed visit{{ journey_total|pluralize }} in this window, split three ways
+        {{ journey_total }} confirmed visit{{ journey_total|pluralize }} in this window, split {{ journeys|length }} ways
       {% else %}
         No confirmed browsers in this window yet
       {% endif %}

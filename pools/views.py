@@ -26,7 +26,9 @@ from pools.services.usage import (
     AUDIENCES,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
-    JOURNEY_SINGLE_PASSIVE,
+    JOURNEY_SINGLE_PASSIVE_DETAIL,
+    JOURNEY_SINGLE_PASSIVE_LIST,
+    JOURNEY_SINGLE_PASSIVE_OTHER,
     USAGE_RAW_RETENTION_DAYS,
     classify_device,
     classify_request,
@@ -920,9 +922,17 @@ def stats(request):
              "Opened a pool's detail page, the submit form, or came back to the map"),
             (JOURNEY_SINGLE_ENGAGED, "One page, but used it",
              "Opened a popup from the map or the list, picked a neighborhood, or filtered"),
-            (JOURNEY_SINGLE_PASSIVE, "One page, then left",
+            (JOURNEY_SINGLE_PASSIVE_LIST, "Just pool list page",
+             "Read what loaded and did nothing else we can see"),
+            (JOURNEY_SINGLE_PASSIVE_DETAIL, "Just pool detail page",
+             "Read what loaded and did nothing else we can see"),
+            (JOURNEY_SINGLE_PASSIVE_OTHER, "Just some other page",
              "Read what loaded and did nothing else we can see"),
         ]
+        # "Other" (submit form/confirmation, or no page event at all) is expected to
+        # always be empty — shown only if it ever isn't, so a real stray case can't
+        # go unnoticed but a permanent zero row doesn't clutter the normal view.
+        if key != JOURNEY_SINGLE_PASSIVE_OTHER or journey_counts.get(key, 0) > 0
     ]
 
     # The first day anything was recorded, read from the permanent daily table rather

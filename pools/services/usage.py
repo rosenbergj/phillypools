@@ -204,10 +204,16 @@ AUDIENCE_CONFIRMED = "confirmed"
 AUDIENCES = (AUDIENCE_CONFIRMED, AUDIENCE_HUMAN)
 
 # How a confirmed browser spent their day. Ordered most to least engaged, which is
-# the order /stats/ shows them in.
+# the order /stats/ shows them in. The passive, single-page case is split by which
+# page it was: list and detail are the two pages a real visit is ever just one of,
+# so "other" (the submit form, its confirmation, or no page event at all — just the
+# beacon) is expected to sit at zero and exists only so a stray case isn't silently
+# folded into one of the other two.
 JOURNEY_MULTI_PAGE = "multi_page"
 JOURNEY_SINGLE_ENGAGED = "single_engaged"
-JOURNEY_SINGLE_PASSIVE = "single_passive"
+JOURNEY_SINGLE_PASSIVE_LIST = "single_passive_list"
+JOURNEY_SINGLE_PASSIVE_DETAIL = "single_passive_detail"
+JOURNEY_SINGLE_PASSIVE_OTHER = "single_passive_other"
 
 
 def classify_journey(events) -> str:
@@ -223,7 +229,13 @@ def classify_journey(events) -> str:
         return JOURNEY_MULTI_PAGE
     if any(e in INTERACTION_EVENTS for e, _ in events):
         return JOURNEY_SINGLE_ENGAGED
-    return JOURNEY_SINGLE_PASSIVE
+    if len(pages) == 1:
+        (event, _key), = pages
+        if event == "index":
+            return JOURNEY_SINGLE_PASSIVE_LIST
+        if event == "pool_view":
+            return JOURNEY_SINGLE_PASSIVE_DETAIL
+    return JOURNEY_SINGLE_PASSIVE_OTHER
 
 _SITE_HOSTS = {"phillypools.app", "www.phillypools.app", "localhost", "127.0.0.1"}
 

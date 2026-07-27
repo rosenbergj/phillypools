@@ -18,7 +18,9 @@ from pools.services.usage import (
     AUDIENCE_HUMAN,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
-    JOURNEY_SINGLE_PASSIVE,
+    JOURNEY_SINGLE_PASSIVE_DETAIL,
+    JOURNEY_SINGLE_PASSIVE_LIST,
+    JOURNEY_SINGLE_PASSIVE_OTHER,
     JS_ONLY_EVENTS,
     USAGE_RAW_RETENTION_DAYS,
     classify_journey,
@@ -174,17 +176,24 @@ class Command(BaseCommand):
             len(confirmed), audience=AUDIENCE_CONFIRMED)
 
         # How far each confirmed browser got: more than one page, one page but they
-        # used the map or filters, or one page and nothing else. Only confirmed
-        # browsers are split — for anyone else "did nothing" can't be told apart
-        # from "ran no JavaScript", which would file every bot as a bored reader.
-        # The three buckets partition `confirmed`, so they add back up to it.
+        # used the map or filters, or one page and nothing else (split by whether
+        # that one page was the pool list, a pool detail page, or something else).
+        # Only confirmed browsers are split — for anyone else "did nothing" can't be
+        # told apart from "ran no JavaScript", which would file every bot as a bored
+        # reader. These buckets partition `confirmed`, so they add back up to it.
         by_visitor = {}
         for visitor, event, key in human.filter(visitor__in=confirmed).values_list(
             "visitor", "event", "key"
         ):
             by_visitor.setdefault(visitor, []).append((event, key))
 
-        journeys = {JOURNEY_MULTI_PAGE: [], JOURNEY_SINGLE_ENGAGED: [], JOURNEY_SINGLE_PASSIVE: []}
+        journeys = {
+            JOURNEY_MULTI_PAGE: [],
+            JOURNEY_SINGLE_ENGAGED: [],
+            JOURNEY_SINGLE_PASSIVE_LIST: [],
+            JOURNEY_SINGLE_PASSIVE_DETAIL: [],
+            JOURNEY_SINGLE_PASSIVE_OTHER: [],
+        }
         for visitor, events in by_visitor.items():
             journeys[classify_journey(events)].append(visitor)
 

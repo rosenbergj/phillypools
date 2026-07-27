@@ -538,7 +538,7 @@ class RollupTests(TestCase):
     def _journey(self, key):
         return UsageDaily.objects.get(day=self.today, metric="journey", key=key).visitors
 
-    def test_journeys_split_confirmed_browsers_three_ways(self):
+    def test_journeys_split_confirmed_browsers_by_page(self):
         # Two pages, so multi-page whether or not they touched anything.
         self._event(self.today, visitor="multi")
         self._event(self.today, visitor="multi", event="pageview_js")
@@ -546,18 +546,23 @@ class RollupTests(TestCase):
         # One page, but clicked a pin.
         self._event(self.today, visitor="engaged")
         self._event(self.today, visitor="engaged", event="pin_click", key="p")
-        # One page, beacon only.
-        self._event(self.today, visitor="passive")
-        self._event(self.today, visitor="passive", event="pageview_js")
+        # One page (the list), beacon only.
+        self._event(self.today, visitor="passive_list")
+        self._event(self.today, visitor="passive_list", event="pageview_js")
+        # One page (a pool's detail page), beacon only.
+        self._event(self.today, visitor="passive_detail", event="pool_view", key="p")
+        self._event(self.today, visitor="passive_detail", event="pageview_js")
 
         call_command("rollup_usage", verbosity=0)
 
         self.assertEqual(self._journey("multi_page"), 1)
         self.assertEqual(self._journey("single_engaged"), 1)
-        self.assertEqual(self._journey("single_passive"), 1)
+        self.assertEqual(self._journey("single_passive_list"), 1)
+        self.assertEqual(self._journey("single_passive_detail"), 1)
+        self.assertEqual(self._journey("single_passive_other"), 0)
 
     def test_journeys_add_back_up_to_the_confirmed_total(self):
-        """The three buckets partition confirmed browsers — no one counted twice or lost."""
+        """The journey buckets partition confirmed browsers — no one counted twice or lost."""
         self._event(self.today, visitor="aaa", event="pageview_js")
         self._event(self.today, visitor="bbb", event="filter")
         self._event(self.today, visitor="ccc", event="pageview_js")
@@ -569,7 +574,10 @@ class RollupTests(TestCase):
             day=self.today, metric="visitors", key="js_confirmed"
         ).visitors
         total = sum(
-            self._journey(k) for k in ("multi_page", "single_engaged", "single_passive")
+            self._journey(k) for k in (
+                "multi_page", "single_engaged",
+                "single_passive_list", "single_passive_detail", "single_passive_other",
+            )
         )
         self.assertEqual(total, confirmed)
 
@@ -579,7 +587,8 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="lister", event="card_click", key="p")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._journey("single_engaged"), 1)
-        self.assertEqual(self._journey("single_passive"), 0)
+        self.assertEqual(self._journey("single_passive_list"), 0)
+        self.assertEqual(self._journey("single_passive_detail"), 0)
 
     def test_list_clicks_are_broken_down_per_pool(self):
         self._event(self.today, visitor="aaa", event="card_click", key="mander")
@@ -597,7 +606,8 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="quiet")            # HTML only, never confirmed
         self._event(self.today, visitor="bot1", client_class="bot", event="pageview_js")
         call_command("rollup_usage", verbosity=0)
-        self.assertEqual(self._journey("single_passive"), 0)
+        self.assertEqual(self._journey("single_passive_list"), 0)
+        self.assertEqual(self._journey("single_passive_detail"), 0)
 
     def _visitors(self, key=""):
         return UsageDaily.objects.get(day=self.today, metric="visitors", key=key).visitors
@@ -681,7 +691,7 @@ class RollupTests(TestCase):
         self._event(self.today, visitor="aaa")
         self._event(self.today, visitor="aaa")
         call_command("rollup_usage", verbosity=0)
-        self.assertEqual(self._journey("single_passive"), 1)
+        self.assertEqual(self._journey("single_passive_list"), 1)
         self.assertEqual(self._journey("multi_page"), 0)
 
     def test_two_different_pool_pages_count_as_two_pages(self):
