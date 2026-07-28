@@ -118,8 +118,7 @@ class Command(BaseCommand):
         # A ScheduleChange with no date_to is still "active" indefinitely. At season
         # reset there's no new information coming to close it out, so we give it the
         # pool's (pre-clear) closing date, or Dec 31 of the year it started if the
-        # pool never got a closing date recorded. This also makes it eligible for
-        # the past-change deletion in Step 4.
+        # pool never got a closing date recorded.
         pools_by_id = {p.id: p for p in pools}
         open_ended = ScheduleChange.objects.filter(date_to__isnull=True)
         open_ended_count = 0
@@ -138,18 +137,7 @@ class Command(BaseCommand):
         if open_ended_count:
             self.stdout.write(f"\n{prefix}Ended {open_ended_count} open-ended schedule change(s).\n")
 
-        # --- Step 4: Delete past ScheduleChanges ---
-        past_changes = ScheduleChange.objects.filter(date_to__lt=today)
-        past_count = past_changes.count()
-        if past_count:
-            self.stdout.write(
-                f"{prefix}Deleting {past_count} past schedule change(s) "
-                f"(date_to before {today})."
-            )
-            if not dry_run:
-                past_changes.delete()
-
-        # --- Step 5: Clear display images (with confirmation) ---
+        # --- Step 4: Clear display images (with confirmation) ---
         image_count = len(pools_with_images)
         if image_count:
             self.stdout.write(f"\n{prefix}Display images selected for {image_count} pool(s):")
