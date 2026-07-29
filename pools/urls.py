@@ -7,7 +7,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("neighborhood-at/", views.neighborhood_at, name="neighborhood_at"),
     path("pools-json/", views.pools_json, name="pools_json"),
-    path("pools/<int:pk>/", views.pool_detail_pk_redirect),
+    path("pools/<int:pk>/", views.pool_detail_pk_redirect, name="pool_detail_pk_redirect"),
     path("pools/<slug:slug>/", views.pool_detail, name="pool_detail"),
     path("pools/<int:pk>/like/", views.toggle_like, name="toggle_like"),
     path("submit/thanks/", views.submit_thanks, name="submit_thanks"),

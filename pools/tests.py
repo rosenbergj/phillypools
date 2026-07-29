@@ -374,6 +374,27 @@ class MiddlewareTests(TestCase):
         event = UsageEvent.objects.get(event="probe")
         self.assertNotIn("wp-admin", " ".join(str(v) for v in event.__dict__.values()))
 
+    def test_a_referrerless_legacy_id_hit_marks_the_visitor(self):
+        self.client.get(f"/pools/{self.pool.pk}/", HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(UsageEvent.objects.filter(event="legacy_id").count(), 1)
+
+    def test_a_legacy_id_hit_with_a_referrer_is_left_alone(self):
+        """A search engine still linking the old URL is a real visit, not a scraper's walk."""
+        self.client.get(
+            f"/pools/{self.pool.pk}/",
+            HTTP_USER_AGENT=_REAL_CHROME,
+            HTTP_REFERER="https://www.google.com/search?q=philly+pools",
+        )
+        self.assertEqual(UsageEvent.objects.filter(event="legacy_id").count(), 0)
+
+    def test_a_burst_of_legacy_id_hits_records_one_row(self):
+        other = Pool.objects.create(
+            ppr_amenity_id="t2", name="Other Pool", address="2 Main St", slug="other-pool"
+        )
+        self.client.get(f"/pools/{self.pool.pk}/", HTTP_USER_AGENT=_REAL_CHROME)
+        self.client.get(f"/pools/{other.pk}/", HTTP_USER_AGENT=_REAL_CHROME)
+        self.assertEqual(UsageEvent.objects.filter(event="legacy_id").count(), 1)
+
 
 class PoolClickTests(TestCase):
     """Both popup beacons: the pin on the map and the entry in the list."""
@@ -616,6 +637,15 @@ class RollupTests(TestCase):
         """The scanner also fetched the front page; that request is not a visit either."""
         self._event(self.today, visitor="scanner", event="index")
         self._event(self.today, visitor="scanner", event="probe")
+        self._event(self.today, visitor="real", event="index")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(self._visitors("bot"), 1)
+
+    def test_a_referrerless_legacy_id_hit_discredits_the_visitor(self):
+        """Walking the retired numeric ID space with no referrer is a scraper, not a stray link click."""
+        self._event(self.today, visitor="walker", event="pool_view")
+        self._event(self.today, visitor="walker", event="legacy_id")
         self._event(self.today, visitor="real", event="index")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._visitors(), 1)

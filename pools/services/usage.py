@@ -49,6 +49,10 @@ _BOT_PATTERNS = [
     "netcraft", "read-aloud", "networkingextension", "ahrefs", "semrush",
     "dataprovider", "archive.org", "site24x7", "statuscake",
     "openai", "anthropic", "perplexity",
+    # Catches "GoogleOther" and Google's other non-Googlebot fetchers, which carry
+    # no "bot"/"crawl"/"spider" token of their own. No real browser's UA contains
+    # the word "google".
+    "google",
 ]
 
 # Ways a user-agent can contradict itself. A string that no shipped browser would

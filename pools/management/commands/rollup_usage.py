@@ -98,12 +98,14 @@ class Command(BaseCommand):
             return 0
 
         # A bot verdict belongs to the visitor, not to the one request that earned it.
-        # Two things make that necessary: the header forgery check only runs on page
+        # Three things make that necessary: the header forgery check only runs on page
         # navigations, so a spoofed browser's own beacon POST would come back
-        # "unknown" and quietly readmit it; and a scanner's probe has to discredit the
-        # ordinary-looking requests it made alongside. One bot row taints the day.
+        # "unknown" and quietly readmit it; a scanner's probe has to discredit the
+        # ordinary-looking requests it made alongside; and someone walking the
+        # retired numeric pool IDs with no referrer looks, on the redirected request
+        # itself, like an ordinary pool_view. One bot row taints the day.
         caught = set(
-            events.filter(Q(client_class="bot") | Q(event="probe"))
+            events.filter(Q(client_class="bot") | Q(event="probe") | Q(event="legacy_id"))
             .values_list("visitor", flat=True)
             .distinct()
         )

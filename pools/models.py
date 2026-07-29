@@ -425,6 +425,7 @@ class UsageEvent(models.Model):
         ("submit_view", "Submit form viewed"),
         ("submit_done", "Submission completed"),
         ("probe", "Scanner probe (404)"),
+        ("legacy_id", "Reached a pool by its retired numeric ID, with no referrer"),
         ("other", "Other page"),
     ]
 
