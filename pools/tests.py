@@ -8,9 +8,12 @@ from django.core.management.base import CommandError
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
-from pools.models import Pool, UsageDaily, UsageEvent, UsageRollupState, VisitorSalt
+from pools.models import (
+    Pool, ScheduleChange, UsageDaily, UsageEvent, UsageRollupState, VisitorSalt,
+)
 from pools.services import datacenter, usage
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
+from pools.views import nearby_pools_context
 
 
 def _reset_salt_cache():
@@ -1146,3 +1149,116 @@ class RenderStaticSiteTests(TestCase):
         self._render()
         self.assertFalse(stale.exists())
         self.assertTrue((self.out / "pools" / pool.slug / "index.html").exists())
+
+
+class NearbyPoolsTests(TestCase):
+    """The heading has to describe what the box is actually offering, and the
+    in-season list has to contain only pools someone could swim in today."""
+
+    def setUp(self):
+        self.today = date(2026, 7, 15)
+        # Roughly a mile apart each, north from a fixed point in Philadelphia.
+        self.pools = {}
+        for i, name in enumerate(["Home", "One", "Two", "Three", "Four"]):
+            self.pools[name] = Pool.objects.create(
+                name=f"{name} Pool", ppr_amenity_id=f"id-{i}", address=f"{i} Main St",
+                latitude=39.95 + i * 0.0145, longitude=-75.16,
+                opening_date=date(2026, 6, 1), closing_date=date(2026, 8, 31),
+            )
+
+    def _context(self, pool, offseason=False):
+        return nearby_pools_context(pool, list(Pool.objects.all()), self.today, offseason=offseason)
+
+    def test_open_pool_gets_other_pools_heading(self):
+        ctx = self._context(self.pools["Home"])
+        self.assertEqual(ctx["nearby_heading"], "Closest other pools")
+
+    def test_closed_pool_gets_open_pools_heading(self):
+        home = self.pools["Home"]
+        home.closing_date = date(2026, 7, 1)  # season already over for this pool
+        home.save()
+        ctx = self._context(home)
+        self.assertEqual(ctx["nearby_heading"], "Closest open pools")
+
+    def test_inactive_pool_gets_open_pools_heading(self):
+        home = self.pools["Home"]
+        home.is_active = False
+        home.save()
+        self.assertEqual(self._context(home)["nearby_heading"], "Closest open pools")
+
+    def test_pool_closed_by_schedule_change_is_not_treated_as_open(self):
+        home = self.pools["Home"]
+        ScheduleChange.objects.create(
+            pool=home, date_from=self.today, date_to=self.today, description="Closed today"
+        )
+        # Heading reflects that this pool isn't usable today...
+        self.assertEqual(self._context(home)["nearby_heading"], "Closest open pools")
+        # ...and it's excluded from its neighbours' lists for the same reason.
+        listed = [p.name for p, _ in self._context(self.pools["One"])["nearby_pools"]]
+        self.assertNotIn("Home Pool", listed)
+
+    def test_returns_three_nearest_in_ascending_distance(self):
+        ctx = self._context(self.pools["Home"])
+        names = [p.name for p, _ in ctx["nearby_pools"]]
+        self.assertEqual(names, ["One Pool", "Two Pool", "Three Pool"])
+        distances = [m for _, m in ctx["nearby_pools"]]
+        self.assertEqual(distances, sorted(distances))
+        self.assertAlmostEqual(distances[0], 1.0, places=1)
+
+    def test_the_pool_itself_is_never_listed(self):
+        for name in self.pools:
+            listed = [p.pk for p, _ in self._context(self.pools[name])["nearby_pools"]]
+            self.assertNotIn(self.pools[name].pk, listed)
+
+    def test_degrades_when_fewer_than_three_pools_are_open(self):
+        Pool.objects.exclude(pk__in=[self.pools["Home"].pk, self.pools["One"].pk]).delete()
+        ctx = self._context(self.pools["Home"])
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["One Pool"])
+
+    def test_empty_when_nothing_else_is_open(self):
+        Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
+        ctx = self._context(self.pools["Home"])
+        self.assertEqual(ctx["nearby_pools"], [])
+
+    def test_closed_pools_are_excluded_in_season(self):
+        Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
+        far = Pool.objects.create(
+            name="Far Pool", ppr_amenity_id="far", address="9 Main St",
+            latitude=40.10, longitude=-75.16,
+            opening_date=date(2026, 6, 1), closing_date=date(2026, 8, 31),
+        )
+        ctx = self._context(self.pools["Home"])
+        # The only open pool is the distant one; nearer pools are shut.
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], [far.name])
+
+    def test_offseason_lists_pools_regardless_of_status(self):
+        Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
+        ctx = self._context(self.pools["Home"], offseason=True)
+        self.assertEqual(ctx["nearby_heading"], "Closest pools")
+        self.assertEqual(
+            [p.name for p, _ in ctx["nearby_pools"]],
+            ["One Pool", "Two Pool", "Three Pool"],
+        )
+
+    def test_pools_without_coordinates_are_skipped(self):
+        Pool.objects.filter(pk=self.pools["One"].pk).update(latitude=None, longitude=None)
+        ctx = self._context(self.pools["Home"])
+        self.assertNotIn("One Pool", [p.name for p, _ in ctx["nearby_pools"]])
+
+    def test_no_box_for_a_pool_without_coordinates(self):
+        home = self.pools["Home"]
+        Pool.objects.filter(pk=home.pk).update(latitude=None, longitude=None)
+        home.refresh_from_db()
+        self.assertEqual(self._context(home)["nearby_pools"], [])
+
+    def test_detail_page_renders_the_box_with_linked_names(self):
+        resp = self.client.get(self.pools["Home"].get_absolute_url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Closest other pools")
+        self.assertContains(resp, f'href="{self.pools["One"].get_absolute_url()}"')
+
+    def test_box_is_omitted_from_the_page_when_there_is_nothing_to_show(self):
+        Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
+        resp = self.client.get(self.pools["Home"].get_absolute_url())
+        self.assertNotContains(resp, "Closest open pools")
+        self.assertNotContains(resp, "Closest other pools")

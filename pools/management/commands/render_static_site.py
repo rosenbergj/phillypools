@@ -19,6 +19,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from pools.models import Pool
+from pools.views import nearby_pools_context
 
 DEFAULT_BASE_URL = "https://phillypools.app"
 
@@ -123,7 +124,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.verbosity = options["verbosity"]
-        season_year = options["season_year"] or timezone.localdate().year
+        today = timezone.localdate()
+        season_year = options["season_year"] or today.year
         next_year = season_year + 1
         base_url = options["base_url"].rstrip("/")
         out = Path(options["out"] or Path(settings.BASE_DIR) / "offseason-build")
@@ -186,6 +188,9 @@ class Command(BaseCommand):
                     "pool": pool,
                     "season": season,
                     "did_not_open": did_not_open,
+                    # Offseason: neighbours regardless of status, since nothing is open
+                    # and an inactive pool is still a place someone may want to know about.
+                    **nearby_pools_context(pool, pools, today, offseason=True),
                     "page_title": f"{pool.name} — {season_year} Schedule — Philly Pools",
                     "meta_description": (
                         f"{pool.name}, a Philadelphia public pool{where}. "
@@ -235,7 +240,7 @@ class Command(BaseCommand):
                 {
                     **shared,
                     "pools": pools,
-                    "rendered_on": timezone.localdate(),
+                    "rendered_on": today,
                     **extra,
                 },
             )

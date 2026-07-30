@@ -242,6 +242,53 @@ def _annotate_active_schedule_changes(pools, today):
         pool.active_schedule_change = changes_by_pool.get(pool.id)
 
 
+def nearest_pools(pool, candidates, limit=3):
+    """The `limit` pools nearest `pool`, as [(other_pool, miles), ...].
+
+    Straight-line distance — there's no routing service in the stack, and for
+    "which pool is closest" over a few miles of city grid it's close enough.
+    Candidates without coordinates are skipped rather than sorted to the end,
+    since an unplaceable pool can't be described as near anything.
+    """
+    if pool.latitude is None or pool.longitude is None:
+        return []
+    scored = [
+        (other, _haversine_miles(pool.latitude, pool.longitude, other.latitude, other.longitude))
+        for other in candidates
+        if other.pk != pool.pk and other.latitude is not None and other.longitude is not None
+    ]
+    # Name breaks ties so equidistant pools don't reorder between renders.
+    scored.sort(key=lambda pair: (pair[1], pair[0].name))
+    return scored[:limit]
+
+
+def nearby_pools_context(pool, all_pools, today, offseason=False):
+    """Context for the "closest pools" box on a detail page.
+
+    The heading depends on what the box is offering, so it can't be a fixed
+    string: in season it lists pools open *today*, which is either an
+    alternative to a closed pool or a companion to an open one. Out of season
+    nothing is open, so it lists neighbours regardless of status.
+    """
+    if offseason:
+        return {
+            "nearby_heading": "Closest pools",
+            "nearby_pools": nearest_pools(pool, all_pools),
+        }
+
+    # `pool` is a different instance from its twin in `all_pools`, so it needs the
+    # annotation too — otherwise _pool_map_status reads a pool closed by an emergency
+    # schedule change as open. Listing it twice is harmless: the lookup is by pool_id.
+    _annotate_active_schedule_changes([*all_pools, pool], today)
+
+    open_pools = [p for p in all_pools if _pool_map_status(p, today) == "open"]
+    this_pool_open = _pool_map_status(pool, today) == "open"
+    return {
+        "nearby_heading": "Closest other pools" if this_pool_open else "Closest open pools",
+        "nearby_pools": nearest_pools(pool, open_pools),
+    }
+
+
 def _annotate_likes(pools, voter_id: str, year: int):
     from django.db.models import Count
 
@@ -493,6 +540,10 @@ def pool_detail(request, slug):
         except PoolSeasonHistory.DoesNotExist:
             pass
 
+    # Every pool is a candidate; the open-today filter inside does the narrowing, and
+    # an inactive pool is excluded on its own merits rather than by an is_active check.
+    nearby = nearby_pools_context(pool, list(Pool.objects.all()), today)
+
     return render(request, "pools/detail.html", {
         "pool": pool,
         "schedule_changes": schedule_changes,
@@ -503,6 +554,7 @@ def pool_detail(request, slug):
         "total_like_count": pool.likes.count(),
         "user_liked": bool(voter_id) and pool.likes.filter(voter_id=voter_id, year=year).exists(),
         "prior_schedule": prior_schedule,
+        **nearby,
     })
 
 

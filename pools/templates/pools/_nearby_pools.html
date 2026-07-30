@@ -1,0 +1,19 @@
+{% comment %}
+Shared by the live detail page and the static offseason archive, so the box reads
+the same in both. `nearby_heading` carries the season-dependent wording; the
+distances are plain text because only the names are navigable.
+
+Renders nothing when the list is empty — with three or fewer pools open citywide
+a "closest open pools" box with no pools in it would raise a question it can't
+answer.
+{% endcomment %}
+{% if nearby_pools %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h6 text-uppercase text-muted mb-2">{{ nearby_heading }}</h2>
+      <p class="mb-0">
+        {% for other, miles in nearby_pools %}<a href="{{ other.get_absolute_url }}">{{ other.name }}</a> ({{ miles|floatformat:1 }} mi){% if not forloop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+  </div>
+{% endif %}
