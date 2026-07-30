@@ -54,8 +54,10 @@ Three things to know:
 - **`--season-year` defaults to the current calendar year**, which is right for a fall
   shutdown. Pass it explicitly if you're doing this after January 1.
 
-Check the output: it lists any pools that had no schedule for the season and fell back
-to generic-hours copy. Then preview the whole thing locally before you deploy it:
+The output reports how many pools had no schedule for the season and so use the
+generic-hours copy (`-v 2` lists them). Expect roughly half — PPR doesn't publish hours
+for many pools and for some they aren't online anywhere, so this is the normal state and
+not something to chase before deploying. Then preview the whole thing locally:
 
 ```bash
 python -m http.server -d offseason-build

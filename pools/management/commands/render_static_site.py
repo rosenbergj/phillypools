@@ -233,15 +233,18 @@ class Command(BaseCommand):
             (out / name).write_text(content, encoding="utf-8")
             self._say(f"Rendered {name}")
 
+        # Not a warning: PPR simply doesn't publish hours for many pools, and roughly
+        # half the inventory having no schedule is the normal, expected state. Reported
+        # as a plain count so it reads as coverage information rather than a problem to
+        # go fix; pass -v 2 for the names.
         if pools_without_schedule:
             self._say(
-                self.style.WARNING(
-                    f"\n{len(pools_without_schedule)} pool(s) have no {season_year} schedule "
-                    f"and fell back to the generic-hours copy:"
-                )
+                f"\n{len(pools_without_schedule)} of {len(pools)} pool(s) have no "
+                f"{season_year} schedule and use the generic-hours copy."
             )
-            for name in pools_without_schedule:
-                self._say(f"  {name}")
+            if self.verbosity >= 2:
+                for name in pools_without_schedule:
+                    self._say(f"  {name}")
 
         self._say(
             self.style.SUCCESS(
