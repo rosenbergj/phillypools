@@ -1069,19 +1069,45 @@ class RenderStaticSiteTests(TestCase):
         for leaked in ("Closed for the season", "page-loaded", "csrfmiddlewaretoken", "like-btn"):
             self.assertNotIn(leaked, html)
 
-    def test_inactive_pools_are_excluded_like_the_live_sitemap(self):
+    def test_inactive_pools_get_a_page_but_stay_out_of_the_sitemap(self):
+        # The live site serves inactive pool URLs (they 200) but PoolSitemap omits
+        # them. The archive matches that, so the pages are linkable without being
+        # advertised for indexing.
         active = self._make_pool("Active Pool")
         inactive = self._make_pool("Inactive Pool", is_active=False)
         self._render()
         self.assertTrue((self.out / "pools" / active.slug / "index.html").exists())
-        self.assertFalse((self.out / "pools" / inactive.slug / "index.html").exists())
+        self.assertTrue((self.out / "pools" / inactive.slug / "index.html").exists())
         sitemap = (self.out / "sitemap.xml").read_text()
         self.assertIn(active.get_absolute_url(), sitemap)
         self.assertNotIn(inactive.get_absolute_url(), sitemap)
 
-    def test_sitemap_lists_the_homepage_and_every_pool(self):
+    def test_pool_that_did_not_open_says_so_in_the_past_tense(self):
+        pool = self._make_pool("Shuttered Pool", is_active=False)
+        self._render()
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertIn("Did not open", html)
+        self.assertIn("did not open in 2026", html)
+        # Nothing may claim anything about the season that hasn't happened yet.
+        self.assertNotIn("expected to open", html)
+        # Generic citywide hours would imply this pool kept them.
+        self.assertNotIn("11–7 on weekdays", html)
+
+    def test_inactive_pool_that_did_open_reads_as_a_normal_season(self):
+        # Deactivated after the fact — it did open, so past-tense "did not open" is wrong.
+        pool = self._make_pool(
+            "Late Closure Pool", is_active=False,
+            opening_date=date(2026, 6, 17), closing_date=date(2026, 7, 1),
+        )
+        self._render()
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertNotIn("Did not open", html)
+        self.assertIn("June 17, 2026", html)
+
+    def test_sitemap_lists_the_homepage_and_every_active_pool(self):
         for name in ("A Pool", "B Pool"):
             self._make_pool(name)
+        self._make_pool("Inactive Pool", is_active=False)
         self._render()
         sitemap = (self.out / "sitemap.xml").read_text()
         minidom.parseString(sitemap)  # must be well-formed or GSC rejects it
@@ -1090,8 +1116,11 @@ class RenderStaticSiteTests(TestCase):
 
     def test_index_links_every_pool_so_the_pages_are_not_orphans(self):
         pools = [self._make_pool(n) for n in ("A Pool", "B Pool", "C Pool")]
+        pools.append(self._make_pool("D Pool", is_active=False))
         self._render()
         index = (self.out / "index.html").read_text()
+        # Inactive pools included: they have pages now, and an unlinked page is
+        # reachable only via the sitemap it's deliberately absent from.
         for pool in pools:
             self.assertIn(f'href="{pool.get_absolute_url()}"', index)
         self.assertIn("Hope you had a great summer!", index)

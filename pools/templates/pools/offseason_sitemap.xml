@@ -6,7 +6,7 @@
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
   </url>
-{% for pool in pools %}  <url>
+{% for pool in sitemap_pools %}  <url>
     <loc>{{ base_url }}{{ pool.get_absolute_url }}</loc>
 {% if pool.last_updated %}    <lastmod>{{ pool.last_updated|date:"Y-m-d" }}</lastmod>
 {% endif %}    <changefreq>monthly</changefreq>

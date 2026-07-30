@@ -78,6 +78,17 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       text-decoration: none;
     }
     .pools a:hover { text-decoration: underline; }
+    .pools .tag {
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: #842029;
+      border: 1px solid #e3bfc3;
+      border-radius: 3px;
+      padding: .05rem .3rem;
+      margin-left: .35rem;
+      vertical-align: 1px;
+    }
     .pools .where {
       display: block;
       font-size: .85rem;
@@ -102,6 +113,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       {% for pool in pools %}
         <li>
           <a href="{{ pool.get_absolute_url }}">{{ pool.name }}</a>
+          {% if not pool.is_active %}<span class="tag">did not open</span>{% endif %}
           <span class="where">{% if pool.neighborhood %}{{ pool.neighborhood }} &middot; {% endif %}{{ pool.address }}</span>
         </li>
       {% endfor %}

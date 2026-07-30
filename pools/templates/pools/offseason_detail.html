@@ -40,6 +40,9 @@ pools/detail.html, which is built entirely around timezone.localdate().
   <div class="d-flex align-items-center gap-2 mt-2 mb-1">
     <h1 class="h3 mb-0">{{ pool.name }}</h1>
     <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
+    {% if did_not_open %}
+      <span class="badge" style="background:#842029">Did not open</span>
+    {% endif %}
   </div>
 
   <p class="text-muted mb-3">
@@ -55,9 +58,15 @@ pools/detail.html, which is built entirely around timezone.localdate().
   </p>
 
   <div class="alert alert-secondary py-2 mb-4 small">
-    The {{ season_year }} season has ended and Philly Pools is on its offseason break.
-    {{ next_year }} opening dates and hours haven't been announced yet — this page will
-    be updated with them in the spring. Below is what we recorded for {{ season_year }}.
+    {% if did_not_open %}
+      This pool did not open in {{ season_year }}. Philly Pools is on its offseason
+      break; {{ next_year }} opening dates and hours haven't been announced yet, and
+      this page will be updated in the spring with whatever we learn.
+    {% else %}
+      The {{ season_year }} season has ended and Philly Pools is on its offseason break.
+      {{ next_year }} opening dates and hours haven't been announced yet — this page will
+      be updated with them in the spring. Below is what we recorded for {{ season_year }}.
+    {% endif %}
   </div>
 
   <div class="card mb-4">
@@ -65,27 +74,36 @@ pools/detail.html, which is built entirely around timezone.localdate().
       <h2 class="h6 text-uppercase text-muted mb-3">{{ season_year }} season</h2>
       <dl class="row mb-0">
 
-        <dt class="col-sm-4">Opened</dt>
-        <dd class="col-sm-8">
-          {% if season.opening_date %}
-            {{ season.opening_date|date:"F j, Y" }}
-          {% else %}
-            <span class="text-muted">Not recorded</span>
-          {% endif %}
-        </dd>
+        {% if did_not_open %}
 
-        <dt class="col-sm-4">Closed</dt>
-        <dd class="col-sm-8">
-          {% if season.closing_date %}
-            {{ season.closing_date|date:"F j, Y" }}
-          {% else %}
-            <span class="text-muted">Not recorded</span>
-          {% endif %}
-        </dd>
+          <dt class="col-sm-4">{{ season_year }}</dt>
+          <dd class="col-sm-8">Did not open</dd>
 
-        {% if season.duration %}
-        <dt class="col-sm-4">Open for</dt>
-        <dd class="col-sm-8">{{ season.duration }}</dd>
+        {% else %}
+
+          <dt class="col-sm-4">Opened</dt>
+          <dd class="col-sm-8">
+            {% if season.opening_date %}
+              {{ season.opening_date|date:"F j, Y" }}
+            {% else %}
+              <span class="text-muted">Not recorded</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-sm-4">Closed</dt>
+          <dd class="col-sm-8">
+            {% if season.closing_date %}
+              {{ season.closing_date|date:"F j, Y" }}
+            {% else %}
+              <span class="text-muted">Not recorded</span>
+            {% endif %}
+          </dd>
+
+          {% if season.duration %}
+          <dt class="col-sm-4">Open for</dt>
+          <dd class="col-sm-8">{{ season.duration }}</dd>
+          {% endif %}
+
         {% endif %}
 
         <dt class="col-sm-4">{{ next_year }} dates</dt>
@@ -115,7 +133,11 @@ pools/detail.html, which is built entirely around timezone.localdate().
         {% endif %}
       </div>
     </div>
-  {% else %}
+  {% elif not did_not_open %}
+    {% comment %}
+    Omitted entirely for a pool that didn't open: describing typical citywide hours
+    would imply this pool kept them.
+    {% endcomment %}
     <div class="card mb-4">
       <div class="card-body">
         <h2 class="h6 text-uppercase text-muted mb-3">{{ season_year }} schedule</h2>

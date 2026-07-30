@@ -29,8 +29,14 @@ anything leftover so you start the next season clean.
 python manage.py render_static_site --season-year 2026
 ```
 
-This writes `offseason-build/` — an archived page for every active pool at its real
-URL (`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, and a `404.html`.
+This writes `offseason-build/` — an archived page for every pool at its real URL
+(`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, and a `404.html`.
+
+Inactive pools get a page too, matching the live site, where those URLs serve fine but
+are absent from `PoolSitemap`. So the sitemap lists only the active pools while every
+pool stays linkable. A pool that never opened is labeled "Did not open" in the past
+tense and skips the typical-citywide-hours copy, which would otherwise imply it kept
+those hours.
 
 **Why this exists:** the alternative — redirecting every pool URL to a single
 "see you in the spring" page — quietly costs the site its search presence every
