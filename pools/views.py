@@ -269,23 +269,52 @@ def nearby_pools_context(pool, all_pools, today, offseason=False):
     string: in season it lists pools open *today*, which is either an
     alternative to a closed pool or a companion to an open one. Out of season
     nothing is open, so it lists neighbours regardless of status.
+
+    Returns `nearby_heading`, `nearby_pools`, and two flags the template uses to
+    say something more useful than a bare list when the city is nearly shut:
+    `nearby_only_open` (this is the sole open pool) and `nearby_exhaustive` (the
+    list isn't a top-3, it's everything there is).
     """
     if offseason:
         return {
             "nearby_heading": "Closest pools",
             "nearby_pools": nearest_pools(pool, all_pools),
+            "nearby_only_open": False,
+            "nearby_exhaustive": False,
         }
 
     # `pool` is a different instance from its twin in `all_pools`, so it needs the
     # annotation too — otherwise _pool_map_status reads a pool closed by an emergency
     # schedule change as open. Listing it twice is harmless: the lookup is by pool_id.
     _annotate_active_schedule_changes([*all_pools, pool], today)
-
     open_pools = [p for p in all_pools if _pool_map_status(p, today) == "open"]
+
+    # Nothing open anywhere — mid-season citywide closure, or the season's over but
+    # the site is still live. "Closest open pools" has no answer, so present it the
+    # way the offseason archive does: nearest neighbours regardless of status.
+    if not open_pools:
+        return nearby_pools_context(pool, all_pools, today, offseason=True)
+
     this_pool_open = _pool_map_status(pool, today) == "open"
+    heading = "Closest other pools" if this_pool_open else "Closest open pools"
+
+    # Checked against the open count rather than an empty result list, so a pool
+    # missing coordinates doesn't get told it's the only one open.
+    if this_pool_open and len(open_pools) == 1:
+        return {
+            "nearby_heading": heading,
+            "nearby_pools": [],
+            "nearby_only_open": True,
+            "nearby_exhaustive": False,
+        }
+
+    listed = nearest_pools(pool, open_pools)
     return {
-        "nearby_heading": "Closest other pools" if this_pool_open else "Closest open pools",
-        "nearby_pools": nearest_pools(pool, open_pools),
+        "nearby_heading": heading,
+        "nearby_pools": listed,
+        "nearby_only_open": False,
+        # Fewer than the three we'd have shown, so this is the complete set.
+        "nearby_exhaustive": len(listed) <= 2,
     }
 
 

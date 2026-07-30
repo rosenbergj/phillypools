@@ -1215,10 +1215,11 @@ class NearbyPoolsTests(TestCase):
         ctx = self._context(self.pools["Home"])
         self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["One Pool"])
 
-    def test_empty_when_nothing_else_is_open(self):
+    def test_sole_open_pool_says_so_instead_of_listing_nothing(self):
         Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
         ctx = self._context(self.pools["Home"])
         self.assertEqual(ctx["nearby_pools"], [])
+        self.assertTrue(ctx["nearby_only_open"])
 
     def test_closed_pools_are_excluded_in_season(self):
         Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
@@ -1257,8 +1258,92 @@ class NearbyPoolsTests(TestCase):
         self.assertContains(resp, "Closest other pools")
         self.assertContains(resp, f'href="{self.pools["One"].get_absolute_url()}"')
 
-    def test_box_is_omitted_from_the_page_when_there_is_nothing_to_show(self):
+    def test_page_shows_the_sole_open_pool_message(self):
         Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)
         resp = self.client.get(self.pools["Home"].get_absolute_url())
-        self.assertNotContains(resp, "Closest open pools")
-        self.assertNotContains(resp, "Closest other pools")
+        self.assertContains(resp, "Closest other pools")
+        self.assertContains(resp, "This is the only pool open today.")
+
+
+class NearbyPoolsScarcityTests(TestCase):
+    """What the box does when almost nothing is open — the cases where the
+    heading and the emptiness rule interact."""
+
+    def setUp(self):
+        self.today = date(2026, 7, 15)
+        self.a, self.b, self.c = [
+            Pool.objects.create(
+                name=f"{n} Pool", ppr_amenity_id=f"id-{n}", address=f"{i} Main St",
+                latitude=39.95 + i * 0.0145, longitude=-75.16,
+            )
+            for i, n in enumerate(["A", "B", "C"])
+        ]
+
+    def _open(self, *pools):
+        for pool in pools:
+            pool.opening_date = date(2026, 6, 1)
+            pool.closing_date = date(2026, 8, 31)
+            pool.save()
+
+    def _ctx(self, pool):
+        return nearby_pools_context(pool, list(Pool.objects.all()), self.today)
+
+    def test_viewing_the_only_open_pool_says_so(self):
+        self._open(self.a)
+        ctx = self._ctx(self.a)
+        # Heading is not singularized; the body carries the meaning.
+        self.assertEqual(ctx["nearby_heading"], "Closest other pools")
+        self.assertTrue(ctx["nearby_only_open"])
+        self.assertEqual(ctx["nearby_pools"], [])
+        resp = self.client.get(self.a.get_absolute_url())
+        self.assertContains(resp, "Closest other pools")
+        self.assertContains(resp, "This is the only pool open today.")
+
+    def test_one_open_pool_elsewhere_is_listed_with_thats_it(self):
+        self._open(self.c)
+        ctx = self._ctx(self.a)
+        self.assertEqual(ctx["nearby_heading"], "Closest open pools")
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["C Pool"])
+        self.assertTrue(ctx["nearby_exhaustive"])
+        resp = self.client.get(self.a.get_absolute_url())
+        self.assertContains(resp, f'href="{self.c.get_absolute_url()}"')
+        self.assertContains(resp, "and that's it!")
+
+    def test_two_open_pools_viewing_one_lists_just_the_other(self):
+        self._open(self.a, self.b)
+        ctx = self._ctx(self.a)
+        self.assertEqual(ctx["nearby_heading"], "Closest other pools")
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["B Pool"])
+        self.assertTrue(ctx["nearby_exhaustive"])
+
+    def test_two_open_pools_viewing_a_closed_one_lists_both(self):
+        self._open(self.a, self.b)
+        ctx = self._ctx(self.c)
+        self.assertEqual(ctx["nearby_heading"], "Closest open pools")
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["B Pool", "A Pool"])
+        self.assertTrue(ctx["nearby_exhaustive"])
+
+    def test_three_listed_pools_get_no_thats_it(self):
+        d = Pool.objects.create(
+            name="D Pool", ppr_amenity_id="id-D", address="9 Main St",
+            latitude=40.10, longitude=-75.16,
+        )
+        self._open(self.a, self.b, self.c, d)
+        ctx = self._ctx(self.a)
+        self.assertEqual(len(ctx["nearby_pools"]), 3)
+        self.assertFalse(ctx["nearby_exhaustive"])
+        resp = self.client.get(self.a.get_absolute_url())
+        self.assertNotContains(resp, "and that's it!")
+
+    def test_all_pools_closed_falls_back_to_offseason_presentation(self):
+        # No pool has dates, so nothing is open. "Closest open pools" has no answer.
+        ctx = self._ctx(self.a)
+        self.assertEqual(ctx["nearby_heading"], "Closest pools")
+        self.assertEqual([p.name for p, _ in ctx["nearby_pools"]], ["B Pool", "C Pool"])
+        self.assertFalse(ctx["nearby_only_open"])
+
+    def test_all_pools_closed_lists_inactive_pools_too(self):
+        Pool.objects.filter(pk=self.b.pk).update(is_active=False)
+        ctx = self._ctx(self.a)
+        self.assertEqual(ctx["nearby_heading"], "Closest pools")
+        self.assertIn("B Pool", [p.name for p, _ in ctx["nearby_pools"]])
