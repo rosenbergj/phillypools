@@ -1,6 +1,7 @@
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from xml.dom import minidom
 
 from django.core.management import call_command
@@ -9,11 +10,12 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from pools.models import (
-    Pool, ScheduleChange, UsageDaily, UsageEvent, UsageRollupState, VisitorSalt,
+    Pool, ScheduleChange, Submission, SubmissionThrottle, UsageDaily, UsageEvent,
+    UsageRollupState, VisitorSalt,
 )
 from pools.services import datacenter, usage
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
-from pools.views import nearby_pools_context
+from pools.views import SUBMISSION_DAILY_LIMIT, SUBMISSION_DAILY_LIMIT_STAFF, nearby_pools_context
 
 
 def _reset_salt_cache():
@@ -226,12 +228,24 @@ class ForgedHeaderTests(TestCase):
         req = self._request(ua="Mozilla/5.0 (Macintosh)", secure=True)
         self.assertFalse(usage.forged_browser_headers(req))
 
+    def test_ua_version_disagreeing_with_client_hints_is_forged(self):
+        """A rotated UA string with the real engine's client hints still showing through."""
+        headers = self._real_browser_headers()
+        headers["HTTP_SEC_CH_UA"] = '"Chromium";v="130", "Google Chrome";v="130"'
+        req = self._request(ua=_REAL_CHROME.replace("Chrome/130", "Chrome/145"), secure=True, **headers)
+        self.assertEqual(usage.classify_request(req, navigation=True), "bot")
+
+    def test_ua_version_agreeing_with_client_hints_passes(self):
+        req = self._request(secure=True, **self._real_browser_headers())
+        self.assertEqual(usage.classify_request(req, navigation=True), "unknown")
+
 
 class DatacenterRangeTests(TestCase):
     def test_hosting_providers_are_recognised(self):
         for ip, provider in [
             ("43.164.1.211", "Tencent Cloud"),
             ("49.51.243.156", "Tencent Cloud"),
+            ("49.234.192.248", "Tencent Cloud"),
             ("172.236.148.120", "Linode"),
             ("3.14.15.92", "AWS"),
             ("20.1.2.3", "Azure"),
@@ -401,6 +415,83 @@ class MiddlewareTests(TestCase):
         self.client.get(f"/pools/{self.pool.pk}/", HTTP_USER_AGENT=_REAL_CHROME)
         self.client.get(f"/pools/{other.pk}/", HTTP_USER_AGENT=_REAL_CHROME)
         self.assertEqual(UsageEvent.objects.filter(event="legacy_id").count(), 1)
+
+
+class SubmissionThrottleTests(TestCase):
+    def setUp(self):
+        _reset_salt_cache()
+        self.pool = Pool.objects.create(
+            ppr_amenity_id="t1", name="Test Pool", address="1 Main St", slug="test-pool"
+        )
+
+    def _visitor_for(self, ip, ua):
+        req = _fake_request(ip, ua)
+        return usage.visitor_hash(req, timezone.localdate())
+
+    @patch("pools.views.threading.Thread")
+    def test_under_the_limit_goes_through(self, mock_thread):
+        ip, ua = "203.0.113.50", "Mozilla/5.0 (Macintosh)"
+        resp = self.client.post(
+            "/submit/",
+            {"url": "https://example.com/photo", "pool_id": str(self.pool.pk)},
+            REMOTE_ADDR=ip, HTTP_USER_AGENT=ua,
+        )
+        self.assertRedirects(resp, f"/submit/thanks/?pool={self.pool.pk}")
+        self.assertEqual(Submission.objects.count(), 1)
+        visitor = self._visitor_for(ip, ua)
+        self.assertEqual(SubmissionThrottle.objects.get(visitor=visitor).count, 1)
+
+    def test_over_the_limit_is_redirected_without_creating_a_submission(self):
+        ip, ua = "203.0.113.51", "Mozilla/5.0 (Macintosh)"
+        visitor = self._visitor_for(ip, ua)
+        SubmissionThrottle.objects.create(
+            day=timezone.localdate(), visitor=visitor, count=SUBMISSION_DAILY_LIMIT
+        )
+        resp = self.client.post(
+            "/submit/",
+            {"url": "https://example.com/photo", "pool_id": str(self.pool.pk)},
+            REMOTE_ADDR=ip, HTTP_USER_AGENT=ua,
+        )
+        self.assertRedirects(resp, f"/submit/thanks/?pool={self.pool.pk}")
+        self.assertEqual(Submission.objects.count(), 0)
+        throttle = SubmissionThrottle.objects.get(visitor=visitor)
+        self.assertEqual(throttle.count, SUBMISSION_DAILY_LIMIT + 1)
+
+    @patch("pools.views.threading.Thread")
+    def test_staff_get_a_higher_limit(self, mock_thread):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin", "a@example.com", "pw")
+        self.client.login(username="admin", password="pw")
+        ip, ua = "203.0.113.52", "Mozilla/5.0 (Macintosh)"
+        visitor = self._visitor_for(ip, ua)
+        SubmissionThrottle.objects.create(
+            day=timezone.localdate(), visitor=visitor, count=SUBMISSION_DAILY_LIMIT + 5
+        )
+        resp = self.client.post(
+            "/submit/",
+            {"url": "https://example.com/photo", "pool_id": str(self.pool.pk)},
+            REMOTE_ADDR=ip, HTTP_USER_AGENT=ua,
+        )
+        self.assertRedirects(resp, f"/submit/thanks/?pool={self.pool.pk}")
+        self.assertEqual(Submission.objects.count(), 1)
+
+    @patch("pools.views.threading.Thread")
+    def test_staff_can_still_be_throttled_past_their_own_limit(self, mock_thread):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin", "a@example.com", "pw")
+        self.client.login(username="admin", password="pw")
+        ip, ua = "203.0.113.53", "Mozilla/5.0 (Macintosh)"
+        visitor = self._visitor_for(ip, ua)
+        SubmissionThrottle.objects.create(
+            day=timezone.localdate(), visitor=visitor, count=SUBMISSION_DAILY_LIMIT_STAFF
+        )
+        resp = self.client.post(
+            "/submit/",
+            {"url": "https://example.com/photo", "pool_id": str(self.pool.pk)},
+            REMOTE_ADDR=ip, HTTP_USER_AGENT=ua,
+        )
+        self.assertRedirects(resp, f"/submit/thanks/?pool={self.pool.pk}")
+        self.assertEqual(Submission.objects.count(), 0)
 
 
 class PoolClickTests(TestCase):

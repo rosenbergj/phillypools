@@ -267,6 +267,26 @@ class Submission(models.Model):
         return f"{self.url} ({self.submitted_at:%Y-%m-%d})"
 
 
+class SubmissionThrottle(models.Model):
+    """
+    How many submissions one visitor has made today.
+
+    Turnstile is the front door, but a solved (or leaked) token shouldn't be able
+    to flood the LLM-parsing and image-moderation calls each submission triggers —
+    this caps that independent of whether Turnstile was passed. Keyed by the same
+    daily-rotating visitor pseudonym as UsageEvent, so it carries no more identity
+    than that already does.
+    """
+    day = models.DateField(db_index=True)
+    visitor = models.CharField(max_length=16)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["day", "visitor"], name="unique_submission_throttle_day_visitor"),
+        ]
+
+
 class HeatHealthEmergency(models.Model):
     """A single Philadelphia-declared Heat Health Emergency, with a start and (once known) end."""
     starts_at = models.DateTimeField()

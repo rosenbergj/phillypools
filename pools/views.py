@@ -7,7 +7,7 @@ from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Min, Sum
+from django.db.models import F, Min, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST
 
 from pools.models import (
     Pool, PoolLike, PoolSeasonHistory, ScheduleChange, Submission,
-    UsageDaily, UsageEvent, UsageRollupState,
+    SubmissionThrottle, UsageDaily, UsageEvent, UsageRollupState,
 )
 from pools.services.datacenter import is_datacenter_ip
 from pools.services.geocoder import geocode_zip, get_zip_polygon
@@ -683,6 +683,10 @@ def _process_submission_llm(submission_pk, url, has_image):
         db.connection.close()
 
 
+SUBMISSION_DAILY_LIMIT = 10
+SUBMISSION_DAILY_LIMIT_STAFF = 100
+
+
 def submit(request):
     pools = Pool.objects.all().order_by("name")
     preselected_pool_id = request.GET.get("pool", "")
@@ -692,6 +696,27 @@ def submit(request):
         submitter_note = request.POST.get("submitter_note", "").strip()
         pool_id = request.POST.get("pool_id", "").strip()
         uploaded_image = request.FILES.get("image")
+
+        # Cap submissions per visitor per day, ahead of Turnstile: a flood that's
+        # already over the day's limit isn't worth a round trip to Cloudflare to
+        # confirm, and this also covers a solved or leaked token.
+        day = timezone.localdate()
+        throttle_visitor = visitor_hash(request, day)
+        throttle, created = SubmissionThrottle.objects.get_or_create(
+            day=day, visitor=throttle_visitor, defaults={"count": 1},
+        )
+        if not created:
+            SubmissionThrottle.objects.filter(pk=throttle.pk).update(count=F("count") + 1)
+            throttle.refresh_from_db(fields=["count"])
+        user = getattr(request, "user", None)
+        is_staff = user is not None and user.is_authenticated and user.is_staff
+        daily_limit = SUBMISSION_DAILY_LIMIT_STAFF if is_staff else SUBMISSION_DAILY_LIMIT
+        if throttle.count > daily_limit:
+            logger.warning(
+                "Submission rate limit exceeded: visitor=%s count=%s",
+                throttle_visitor, throttle.count,
+            )
+            return redirect(_thanks_url(pool_id))
 
         # Verify Turnstile token if configured
         from django.conf import settings as django_settings

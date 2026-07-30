@@ -61,6 +61,11 @@ _BOT_PATTERNS = [
 # wrong, which no substring list ever will.
 _CHROMIUM_SUFFIX = re.compile(r"safari/537\.36\b")
 
+# The real brand's version out of a Sec-CH-UA list, e.g. from
+# `"Not_A Brand";v="8", "Chromium";v="130", "Google Chrome";v="130"` — skipping the
+# greased "Not_A Brand" entry every browser also sends.
+_SEC_CH_UA_VERSION = re.compile(r'"(?:google chrome|chromium)";v="(\d+)"')
+
 
 def _forged_ua(ua: str) -> bool:
     """True if `ua` (already lowercased) is not a string any real browser sends."""
@@ -328,10 +333,23 @@ def forged_browser_headers(request) -> bool:
 
     # Every Chromium since 90 sends client hints, but only over HTTPS — so this can
     # only be asked of a secure request, and never of local development over HTTP.
-    if request.is_secure() and "chrome/" in ua and not request.META.get("HTTP_SEC_CH_UA"):
-        match = _CHROME_VERSION.search(ua)
-        if match and int(match.group(1)) >= 90:
-            return True
+    sec_ch_ua = request.META.get("HTTP_SEC_CH_UA", "")
+    if "chrome/" in ua:
+        if request.is_secure() and not sec_ch_ua:
+            match = _CHROME_VERSION.search(ua)
+            if match and int(match.group(1)) >= 90:
+                return True
+        # The hint comes from the engine itself, not whatever the page — or a proxy
+        # tool sitting in front of it — has overwritten navigator.userAgent to say,
+        # so when both are present their major version has to agree. A rotated
+        # fake version in the string with the real one still showing through the
+        # hint is a giveaway: patching the header takes real work, typing a new
+        # number into the string doesn't.
+        if sec_ch_ua:
+            claimed = _CHROME_VERSION.search(ua)
+            hinted = _SEC_CH_UA_VERSION.search(sec_ch_ua.lower())
+            if claimed and hinted and claimed.group(1) != hinted.group(1):
+                return True
 
     # A browser asks for a language and says it wants HTML. A script asks for
     # anything and doesn't care what it gets.
