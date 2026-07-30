@@ -9,7 +9,10 @@ class PoolSitemap(Sitemap):
     priority = 0.8
 
     def items(self):
-        return Pool.objects.filter(is_active=True)
+        # Inactive pools included on purpose. is_active only says we don't expect an
+        # opening date this season; the pool still exists, its page still has an
+        # address and notes, and people search for it by name.
+        return Pool.objects.all()
 
     def lastmod(self, obj):
         return obj.last_updated

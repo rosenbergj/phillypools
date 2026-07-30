@@ -132,15 +132,12 @@ class Command(BaseCommand):
         if not assets.is_dir():
             raise CommandError(f"Assets directory not found: {assets}")
 
-        # Every pool gets a page, inactive included — the live site serves those URLs
-        # too (they 200; they're just absent from PoolSitemap). Rendering them keeps
-        # inactive pools linkable from other pages rather than dead ends.
+        # Every pool, inactive included: is_active only means we don't expect an opening
+        # date, and the page still carries an address, notes and last season's history.
+        # Matches PoolSitemap, so the indexed URL set doesn't churn at the cutover.
         pools = list(
             Pool.objects.prefetch_related("season_history").order_by("name")
         )
-        # ...but only active pools are advertised in the sitemap, matching
-        # PoolSitemap.items() so the indexed URL set doesn't churn at the cutover.
-        sitemap_pools = [p for p in pools if p.is_active]
         if not pools:
             raise CommandError(
                 "No pools found — refusing to render an empty site. "
@@ -205,8 +202,8 @@ class Command(BaseCommand):
         self._say(f"Rendered {len(pools)} pool page(s)")
 
         index_description = (
-            f"Philly Pools tracks hours and schedules for {len(sitemap_pools)} "
-            f"Philadelphia public pools. The {season_year} season has ended — browse "
+            f"Philly Pools tracks hours and schedules for {len(pools)} Philadelphia "
+            f"public pools. The {season_year} season has ended — browse "
             f"{season_year} schedules while we wait for {next_year} dates."
         )
         pages = (
@@ -237,11 +234,7 @@ class Command(BaseCommand):
                 template,
                 {
                     **shared,
-                    # The index lists every pool, matching the live homepage, which
-                    # shows inactive pools unless a status filter is applied. The
-                    # sitemap advertises only the active ones.
                     "pools": pools,
-                    "sitemap_pools": sitemap_pools,
                     "rendered_on": timezone.localdate(),
                     **extra,
                 },

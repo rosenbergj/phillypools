@@ -1069,10 +1069,10 @@ class RenderStaticSiteTests(TestCase):
         for leaked in ("Closed for the season", "page-loaded", "csrfmiddlewaretoken", "like-btn"):
             self.assertNotIn(leaked, html)
 
-    def test_inactive_pools_get_a_page_but_stay_out_of_the_sitemap(self):
-        # The live site serves inactive pool URLs (they 200) but PoolSitemap omits
-        # them. The archive matches that, so the pages are linkable without being
-        # advertised for indexing.
+    def test_inactive_pools_get_a_page_and_a_sitemap_entry(self):
+        # is_active only means we don't expect an opening date. The page still has an
+        # address and notes, and people search for these pools by name, so they're
+        # rendered and advertised like any other.
         active = self._make_pool("Active Pool")
         inactive = self._make_pool("Inactive Pool", is_active=False)
         self._render()
@@ -1080,7 +1080,7 @@ class RenderStaticSiteTests(TestCase):
         self.assertTrue((self.out / "pools" / inactive.slug / "index.html").exists())
         sitemap = (self.out / "sitemap.xml").read_text()
         self.assertIn(active.get_absolute_url(), sitemap)
-        self.assertNotIn(inactive.get_absolute_url(), sitemap)
+        self.assertIn(inactive.get_absolute_url(), sitemap)
 
     def test_pool_that_did_not_open_says_so_in_the_past_tense(self):
         pool = self._make_pool("Shuttered Pool", is_active=False)
@@ -1104,14 +1104,14 @@ class RenderStaticSiteTests(TestCase):
         self.assertNotIn("Did not open", html)
         self.assertIn("June 17, 2026", html)
 
-    def test_sitemap_lists_the_homepage_and_every_active_pool(self):
+    def test_sitemap_lists_the_homepage_and_every_pool(self):
         for name in ("A Pool", "B Pool"):
             self._make_pool(name)
         self._make_pool("Inactive Pool", is_active=False)
         self._render()
         sitemap = (self.out / "sitemap.xml").read_text()
         minidom.parseString(sitemap)  # must be well-formed or GSC rejects it
-        self.assertEqual(sitemap.count("<loc>"), 3)
+        self.assertEqual(sitemap.count("<loc>"), 4)
         self.assertIn("<loc>https://phillypools.app/</loc>", sitemap)
 
     def test_index_links_every_pool_so_the_pages_are_not_orphans(self):
