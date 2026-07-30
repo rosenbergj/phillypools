@@ -6,17 +6,82 @@ Two halves: **shutting down at end of season** and **rebuilding at start of next
 
 ## Part 1 — End of Season Shutdown
 
-Do these steps in order. The goal is to back everything up before deleting the Railway project.
+Do these steps in order. Two ordering constraints drive the sequence: the static
+site has to be rendered while this season's data is still live and un-reset, and
+everything has to be backed up before the Railway project is deleted.
 
-### 1. Clear the submission queue
+### 1. Pause the cron service
 
-Review and resolve all pending submissions in the admin (`/admin/pools/submission/`) before shutting down. Approved submissions should already be applied to pool records. Reject or delete anything leftover so you start the next season clean.
+In the Railway dashboard, disable the cron on the `url-watcher` service before
+anything else. It runs five times a day, and any submission it creates after you
+clear the queue (step 2) or take the backup (step 6) is work you'll either lose or
+have to redo. Nothing else in this runbook is safe to do while it's still firing.
 
-### 2. Delete monitored pages
+### 2. Clear the submission queue
 
-Visit `/admin/pools/monitoredpage/` and delete all monitored pages. The URLs being watched are likely to change year to year (PPR updates their site, pool social links change, etc.), so it's cleaner to start fresh next season than to restore stale ones from the backup. Do this before the database dump so they don't end up in the backup.
+Review and resolve all pending submissions in the admin (`/admin/pools/submission/`).
+Approved submissions should already be applied to pool records. Reject or delete
+anything leftover so you start the next season clean.
 
-### 3. Aggregate and clear raw usage data
+### 3. Render the static offseason site
+
+```bash
+python manage.py render_static_site --season-year 2026
+```
+
+This writes `offseason-build/` — an archived page for every active pool at its real
+URL (`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, and a `404.html`.
+
+**Why this exists:** the alternative — redirecting every pool URL to a single
+"see you in the spring" page — quietly costs the site its search presence every
+winter. Google treats a redirect that persists for months as permanent, and pointing
+~70 distinct URLs at one unrelated page is the textbook soft-404 pattern, so the pool
+pages drop out of the index and have to re-earn their rankings each May. Serving real
+archived content at the same URLs keeps them indexed and actually answers what a
+March searcher is asking. This is also why `offseason/_redirects` must never contain
+a `/pools/*` rule: Cloudflare Pages evaluates redirects before static assets, so a
+catch-all there would shadow every page this command generates.
+
+Three things to know:
+
+- **It must run locally, not via `railway ssh`.** It writes files to disk, and a
+  Railway container's disk is ephemeral. Get prod data onto your machine first by
+  following `sync-prod-db.md`, then run the command against the local DB.
+- **Run it before `reset_season`, never after.** It reads `PoolSeasonHistory` for the
+  season year and falls back to the pool's live fields, so it needs this season's data
+  still in place. `reset_season` stays a *start-of-next-season* step (`season-setup.md`)
+  precisely so it can't run first.
+- **`--season-year` defaults to the current calendar year**, which is right for a fall
+  shutdown. Pass it explicitly if you're doing this after January 1.
+
+Check the output: it lists any pools that had no schedule for the season and fell back
+to generic-hours copy. Then preview the whole thing locally before you deploy it:
+
+```bash
+python -m http.server -d offseason-build
+```
+
+Display images are deliberately omitted from these pages. R2 URLs are presigned and
+expire in an hour (`AWS_QUERYSTRING_AUTH` is unset, so django-storages defaults it on),
+so baking them into HTML served for eight months would produce broken images. They're
+also mostly proof/source shots for a current schedule, which isn't worth much once the
+schedule is archival.
+
+### 4. Delete the pool-info monitored pages
+
+Visit `/admin/pools/monitoredpage/` and delete the pages with type **"Pool info"**.
+Those URLs change year to year (PPR reorganizes their site, pool social links move),
+so it's cleaner to start fresh next season than to restore stale ones.
+
+**Leave the "Heat emergency info" page(s) alone.** The DPH press-release index is stable
+infrastructure, not a season-specific URL. It was originally seeded by migration `0020`,
+but that migration is already recorded in `django_migrations` — which is inside the
+backup — so it will *not* re-run on a restore. Delete it now and next season starts with
+no heat-emergency page at all.
+
+Do this before the database dump so the stale pool-info pages don't end up in the backup.
+
+### 5. Aggregate and clear raw usage data
 
 The `/stats/` page is backed by two tables: `UsageEvent` (one row per interaction,
 carrying a daily-rotating visitor pseudonym) and `UsageDaily` (permanent counts, no
@@ -33,7 +98,7 @@ railway ssh --service web -- python manage.py shell -c \
 lost by deleting them. `UsageDaily` is what makes year-over-year comparison
 possible next season — it must stay.
 
-### 4. Back up the database
+### 6. Back up the database
 
 From your local machine with the Railway CLI installed:
 
@@ -50,7 +115,21 @@ pg_dump "<DATABASE_URL>" -Fc -f phillypools-$(date +%Y%m%d).dump
 
 Keep this `.dump` file somewhere safe — it's a full `pg_dump` of every table (pool data, season history, submission history, site announcements, etc.), so nothing needs separate handling. A password manager attachment or personal cloud storage works fine.
 
-### 5. Record all environment variables
+### 7. Verify the backup
+
+Do this before step 11, not after. Once the Railway project is gone this dump is the
+only copy of the data, and a dump you've never read back is not a backup.
+
+```bash
+pg_restore --list phillypools-YYYYMMDD.dump | head -40
+```
+
+That confirms the file isn't truncated and lists the tables it contains — check that
+`pools_pool`, `pools_poolseasonhistory`, `pools_usagedaily`, and `pools_submission` are
+all in there. If you have a local Postgres handy, a full restore into a scratch database
+is a stronger check and takes another minute.
+
+### 8. Record all environment variables
 
 From the Railway dashboard, copy every env var from both the **web service** and the **cron service** to your password manager or a secure note. The ones that matter and won't be auto-regenerated:
 
@@ -72,25 +151,53 @@ From the Railway dashboard, copy every env var from both the **web service** and
 
 > **Note:** R2 media uploads (pool photos, submission images) live in Cloudflare R2 independently of Railway and don't need to be backed up — they'll still be there next season.
 
-### 6. Deploy the offseason page to Cloudflare Pages
+### 9. Deploy the offseason site to Cloudflare Pages
 
-If not already set up as a Cloudflare Pages project, create one pointing at the `offseason/` directory (via `wrangler pages deploy offseason/` or the Cloudflare dashboard → Pages → upload `offseason/`). Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Pages project.
+Deploy the `offseason-build/` directory you rendered in step 3:
 
-If it was set up last offseason, no redeployment is needed unless you changed `offseason/index.html`. You can preview it via the Cloudflare Pages URL before switching DNS in the next step.
+```bash
+wrangler pages deploy offseason-build
+```
 
-### 7. Switch DNS to Cloudflare Pages
+If the Cloudflare Pages project doesn't exist yet, create it first (Cloudflare
+dashboard → Pages), and add both `phillypools.app` and `www.phillypools.app` as custom
+domains on it.
 
-In your DNS provider, update both the `phillypools.app` and `www.phillypools.app` records to point to the Cloudflare Pages URL instead of the Railway-provided domain. Verify the offseason page loads correctly on both.
+Note that the deploy target is `offseason-build/` (generated, gitignored), not
+`offseason/` (the hand-maintained assets — `pic.png`, `favicon.png`, `og-preview.png`,
+`_redirects` — which `render_static_site` copies into the build). Editing the greeting
+or the pool list means editing `pools/templates/pools/offseason_index.html` and
+re-rendering, not editing built HTML.
 
-### 8. Delete the Railway project
+Preview via the Cloudflare Pages URL before switching DNS in the next step. Spot-check a
+few pool pages, `/sitemap.xml`, and `/robots.txt`.
 
-Once DNS has propagated and you've confirmed the offseason page is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
+### 10. Switch DNS to Cloudflare Pages
+
+DNS for `phillypools.app` is at **Namecheap**, not Cloudflare. Update both the
+`phillypools.app` and `www.phillypools.app` records to point at the Cloudflare Pages
+URL instead of the Railway-provided domain. Verify the offseason site loads on both.
+
+### 11. Delete the Railway project
+
+Once DNS has propagated and you've confirmed the offseason site is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
+
+### 12. Resubmit the sitemap in Search Console
+
+The sitemap URL is unchanged (`https://phillypools.app/sitemap.xml`) and now lists the
+homepage plus every archived pool page, so there's nothing to reconfigure — but ask
+Search Console to re-fetch it so the offseason set is picked up promptly. Over the next
+few weeks, check Coverage: the pool URLs should stay indexed. If they start showing up
+as "Page with redirect" or "Soft 404," something is shadowing the static pages — check
+`_redirects` first.
 
 ---
 
 ## Part 2 — Start of Season Rebuild
 
-Do these roughly in order, but the DNS cutover is the last step — the app can be running on a Railway URL for testing before you point the real domain at it.
+Do these roughly in order. The database restore comes *before* the first web deploy,
+and the DNS cutover is last — the app can run on a Railway URL for testing before you
+point the real domain at it.
 
 ### 1. Create a new Railway project
 
@@ -100,7 +207,32 @@ In the Railway dashboard, create a new project named `phillypools` (or similar).
 
 Add the Railway Postgres plugin/service. Once provisioned, Railway will inject `DATABASE_URL` into services in the same project automatically.
 
-### 3. Deploy the web service
+### 3. Restore the database
+
+Do this **before** deploying the web service. `railway.toml`'s start command runs
+`migrate --noinput` on every web deploy, so deploying first would create a full empty
+schema and then `pg_restore` would collide with it — duplicate keys on
+`django_migrations`, failed `CREATE TABLE`s, and a half-restored database. Worse, the
+healthcheck (`healthcheckPath = "/"`) passes fine against an empty DB, so the deploy
+goes green and the problem isn't obvious.
+
+Get the new `DATABASE_URL` from the Railway Postgres service variables, then restore:
+
+```bash
+pg_restore -d "<NEW_DATABASE_URL>" --no-owner phillypools-YYYYMMDD.dump
+```
+
+This restores every table from the dump — pool records, season history, previous
+submissions, site announcements, etc.
+
+Last season's `/stats/` history comes back with it, so year-over-year comparison
+works immediately. Nothing needs configuring: `UsageEvent` starts empty (you cleared
+it in Part 1), the nightly visitor salt regenerates itself on the first request, and
+the rollup runs off the existing cron service rather than a schedule of its own.
+Note that per-pool history is keyed by slug, so a pool renamed between seasons shows
+its old slug for last season's rows and its new name for this season's.
+
+### 4. Deploy the web service
 
 Add a new service from the GitHub repo (`phillypools`). Railway will use `railway.toml` for build and start commands automatically.
 
@@ -123,24 +255,17 @@ Use Railway's cross-service reference syntax (`${{ServiceName.VAR_NAME}}`) for `
 
 `RAILWAY_PUBLIC_DOMAIN` is injected automatically — don't set it manually.
 
-### 4. Restore the database
+The deploy's `migrate` now runs on top of the restored schema, which is exactly what you
+want: it applies any migrations that were merged over the offseason and brings last
+season's dump up to current code. Watch the deploy log to confirm those migrations
+applied cleanly.
 
-Get the new `DATABASE_URL` from the Railway Postgres service variables, then restore:
+Verify by visiting the Railway-provided URL for the web service and checking the admin.
 
-```bash
-pg_restore -d "<NEW_DATABASE_URL>" --no-owner phillypools-YYYYMMDD.dump
-```
-
-This restores every table from the dump — pool records, season history, previous submissions, site announcements, etc.
-
-Last season's `/stats/` history comes back with it, so year-over-year comparison
-works immediately. Nothing needs configuring: `UsageEvent` starts empty (you cleared
-it in Part 1), the nightly visitor salt regenerates itself on the first request, and
-the rollup runs off the existing cron service rather than a schedule of its own.
-Note that per-pool history is keyed by slug, so a pool renamed between seasons shows
-its old slug for last season's rows and its new name for this season's.
-
-Verify the restore worked by visiting the Railway-provided URL for the web service and checking the admin.
+> **Testing gotcha:** Turnstile keys are bound to specific hostnames, and the
+> Railway-provided domain isn't one of them. `/submit/` will fail its captcha on that
+> temporary URL — that's expected, not a bug. Test submissions after the DNS cutover in
+> step 7, or temporarily add the Railway hostname in the Cloudflare Turnstile dashboard.
 
 ### 5. Add the cron service
 
@@ -160,16 +285,35 @@ DIGEST_TO_EMAIL=<literal value from your saved backup>
 
 In the Railway dashboard, configure this service as a **Cron** with schedule `15 1,13,16,19,22 * * *` (runs at 1:15 AM and 1:15, 4:15, 7:15, and 10:15 PM UTC — the 1:15 AM UTC run is the 9:15 PM EDT evening check). The `railway.toml` start command already branches on `RAILWAY_SERVICE_NAME`, so this service will run `run_url_watcher` when triggered — that runs the page and heat-emergency checks, then emails a digest if anything new is pending (see `pools/services/digest.py`). The SES sender/recipient identities live in AWS SES (sandbox mode is fine — both addresses just need to be verified there) and survive the offseason teardown.
 
+> **Naming gotcha:** Railway injects `RAILWAY_SERVICE_NAME` itself, from the service's
+> actual name, so setting it by hand relies on the manual value winning over the
+> platform's. The reliable move is to *name the service* `url-watcher` in the dashboard,
+> which makes the manual variable redundant. Confirm the first run actually executes
+> `run_url_watcher` and not gunicorn.
+
 ### 6. Run the new season setup
 
 Follow `season-setup.md` from the beginning.
 
 ### 7. Switch DNS back to Railway
 
-Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
+Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records (at Namecheap) to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
 
 ### 8. Set up monitored pages
 
-If there are any monitored pages being carried over from last year, visit `/admin/pools/monitoredpage/` to confirm they're listed. Either way, add any new ones for the current season. The cron will establish a baseline content hash on its first run — no submission is created on that first check.
+Visit `/admin/pools/monitoredpage/`. The heat-emergency page(s) should have come back
+with the restore (Part 1 step 4 deliberately left them alone) — confirm at least one is
+present, because `check_heat_emergency` reports an error into the digest email rather
+than silently checking nothing if none exists. If it's missing, re-add the DPH
+press-release index with page type "Heat emergency info".
 
-Monitored pages have a **page type**: "Pool info" pages are diffed for changes (creating submissions), while "Heat emergency info" pages are scanned for new DPH heat health emergency press releases. Confirm at least one heat-emergency page is present (the DPH press page was seeded by migration, and the restored database carries it) — if none exists, `check_heat_emergency` reports an error into the digest email rather than silently checking nothing.
+Then add this season's **"Pool info"** pages, which you deleted at shutdown. The cron
+will establish a baseline content hash on its first run — no submission is created on
+that first check.
+
+### 9. Re-verify Search Console
+
+Confirm the sitemap still fetches cleanly now that it's served by Django again, and
+request indexing for the homepage and a couple of pool pages so the live (non-archived)
+content gets picked up quickly. The URL set is unchanged from the offseason build, so
+there's nothing to remove or redirect.

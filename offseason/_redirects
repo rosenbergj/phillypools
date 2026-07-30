@@ -1,1 +1,12 @@
-/pools/*  /  302
+# Cloudflare Pages format: [source] [destination] [code]. Lines starting with #
+# are comments.
+#
+# There must be no /pools/* rule here: Pages evaluates redirects before static
+# assets, so a catch-all would shadow every archived pool page that
+# render_static_site writes under /pools/<slug>/.
+#
+# /submit/ is season-only (no server to accept a submission during the
+# offseason), so send it to the index rather than 404ing an indexed URL. Both
+# forms are listed so this doesn't depend on the splat matching an empty segment.
+/submit  /  302
+/submit/*  /  302

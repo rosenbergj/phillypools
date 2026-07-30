@@ -10,3 +10,4 @@ media/
 *.egg-info/
 dist/
 .DS_Store
+offseason-build/

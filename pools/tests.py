@@ -1,6 +1,10 @@
-from datetime import timedelta
+import tempfile
+from datetime import date, timedelta
+from pathlib import Path
+from xml.dom import minidom
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
@@ -989,3 +993,127 @@ class StatsPageTests(TestCase):
         self.assertEqual(len(resp.context["series"]), 1)
         self.assertEqual(resp.context["totals"]["visitors"], 1)
         self.assertEqual(resp.context["first_day"], timezone.localdate())
+
+
+class RenderStaticSiteTests(TestCase):
+    """The offseason snapshot is rendered once and served unchanged for ~8 months,
+    so the things that must not regress are: no date-relative content gets frozen
+    into it, the URLs match what the live sitemap indexed, and pools whose
+    schedule never made it into PoolSeasonHistory still show their hours."""
+
+    def setUp(self):
+        self.out = Path(tempfile.mkdtemp()) / "build"
+        self.assets = Path(tempfile.mkdtemp()) / "assets"
+        self.assets.mkdir(parents=True)
+        (self.assets / "pic.png").write_bytes(b"png")
+        (self.assets / "_redirects").write_text("/submit  /  302\n")
+
+    def _render(self, season_year=2026):
+        call_command(
+            "render_static_site",
+            season_year=season_year,
+            out=str(self.out),
+            assets=str(self.assets),
+            verbosity=0,
+        )
+
+    def _make_pool(self, name="Awbury Pool", **kwargs):
+        defaults = dict(ppr_amenity_id=name.lower().replace(" ", "-"), address="1 Main St")
+        return Pool.objects.create(name=name, **{**defaults, **kwargs})
+
+    def test_pool_page_is_written_at_its_live_url(self):
+        pool = self._make_pool(opening_date=date(2026, 6, 17), closing_date=date(2026, 8, 30))
+        self._render()
+        page = self.out / "pools" / pool.slug / "index.html"
+        self.assertTrue(page.exists())
+        html = page.read_text()
+        # Same path the live site indexed, so the URL survives the cutover.
+        self.assertIn(f'<link rel="canonical" href="https://phillypools.app{pool.get_absolute_url()}"', html)
+        self.assertIn("June 17, 2026", html)
+        self.assertIn("August 30, 2026", html)
+        self.assertIn("10 weeks, 5 days", html)
+
+    def test_schedule_falls_back_to_live_fields_when_history_row_is_missing(self):
+        # _upsert_season_history only creates a row when the pool has dates, so a
+        # schedule-only pool has no 2026 history at all. Without the fallback its
+        # page would render the generic-hours copy and lose real information.
+        pool = self._make_pool(weekday_schedule="11-7 open swim", weekend_schedule="12-5")
+        self.assertFalse(pool.season_history.exists())
+        self._render()
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertIn("11-7 open swim", html)
+        self.assertIn("12-5", html)
+
+    def test_history_row_wins_over_live_fields(self):
+        pool = self._make_pool(
+            opening_date=date(2026, 6, 17), weekday_schedule="live text",
+        )
+        pool.season_history.filter(year=2026).update(weekday_schedule="archived text")
+        self._render()
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertIn("archived text", html)
+        self.assertNotIn("live text", html)
+
+    def test_prior_season_dates_are_not_relabeled_as_the_rendered_season(self):
+        # A pool still carrying 2025 dates must not have them presented as 2026's.
+        pool = self._make_pool(opening_date=date(2025, 6, 20))
+        self._render(season_year=2026)
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertIn("2026 season", html)
+        self.assertNotIn("June 20, 2025", html)
+
+    def test_nothing_date_relative_is_baked_into_the_page(self):
+        pool = self._make_pool(opening_date=date(2026, 6, 17), closing_date=date(2026, 8, 30))
+        self._render()
+        html = (self.out / "pools" / pool.slug / "index.html").read_text()
+        for leaked in ("Closed for the season", "page-loaded", "csrfmiddlewaretoken", "like-btn"):
+            self.assertNotIn(leaked, html)
+
+    def test_inactive_pools_are_excluded_like_the_live_sitemap(self):
+        active = self._make_pool("Active Pool")
+        inactive = self._make_pool("Inactive Pool", is_active=False)
+        self._render()
+        self.assertTrue((self.out / "pools" / active.slug / "index.html").exists())
+        self.assertFalse((self.out / "pools" / inactive.slug / "index.html").exists())
+        sitemap = (self.out / "sitemap.xml").read_text()
+        self.assertIn(active.get_absolute_url(), sitemap)
+        self.assertNotIn(inactive.get_absolute_url(), sitemap)
+
+    def test_sitemap_lists_the_homepage_and_every_pool(self):
+        for name in ("A Pool", "B Pool"):
+            self._make_pool(name)
+        self._render()
+        sitemap = (self.out / "sitemap.xml").read_text()
+        minidom.parseString(sitemap)  # must be well-formed or GSC rejects it
+        self.assertEqual(sitemap.count("<loc>"), 3)
+        self.assertIn("<loc>https://phillypools.app/</loc>", sitemap)
+
+    def test_index_links_every_pool_so_the_pages_are_not_orphans(self):
+        pools = [self._make_pool(n) for n in ("A Pool", "B Pool", "C Pool")]
+        self._render()
+        index = (self.out / "index.html").read_text()
+        for pool in pools:
+            self.assertIn(f'href="{pool.get_absolute_url()}"', index)
+        self.assertIn("Hope you had a great summer!", index)
+
+    def test_assets_and_generated_files_land_in_the_output(self):
+        self._make_pool()
+        self._render()
+        for name in ("pic.png", "_redirects", "index.html", "404.html", "robots.txt", "sitemap.xml"):
+            self.assertTrue((self.out / name).exists(), name)
+        # A /pools/* redirect would shadow every archived page Pages serves.
+        self.assertNotIn("/pools/*", (self.out / "_redirects").read_text())
+
+    def test_refuses_to_render_an_empty_site(self):
+        with self.assertRaises(CommandError):
+            self._render()
+
+    def test_stale_output_is_cleared_so_removed_pools_do_not_linger(self):
+        pool = self._make_pool()
+        self._render()
+        stale = self.out / "pools" / "gone-pool"
+        stale.mkdir(parents=True)
+        (stale / "index.html").write_text("old")
+        self._render()
+        self.assertFalse(stale.exists())
+        self.assertTrue((self.out / "pools" / pool.slug / "index.html").exists())

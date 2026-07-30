@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{{ base_url }}/</loc>
+    <lastmod>{{ rendered_on|date:"Y-m-d" }}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+{% for pool in pools %}  <url>
+    <loc>{{ base_url }}{{ pool.get_absolute_url }}</loc>
+{% if pool.last_updated %}    <lastmod>{{ pool.last_updated|date:"Y-m-d" }}</lastmod>
+{% endif %}    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+{% endfor %}</urlset>

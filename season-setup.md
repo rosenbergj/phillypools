@@ -8,6 +8,14 @@
 
 ## 1. Clear stale season data
 
+> **Don't move this step to the end of the previous season.** It looks like it belongs
+> there, but `render_static_site` (`offseason-runbook.md` Part 1, step 3) reads the
+> season's live pool fields as a fallback when a pool has no `PoolSeasonHistory` row —
+> which is every pool that got a schedule but never got opening/closing dates, since
+> `_upsert_season_history` only creates rows from dates. Running `reset_season` before
+> the static render would blank those schedules out of the archived pages. Keeping it
+> here, at the *start* of the new season, guarantees the render happens first.
+
 Run from the Railway console:
 
 ```

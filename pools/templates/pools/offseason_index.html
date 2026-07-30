@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+{% comment %}
+Standalone on purpose: this page keeps the original hand-written offseason
+greeting-card look (Georgia, #f0f6ff, no site chrome) rather than the Bootstrap
+base the archived pool pages use. Only the pool list below is new — it exists so
+the 63 archived pages have an internal link path a crawler can follow, instead of
+being orphans reachable only through the sitemap.
+
+Metadata comes in as context variables from render_static_site, same as the
+Bootstrap base, so the og:/twitter: pairs stay in sync.
+{% endcomment %}
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title }}</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="canonical" href="{{ base_url }}{{ canonical_path }}">
+  <meta name="description" content="{{ meta_description }}">
+  <meta name="robots" content="{{ robots_meta|default:'index, follow' }}">
+  <meta property="og:site_name" content="Philly Pools">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="{{ base_url }}{{ canonical_path }}">
+  <meta property="og:image" content="{{ base_url }}/og-preview.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ meta_description }}">
+  <meta name="twitter:image" content="{{ base_url }}/og-preview.png">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f0f6ff;
+      font-family: Georgia, serif;
+      padding: 2rem;
+      box-sizing: border-box;
+    }
+    p {
+      font-size: 1.5rem;
+      color: #1a3a5c;
+      text-align: center;
+      margin: 0 0 2rem;
+    }
+    img {
+      max-width: 100%;
+      max-height: 60vh;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .pools {
+      width: 100%;
+      max-width: 34rem;
+      margin: 3rem 0 0;
+      padding: 0;
+      list-style: none;
+      border-top: 1px solid #c8d8ec;
+    }
+    .pools h1 {
+      font-size: 1rem;
+      font-weight: normal;
+      color: #1a3a5c;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin: 1.5rem 0 .5rem;
+    }
+    .pools li {
+      padding: .6rem 0;
+      border-bottom: 1px solid #dce7f4;
+    }
+    .pools a {
+      color: #1a3a5c;
+      font-size: 1.05rem;
+      text-decoration: none;
+    }
+    .pools a:hover { text-decoration: underline; }
+    .pools .where {
+      display: block;
+      font-size: .85rem;
+      color: #6c757d;
+      margin-top: .15rem;
+    }
+    .credit {
+      font-size: .85rem;
+      color: #6c757d;
+      margin: 2rem 0 0;
+    }
+    .credit a { color: #6c757d; }
+  </style>
+</head>
+<body>
+  <p>Hope you had a great summer! See you in the spring!</p>
+  <img src="/pic.png" alt="Swimmers enjoying a Philadelphia public pool">
+
+  <div class="pools">
+    <h1>{{ pools|length }} Philadelphia public pools</h1>
+    <ul style="list-style:none;padding:0;margin:0">
+      {% for pool in pools %}
+        <li>
+          <a href="{{ pool.get_absolute_url }}">{{ pool.name }}</a>
+          <span class="where">{% if pool.neighborhood %}{{ pool.neighborhood }} &middot; {% endif %}{{ pool.address }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <p class="credit"><a href="https://icons8.com/icon/cliXK3GCh7oD/pool" target="_blank" rel="noopener">Pool icon by Icons8</a></p>
+</body>
+</html>

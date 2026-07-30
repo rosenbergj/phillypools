@@ -1,0 +1,140 @@
+{% extends "pools/offseason_base.html" %}
+
+{% comment %}
+Everything on this page is framed in the past tense against an explicit
+season_year. Nothing here may depend on "today": the HTML is rendered once at
+shutdown and served unchanged for the whole offseason, so any relative date
+(is_open, a countdown, "closed for the season on 8/30") would freeze at the
+render date and be wrong for months. That is why this doesn't reuse
+pools/detail.html, which is built entirely around timezone.localdate().
+{% endcomment %}
+
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SportsActivityLocation",
+  "name": "{{ pool.name|escapejs }}",
+  "url": "{{ base_url }}{{ pool.get_absolute_url }}",
+  "priceRange": "Free",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "{{ pool.address|escapejs }}",
+    "addressLocality": "Philadelphia",
+    "addressRegion": "PA",
+    "addressCountry": "US"
+  }{% if pool.latitude and pool.longitude %},
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": {{ pool.latitude }},
+    "longitude": {{ pool.longitude }}
+  }{% endif %}
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 720px">
+  <a href="/" class="text-muted small text-decoration-none">&larr; All pools</a>
+
+  <div class="d-flex align-items-center gap-2 mt-2 mb-1">
+    <h1 class="h3 mb-0">{{ pool.name }}</h1>
+    <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
+  </div>
+
+  <p class="text-muted mb-3">
+    <a href="https://www.google.com/maps/search/?api=1&query={{ pool.address|urlencode }}"
+       target="_blank" rel="noopener" class="text-muted">{{ pool.address }}</a>
+    {% if pool.phone_number %}&nbsp;&middot;&nbsp;{{ pool.phone_number }}{% endif %}
+    {% if pool.phillypublicpools_url %}
+      &nbsp;&middot;&nbsp;<a href="{{ pool.phillypublicpools_url }}" target="_blank" rel="noopener">phillypublicpools.com guide</a>
+    {% endif %}
+    {% if pool.social_media_url %}
+      &nbsp;&middot;&nbsp;<a href="{{ pool.social_media_url }}" target="_blank" rel="noopener">Social media</a>
+    {% endif %}
+  </p>
+
+  <div class="alert alert-secondary py-2 mb-4 small">
+    The {{ season_year }} season has ended and Philly Pools is on its offseason break.
+    {{ next_year }} opening dates and hours haven't been announced yet — this page will
+    be updated with them in the spring. Below is what we recorded for {{ season_year }}.
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h6 text-uppercase text-muted mb-3">{{ season_year }} season</h2>
+      <dl class="row mb-0">
+
+        <dt class="col-sm-4">Opened</dt>
+        <dd class="col-sm-8">
+          {% if season.opening_date %}
+            {{ season.opening_date|date:"F j, Y" }}
+          {% else %}
+            <span class="text-muted">Not recorded</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-4">Closed</dt>
+        <dd class="col-sm-8">
+          {% if season.closing_date %}
+            {{ season.closing_date|date:"F j, Y" }}
+          {% else %}
+            <span class="text-muted">Not recorded</span>
+          {% endif %}
+        </dd>
+
+        {% if season.duration %}
+        <dt class="col-sm-4">Open for</dt>
+        <dd class="col-sm-8">{{ season.duration }}</dd>
+        {% endif %}
+
+        <dt class="col-sm-4">{{ next_year }} dates</dt>
+        <dd class="col-sm-8"><span class="text-muted">To be announced</span></dd>
+
+      </dl>
+    </div>
+  </div>
+
+  {% if season.weekday_schedule or season.weekend_schedule %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-3">{{ season_year }} schedule</h2>
+        <p class="text-muted small mb-3">
+          These were the {{ season_year }} hours. {{ next_year }} hours are usually similar
+          but are not confirmed until the season starts.
+        </p>
+
+        {% if season.weekday_schedule %}
+          <h3 class="h6 mb-1">Weekdays</h3>
+          <pre class="mb-3" style="font-size:.9em;white-space:pre-wrap">{{ season.weekday_schedule }}</pre>
+        {% endif %}
+
+        {% if season.weekend_schedule %}
+          <h3 class="h6 mb-1">Weekends</h3>
+          <pre class="mb-0" style="font-size:.9em;white-space:pre-wrap">{{ season.weekend_schedule }}</pre>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-3">{{ season_year }} schedule</h2>
+        <p class="mb-0 text-muted small">
+          We didn't have detailed hours for this pool in {{ season_year }}. Most Philadelphia
+          public pools run 11–7 on weekdays and 12–5 on weekends and holidays, with open
+          swim at least 1–4 daily.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pool.notes %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h6 text-uppercase text-muted mb-2">Notes</h2>
+        <p class="mb-0">{{ pool.notes|urlize|linebreaksbr }}</p>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
