@@ -101,11 +101,16 @@
     gap: 2px;
     border-top: 1px solid #dee2e6;
     padding-top: .25rem;
-    min-height: 1.6em;
+    /* Tall enough for a whole line box, descenders included. The dates are
+       positioned absolutely and so reserve no height of their own, and the scroller
+       around this clips vertically whether we like it or not — overflow-x: auto
+       forces overflow-y to auto — so anything hanging below this box is cut off.
+       Too small a value here takes the tail off the "g" in a label like "Aug 10". */
+    min-height: 1.9rem;
   }
   .usage-tick { flex: 1 0 10px; min-width: 10px; position: relative; }
   .usage-tick-gap { flex: 0 0 var(--usage-gap-width); min-width: 0; }
-  .usage-tick > span { position: absolute; top: 0; white-space: nowrap; }
+  .usage-tick > span { position: absolute; top: 0; line-height: 1.4; white-space: nowrap; }
   /* Anchored to the edge the data starts or stops at, so the first and last dates
      stay inside the chart instead of overhanging its corners. */
   .usage-tick > .start { left: 0; }
