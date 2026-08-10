@@ -26,6 +26,7 @@ from pools.services.usage import (
     JOURNEY_SINGLE_PASSIVE_OTHER,
     JS_ONLY_EVENTS,
     USAGE_RAW_RETENTION_DAYS,
+    browser_family,
     classify_journey,
 )
 
@@ -244,6 +245,27 @@ class Command(BaseCommand):
                     events=Count("id"), visitors=Count("visitor", distinct=True)
                 ):
                     put(metric, row[field], row["events"], row["visitors"], audience)
+
+            # The same browsers with the version dropped, so the ranked table can be
+            # read as "which browser", which the versioned one cannot: see
+            # browser_family(). Aggregated here rather than summed on the page
+            # because the visitor figures are distinct counts — somebody who was on
+            # chrome/151 in the morning and chrome/152 after an update is one Chrome
+            # user, and adding the two rows would make them two.
+            family_events = {}
+            family_visitors = {}
+            for row in (
+                audience_events.exclude(ua_family="")
+                .values("ua_family", "visitor")
+                .annotate(events=Count("id"))
+            ):
+                family = browser_family(row["ua_family"])
+                family_events[family] = family_events.get(family, 0) + row["events"]
+                family_visitors.setdefault(family, set()).add(row["visitor"])
+
+            for family, event_count in family_events.items():
+                put("browser_family", family, event_count,
+                    len(family_visitors[family]), audience)
 
             # What time of day it was. `created_at` is the only sub-day detail a raw
             # row carries and the only field no stored metric preserves, so without

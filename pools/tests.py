@@ -883,6 +883,53 @@ class RollupTests(TestCase):
         )
         self.assertEqual(self._visitors(), 1)
 
+    def test_browsers_are_counted_a_second_time_without_their_versions(self):
+        """Chrome ships a major every four weeks and Safari one a year, so the
+        versioned rows compare one release against a year's worth of another."""
+        self._event(self.today, visitor="a", ua_family="chrome/151", event="pageview_js")
+        self._event(self.today, visitor="a", ua_family="chrome/152")   # updated mid-day
+        self._event(self.today, visitor="b", ua_family="chrome/152", event="pageview_js")
+        self._event(self.today, visitor="c", ua_family="safari/26", event="pageview_js")
+        self._event(self.today, visitor="d", ua_family="chrome-ios/150", event="pageview_js")
+
+        call_command("rollup_usage", verbosity=0)
+
+        def family(key, audience="human"):
+            return UsageDaily.objects.get(
+                day=self.today, metric="browser_family", key=key, audience=audience
+            )
+
+        # Two people, not three: one of them was on both majors during the day.
+        self.assertEqual(family("chrome").visitors, 2)
+        self.assertEqual(family("chrome").events, 3)
+        self.assertEqual(family("safari").visitors, 1)
+        # Chrome's iOS app is Safari's engine underneath, so it keeps its own row.
+        self.assertEqual(family("chrome-ios").visitors, 1)
+        # And the versioned breakdown is untouched — a frozen version is the
+        # clearest crawler tell there is, which is what BOT_UA_FAMILIES rests on.
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="browser", key="chrome/152", audience="human"
+            ).visitors, 2
+        )
+
+    def test_the_version_free_breakdown_is_stored_per_audience(self):
+        """Same as every other ranked breakdown: /stats/ can switch between them
+        long after the raw rows are gone."""
+        self._event(self.today, visitor="quiet", ua_family="chrome/152")
+        self._event(self.today, visitor="ran", ua_family="chrome/152", event="pageview_js")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="browser_family", key="chrome", audience="human"
+            ).visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="browser_family", key="chrome", audience="confirmed"
+            ).visitors, 1
+        )
+
     def test_a_retired_browser_version_is_a_bot_wherever_it_came_from(self):
         """The rule is the family alone: no rack, and JavaScript that ran, and it is
         still filed as a bot. Read off the stored family, so it reaches rows written
@@ -1150,6 +1197,9 @@ class StatsPageTests(TestCase):
         resp = self.client.get("/stats/")
         self.assertContains(resp, "Browsers")
         self.assertContains(resp, "safari/14")
+        # Both tables: the browser on its own, and the version it claimed.
+        self.assertContains(resp, "Browser versions")
+        self.assertEqual([r["key"] for r in resp.context["browser_families"]], ["safari"])
 
     def test_interaction_tile_reports_confirmed_browsers_only(self):
         from django.contrib.auth.models import User

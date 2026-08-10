@@ -196,6 +196,24 @@ def ua_family(user_agent: str) -> str:
             return f"{family}/{match.group(1)}"
     return "other"
 
+def browser_family(family: str) -> str:
+    """
+    The browser out of a `ua_family` value, with the version dropped:
+    "chrome/152" -> "chrome".
+
+    Both are worth storing, because they answer opposite questions. The version is
+    the best crawler tell there is — a fleet frozen on one release is what
+    BOT_UA_FAMILIES is built on — but it makes "which browser do visitors use"
+    unanswerable: Chrome ships a major every four weeks and Safari one a year, so
+    the versioned rows compare Chrome's current release against eleven months of
+    Safari's accumulated users, and Safari wins that by arithmetic alone.
+
+    The iOS variants keep their own names. "chrome-ios" is Chrome's app wrapped
+    around Safari's engine, so folding it either way would misstate the other.
+    """
+    return (family or "").split("/")[0]
+
+
 # Endpoints only ever requested by the site's own JavaScript. They are not linked
 # from any page and not in the sitemap, so a hit here is proof that a real browser
 # rendered and ran the page — a JS check that costs no extra request. Used by the

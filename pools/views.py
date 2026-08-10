@@ -1335,6 +1335,7 @@ def stats(request):
         "zips": _top(day_from, "zip", audience),
         "referrers": _top(day_from, "referrer", audience),
         "devices": _top(day_from, "device", audience),
+        "browser_families": _top(day_from, "browser_family", audience),
         "browsers": _top(day_from, "browser", audience),
         "confirmed_rates": _confirmed_rates(day_from),
         "events_by_type": events_by_type,
