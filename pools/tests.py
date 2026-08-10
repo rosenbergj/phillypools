@@ -1253,6 +1253,40 @@ class StatsPageTests(TestCase):
         self.assertEqual(resp.context["totals"]["visitors"], 4)
         self.assertEqual(resp.context["peak_visitors"], 2)
 
+    def test_dates_are_printed_where_measurement_starts_and_stops(self):
+        self._staff("admin19")
+        today = timezone.localdate()
+        for n in range(7):
+            UsageDaily.objects.create(
+                day=today - timedelta(days=n), metric="visitors", key="", visitors=1, events=1
+            )
+
+        chart = self.client.get("/stats/?days=30").context["chart"]
+
+        # The window opens mid-gap, so its own start date names a day nobody recorded
+        # anything on. The dates worth printing are the ends of the run beside it.
+        self.assertEqual(chart[0]["kind"], "break")
+        self.assertEqual(chart[1]["tick"], "start")
+        self.assertEqual(chart[1]["day"], today - timedelta(days=6))
+        self.assertEqual(chart[-1]["tick"], "end")
+        self.assertEqual(chart[-1]["day"], today)
+
+    def test_a_run_too_short_for_two_dates_gets_one(self):
+        """Each label is wider than the 10px bar under it, so two on a short run
+        would overlap into a smear."""
+        self._staff("admin20")
+        today = timezone.localdate()
+        for n in range(3):
+            UsageDaily.objects.create(
+                day=today - timedelta(days=n + 5), metric="visitors", key="",
+                visitors=1, events=1,
+            )
+
+        chart = self.client.get("/stats/?days=30").context["chart"]
+
+        bars = [c for c in chart if c["kind"] == "bar"]
+        self.assertEqual([b.get("tick") for b in bars], ["start", None, None])
+
     def test_a_day_of_nothing_but_robots_is_a_bar_and_not_a_break(self):
         """The distinction the whole thing rests on. Counts were stored, so somebody
         was counting — they just counted nobody worth reporting."""

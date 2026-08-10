@@ -24,13 +24,19 @@
   :root {
     --usage-total: #6ea8fe;
     --usage-confirmed: #0a58ca;
+    /* One width for the break band and for the blank it leaves in the date row
+       below. They must agree exactly or every label after the first break sits
+       under the wrong bar, so neither is allowed its own number. */
+    --usage-gap-width: 5rem;
   }
+  /* Both rows scroll as one. Apart, the dates would drift out from under their bars
+     the moment the chart is wide enough to need scrolling. */
+  .usage-scroll { overflow-x: auto; }
   .usage-chart {
     display: flex;
     align-items: flex-end;
     gap: 2px;                  /* surface gap so adjacent days stay separable */
     height: 180px;
-    overflow-x: auto;
     padding-top: .5rem;
   }
   .usage-day {
@@ -62,8 +68,11 @@
      break that has to be hovered to be understood is a bar of zero with extra steps.
      flex: 0 0 auto keeps it from growing with the bars around it. */
   .usage-gap {
-    flex: 0 0 auto;
-    min-width: 4.5rem;
+    flex: 0 0 var(--usage-gap-width);
+    /* A flex item's automatic minimum is its content, so without this a long enough
+       label could widen the band past the blank reserved for it below and slide
+       every later date off its bar. */
+    min-width: 0;
     height: 100%;
     display: flex;
     align-items: center;
@@ -83,6 +92,24 @@
     display: flex;
     justify-content: space-between;
   }
+  /* The date row, mirroring the chart item for item so a label lands under the bar
+     it names. Same flex basis and same gap as the row above; the labels themselves
+     are positioned absolutely so a date wider than its 10px bar — which is all of
+     them — cannot push its neighbours sideways. */
+  .usage-ticks {
+    display: flex;
+    gap: 2px;
+    border-top: 1px solid #dee2e6;
+    padding-top: .25rem;
+    min-height: 1.6em;
+  }
+  .usage-tick { flex: 1 0 10px; min-width: 10px; position: relative; }
+  .usage-tick-gap { flex: 0 0 var(--usage-gap-width); min-width: 0; }
+  .usage-tick > span { position: absolute; top: 0; white-space: nowrap; }
+  /* Anchored to the edge the data starts or stops at, so the first and last dates
+     stay inside the chart instead of overhanging its corners. */
+  .usage-tick > .start { left: 0; }
+  .usage-tick > .end { right: 0; }
   /* Two lines are reserved on every tile heading so the four big numbers sit on one
      line, whether or not a given heading wraps. */
   .tile-label { min-height: 2.6em; }
@@ -183,19 +210,22 @@
         <span class="legend-swatch ms-3" style="background: var(--usage-confirmed)"></span> of which confirmed browsers
       </div>
     </div>
-    <div class="usage-chart">
-      {% for row in hourly.rows %}
-        <div class="usage-day" title="{{ row.at|date:'D M j, g A' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
-          <div class="usage-bar" style="height: {{ row.pct }}%">
-            <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+    {# An hourly window is continuous by construction, so it keeps the plain baseline. #}
+    <div class="usage-scroll">
+      <div class="usage-chart">
+        {% for row in hourly.rows %}
+          <div class="usage-day" title="{{ row.at|date:'D M j, g A' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
+            <div class="usage-bar" style="height: {{ row.pct }}%">
+              <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+            </div>
           </div>
-        </div>
-      {% endfor %}
-    </div>
-    <div class="usage-baseline small text-muted pt-1">
-      <span>{% if hourly.multiday %}{{ hourly.first|date:"D " }}{% endif %}{{ hourly.first|date:"g A" }}</span>
-      <span>peak {{ hourly.peak }}/hour</span>
-      <span>{% if hourly.multiday %}{{ hourly.last|date:"D " }}{% endif %}{{ hourly.last|date:"g A" }}</span>
+        {% endfor %}
+      </div>
+      <div class="usage-baseline small text-muted pt-1">
+        <span>{% if hourly.multiday %}{{ hourly.first|date:"D " }}{% endif %}{{ hourly.first|date:"g A" }}</span>
+        <span>peak {{ hourly.peak }}/hour</span>
+        <span>{% if hourly.multiday %}{{ hourly.last|date:"D " }}{% endif %}{{ hourly.last|date:"g A" }}</span>
+      </div>
     </div>
   </div>
   {% elif series|length > 1 %}
@@ -207,31 +237,44 @@
         <span class="legend-swatch ms-3" style="background: var(--usage-confirmed)"></span> of which confirmed browsers
       </div>
     </div>
-    <div class="usage-chart">
-      {% for row in chart %}
-        {% if row.kind == "break" %}
-          {% comment %}
-            Days nobody was counting: the offseason, when the site is a static
-            archive with no database behind it, or an outage. Drawn as a break
-            rather than as bars of zero, which would say nobody came.
-          {% endcomment %}
-          <div class="usage-gap" title="{{ row.days }} day{{ row.days|pluralize }} not collected — {{ row.from|date:'M j, Y' }} to {{ row.to|date:'M j, Y' }}">
-            <span>not collected<br>{{ row.days }} day{{ row.days|pluralize }}</span>
-          </div>
-        {% else %}
-          <div class="usage-day" title="{{ row.day|date:'D M j' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
-            <div class="usage-bar" style="height: {{ row.pct }}%">
-              <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+    <div class="usage-scroll">
+      <div class="usage-chart">
+        {% for row in chart %}
+          {% if row.kind == "break" %}
+            {% comment %}
+              Days nobody was counting: the offseason, when the site is a static
+              archive with no database behind it, or an outage. Drawn as a break
+              rather than as bars of zero, which would say nobody came.
+            {% endcomment %}
+            <div class="usage-gap" title="{{ row.days }} day{{ row.days|pluralize }} not collected — {{ row.from|date:'M j, Y' }} to {{ row.to|date:'M j, Y' }}">
+              <span>not collected<br>{{ row.days }} day{{ row.days|pluralize }}</span>
             </div>
-          </div>
-        {% endif %}
-      {% endfor %}
+          {% else %}
+            <div class="usage-day" title="{{ row.day|date:'D M j' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
+              <div class="usage-bar" style="height: {{ row.pct }}%">
+                <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% comment %}
+        Dates where measurement starts and stops: the ends of the chart and the bars
+        on either side of a break. One blank slot per item keeps each label under its
+        own bar, which is the whole reason this is a mirror of the row above rather
+        than a caption pinned to the corners.
+      {% endcomment %}
+      <div class="usage-ticks small text-muted">
+        {% for row in chart %}
+          {% if row.kind == "break" %}
+            <span class="usage-tick usage-tick-gap"></span>
+          {% else %}
+            <span class="usage-tick">{% if row.tick %}<span class="{{ row.tick }}">{{ row.day|date:"M j" }}</span>{% endif %}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
     </div>
-    <div class="usage-baseline small text-muted pt-1">
-      <span>{{ first_day|date:"M j" }}</span>
-      <span>peak {{ peak_visitors }}/day</span>
-      <span>{{ last_day|date:"M j" }}</span>
-    </div>
+    <div class="small text-muted text-center pt-1">peak {{ peak_visitors }}/day</div>
   </div>
   {% endif %}
 

@@ -985,7 +985,42 @@ def _collapse_gaps(series):
             chart[-1]["to"] = row["day"]
         else:
             chart.append({"kind": "break", "days": 1, "from": row["day"], "to": row["day"]})
+    _date_the_edges(chart)
     return chart
+
+
+# A run of bars shorter than this gets one date rather than two. Two labels are each
+# wider than the bars they sit under, so on a short run they would overlap into an
+# unreadable smear — better to say where the data starts and leave the reader to
+# infer that it ends a few days later.
+_MIN_BARS_FOR_TWO_TICKS = 6
+
+
+def _date_the_edges(chart):
+    """
+    Mark which bars carry a date under them, in place.
+
+    The dates worth printing are where measurement starts and stops: the ends of the
+    chart, and the bars on either side of every break. Labelling the window's own
+    start instead — which is what a fixed left-hand label does — prints a date from
+    the middle of a gap, describing a day nobody recorded anything on.
+
+    `tick` is "start" or "end", meaning which edge of the bar the label is anchored
+    to, so the first and last dates stay inside the chart rather than overhanging it.
+    """
+    runs = []
+    for index, row in enumerate(chart):
+        if row["kind"] != "bar":
+            continue
+        if runs and runs[-1][1] == index - 1:
+            runs[-1][1] = index          # extend the run in progress
+        else:
+            runs.append([index, index])  # a new run, after a break or at the start
+
+    for first, last in runs:
+        chart[first]["tick"] = "start"
+        if last - first + 1 >= _MIN_BARS_FOR_TWO_TICKS:
+            chart[last]["tick"] = "end"
 
 
 # Windows short enough that a per-day chart is one or two bars, which says nothing
