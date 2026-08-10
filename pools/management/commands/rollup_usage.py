@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from pools.models import UsageDaily, UsageEvent, UsageRollupState
 from pools.services.usage import (
+    AUDIENCE_BOT,
     AUDIENCE_CONFIRMED,
     AUDIENCE_HUMAN,
     JOURNEY_MULTI_PAGE,
@@ -145,11 +146,10 @@ class Command(BaseCommand):
         # same ranges, and anyone whose browser ran the page has already proved they
         # are not the thing this is looking for. What is left is a machine that
         # fetched HTML from a rack and did nothing a browser does.
-        datacenter = (
-            set(rest.filter(datacenter=True).values_list("visitor", flat=True).distinct())
-            - confirmed
-            - staff_visitors
+        from_racks = set(
+            rest.filter(datacenter=True).values_list("visitor", flat=True).distinct()
         )
+        datacenter = from_racks - confirmed - staff_visitors
 
         bot_visitors = caught | legacy | datacenter
         # Bots are counted, not discarded — their crawl pattern is the only view we
@@ -257,6 +257,35 @@ class Command(BaseCommand):
                 .annotate(events=Count("id"), visitors=Count("visitor", distinct=True))
             ):
                 put("hour", f"{row['hour']:02d}", row["events"], row["visitors"], audience)
+
+        # The datacenter check's working, not just its verdict, keyed by the browser
+        # family the traffic claimed to be.
+        #
+        # This is what makes a poor confirmation rate diagnosable. A family that
+        # rarely runs the page's JavaScript is either real people whose beacon is
+        # being blocked or lost, or crawlers wearing that family's name — opposite
+        # conclusions, and whether the traffic came from a hosting provider's rack is
+        # the only thing that separates them. The flag lives on raw rows alone, so
+        # the question becomes unanswerable the moment they are pruned.
+        #
+        #   bot       — from a rack and never ran the page: what the rule caught
+        #   confirmed — from a rack but ran the page anyway, so a person behind a VPN
+        #               or relay, which is exactly who the rule is written to spare
+        #
+        # There is no "human" row by construction: an unconfirmed visitor from a rack
+        # is already in the bot set, so those two rows are the whole population.
+        # Blank families are skipped like every other breakdown — they only exist on
+        # rows predating the column, which cannot be judged either way.
+        for audience, group in (
+            (AUDIENCE_BOT, datacenter),
+            (AUDIENCE_CONFIRMED, from_racks & confirmed),
+        ):
+            for row in (
+                rest.filter(visitor__in=group).exclude(ua_family="")
+                .values("ua_family")
+                .annotate(events=Count("id"), visitors=Count("visitor", distinct=True))
+            ):
+                put("datacenter", row["ua_family"], row["events"], row["visitors"], audience)
 
         UsageDaily.objects.filter(day=day).delete()
         UsageDaily.objects.bulk_create([

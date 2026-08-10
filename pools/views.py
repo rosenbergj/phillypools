@@ -22,7 +22,9 @@ from pools.services.datacenter import is_datacenter_ip
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
+    AUDIENCE_BOT,
     AUDIENCE_CONFIRMED,
+    AUDIENCE_HUMAN,
     AUDIENCES,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
@@ -970,6 +972,60 @@ def _top(day_from, metric, audience, limit=15, exclude_keys=()):
     return rows
 
 
+def _confirmed_rates(day_from, limit=15):
+    """
+    Per claimed browser family: how many visitors, how many of them ran the page's
+    JavaScript, and how much traffic claiming that name was filed as a robot for
+    arriving from a hosting provider's range.
+
+    This is the check on the assumption the rest of the page rests on. /stats/
+    defaults to confirmed browsers on the grounds that traffic which never ran a
+    line of JavaScript is more likely an uncaught crawler than a person — true only
+    if real browsers confirm at roughly the same rate as each other. If one family
+    confirms far below the rest, either its users' beacons are being blocked or lost
+    (so the confirmed figures undercount real people, and unevenly, since browser
+    tracks device and device tracks neighborhood) or crawlers are wearing its name.
+    The hosting-range column is what tells those two apart.
+
+    Rates are computed on visitors summed over the window, like every other figure
+    here, so someone who came back on three days counts three times in both halves
+    of the ratio.
+    """
+    families = {}
+    rows = (
+        UsageDaily.objects.filter(day__gte=day_from, metric__in=("browser", "datacenter"))
+        .exclude(key="")
+        .values("metric", "key", "audience")
+        .annotate(visitors=Sum("visitors"))
+    )
+    for row in rows:
+        family = families.setdefault(
+            row["key"], {"label": row["key"], "visitors": 0, "confirmed": 0, "datacenter": 0}
+        )
+        if row["metric"] == "browser":
+            if row["audience"] == AUDIENCE_HUMAN:
+                family["visitors"] = row["visitors"]
+            elif row["audience"] == AUDIENCE_CONFIRMED:
+                family["confirmed"] = row["visitors"]
+        # Only the caught ones. A confirmed visitor from a hosting range is a person
+        # behind a VPN and belongs in the two columns to their left, not in a count
+        # of traffic the rule rejected.
+        elif row["audience"] == AUDIENCE_BOT:
+            family["datacenter"] = row["visitors"]
+
+    ranked = sorted(
+        families.values(), key=lambda f: (-f["visitors"], -f["datacenter"], f["label"])
+    )
+    for family in ranked:
+        # None, not zero, when there is nobody to have confirmed: a family seen only
+        # from hosting ranges has no rate, and printing 0% would read as a finding
+        # about a browser rather than an absence of anyone using it.
+        family["rate"] = (
+            round(100 * family["confirmed"] / family["visitors"]) if family["visitors"] else None
+        )
+    return ranked[:limit]
+
+
 @staff_member_required
 def stats(request):
     try:
@@ -1125,6 +1181,7 @@ def stats(request):
         "referrers": _top(day_from, "referrer", audience),
         "devices": _top(day_from, "device", audience),
         "browsers": _top(day_from, "browser", audience),
+        "confirmed_rates": _confirmed_rates(day_from),
         "events_by_type": events_by_type,
         "journeys": journeys,
         "journey_total": journey_total,

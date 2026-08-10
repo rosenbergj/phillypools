@@ -818,6 +818,47 @@ class RollupTests(TestCase):
         self.assertEqual(self._journey("single_engaged"), 1)
         self.assertEqual(self._journey("single_passive_detail"), 0)
 
+    def test_the_datacenter_rule_records_what_it_caught_by_browser(self):
+        """Its verdict is stored as a bot; its working is what makes a poor
+        confirmation rate diagnosable later."""
+        self._event(self.today, visitor="rack1", ua_family="chrome/130", datacenter=True)
+        self._event(self.today, visitor="rack2", ua_family="chrome/130", datacenter=True)
+        self._event(self.today, visitor="rack3", ua_family="safari/17", datacenter=True)
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="datacenter", key="chrome/130", audience="bot"
+            ).visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="datacenter", key="safari/17", audience="bot"
+            ).visitors, 1
+        )
+        # And they stay out of the visitor figures, as before.
+        self.assertEqual(self._visitors(), 0)
+
+    def test_a_confirmed_visitor_from_a_rack_is_filed_as_a_person(self):
+        """Somebody on a VPN, which is who the rule is written to spare. They belong
+        in the visitor counts, not in a tally of traffic the rule rejected."""
+        self._event(self.today, visitor="vpn", ua_family="firefox/131", datacenter=True)
+        self._event(self.today, visitor="vpn", event="pageview_js",
+                    ua_family="firefox/131", datacenter=True)
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="datacenter", key="firefox/131", audience="confirmed"
+            ).visitors, 1
+        )
+        self.assertFalse(
+            UsageDaily.objects.filter(day=self.today, metric="datacenter", audience="bot").exists()
+        )
+        self.assertEqual(self._visitors(), 1)
+
     def test_unconfirmed_visitors_are_left_out_of_the_split(self):
         """A no-JS client can't be told apart from a reader who did nothing."""
         self._event(self.today, visitor="quiet")            # HTML only, never confirmed
@@ -1095,6 +1136,43 @@ class StatsPageTests(TestCase):
         wider = self.client.get("/stats/?days=7&audience=human")
         self.assertEqual(wider.context["audience"], "human")
         self.assertEqual(wider.context["pool_views"][0]["visitors"], 2)
+
+    def test_confirmation_rate_by_browser_shows_the_shortfall_and_its_cause(self):
+        """The check on the page's own premise: which browsers confirm, and whether
+        the ones that don't were crawlers wearing the name."""
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin8", "a8@example.com", "pw")
+        self.client.login(username="admin8", password="pw")
+        day = timezone.localdate()
+        # Chrome: two visitors, both confirmed.
+        for n in range(2):
+            UsageEvent.objects.create(day=day, event="index", visitor=f"c{n}", ua_family="chrome/130")
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"c{n}", ua_family="chrome/130")
+        # Safari: two visitors, one confirmed, plus two more from hosting ranges that
+        # never ran anything and were filed as robots.
+        UsageEvent.objects.create(day=day, event="index", visitor="s1", ua_family="safari/17")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="s1", ua_family="safari/17")
+        UsageEvent.objects.create(day=day, event="index", visitor="s2", ua_family="safari/17")
+        for n in range(2):
+            UsageEvent.objects.create(day=day, event="index", visitor=f"rack{n}",
+                                      ua_family="safari/17", datacenter=True)
+        # A family seen only from hosting ranges: nobody to have confirmed, so it has
+        # no rate at all rather than a rate of zero.
+        UsageEvent.objects.create(day=day, event="index", visitor="rack9",
+                                  ua_family="opera/98", datacenter=True)
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=7")
+        rows = {r["label"]: r for r in resp.context["confirmed_rates"]}
+        self.assertIsNone(rows["opera/98"]["rate"])
+        self.assertIn('<td class="text-end">&mdash;</td>', resp.content.decode())
+        self.assertEqual(rows["chrome/130"]["rate"], 100)
+        self.assertEqual(rows["chrome/130"]["datacenter"], 0)
+        self.assertEqual(rows["safari/17"]["visitors"], 2)
+        self.assertEqual(rows["safari/17"]["rate"], 50)
+        # The half that didn't confirm is explained by traffic the rule already
+        # rejected, which is the whole reason the column is there.
+        self.assertEqual(rows["safari/17"]["datacenter"], 2)
 
     def test_unknown_audience_falls_back_to_confirmed(self):
         from django.contrib.auth.models import User

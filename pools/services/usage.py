@@ -216,6 +216,11 @@ INTERACTION_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "nearby_c
 # person browsing with JavaScript off.
 AUDIENCE_HUMAN = "human"
 AUDIENCE_CONFIRMED = "confirmed"
+# Traffic the bot rules caught. Stored for the few breakdowns that exist to show a
+# rule's working rather than to describe visitors, and deliberately left out of
+# AUDIENCES below: those are the two populations /stats/ will show a breakdown of,
+# and a robot view of "pools people looked at" would be nonsense.
+AUDIENCE_BOT = "bot"
 AUDIENCES = (AUDIENCE_CONFIRMED, AUDIENCE_HUMAN)
 
 # How a confirmed browser spent their day. Ordered most to least engaged, which is

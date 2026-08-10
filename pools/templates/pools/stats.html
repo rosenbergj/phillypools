@@ -239,6 +239,40 @@
     {% include "pools/_stats_table.html" with title="Interaction types" subtitle="What visitors did" rows=events_by_type %}
   </div>
 
+  <div class="border rounded p-3 mt-4">
+    <h2 class="h6 mb-0">Confirmation rate by browser</h2>
+    <div class="text-muted small mb-2">A check on the confirmed figure itself: real browsers should
+    confirm at similar rates, so a family well below the rest is either having its beacon blocked or
+    being impersonated by crawlers &mdash; the last column says which. Hosting-range visitors are
+    counted there instead of under Visitors, having already been filed as robots.</div>
+    <div class="table-responsive">
+      <table class="table table-sm small mb-0">
+        <thead>
+          <tr>
+            <th>Browser</th>
+            <th class="text-end">Visitors</th>
+            <th class="text-end">Confirmed</th>
+            <th class="text-end">Rate</th>
+            <th class="text-end">From hosting ranges</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in confirmed_rates %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td class="text-end">{{ row.visitors }}</td>
+              <td class="text-end">{{ row.confirmed }}</td>
+              <td class="text-end">{% if row.rate is None %}&mdash;{% else %}{{ row.rate }}%{% endif %}</td>
+              <td class="text-end">{{ row.datacenter }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="text-muted">Nothing recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="border-top mt-4 pt-3 text-muted small">
     <p class="mb-1"><strong>How this is measured.</strong> No cookies, no third-party analytics.
     Visitors are counted with a hash of IP address and browser that is re-salted nightly, so the
