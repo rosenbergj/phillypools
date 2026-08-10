@@ -2,7 +2,7 @@ import json
 import logging
 import secrets
 import threading
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 
@@ -951,6 +951,68 @@ def _daily_series(rows, days):
     return out
 
 
+# Windows short enough that a per-day chart is one or two bars, which says nothing
+# the tiles above it don't already. The stored hour rows redraw the same window at
+# 24 times the resolution instead.
+HOURLY_MAX_DAYS = 2
+
+
+def _hourly_series(day_from):
+    """
+    Visitors per hour of the window, ready to chart: rows, the peak to scale them
+    against, and the first and last slot for the baseline labels.
+
+    Both populations, human and confirmed, exactly as the per-day chart shows them
+    — the audience toggle governs the ranked breakdowns, not this.
+
+    Hours are Philadelphia's wall clock, since that is how the rollup stores them.
+    Today stops at the hour in progress rather than drawing a run of empty bars for
+    hours that have not happened yet, which would read as traffic falling off a
+    cliff. Slots are naive datetimes: they are already local, and an aware one would
+    be converted a second time on the way into the template.
+
+    Returns None when the window has no hour rows at all, so the caller can fall
+    back to the daily chart rather than draw a flat empty one next to tiles that say
+    people were here. That happens for any window predating the hour rollup, and for
+    the stretch after a deploy but before `rollup_usage --all` catches up.
+    """
+    rows = UsageDaily.objects.filter(day__gte=day_from, metric="hour").values(
+        "day", "key", "audience", "visitors", "events"
+    )
+    by_slot = {(r["day"], r["key"], r["audience"]): r for r in rows}
+    if not by_slot:
+        return None
+
+    now = timezone.localtime()
+    today = now.date()
+    slots = []
+    day = day_from
+    while day <= today:
+        for hour in range(now.hour + 1 if day == today else 24):
+            human = by_slot.get((day, f"{hour:02d}", AUDIENCE_HUMAN))
+            confirmed = by_slot.get((day, f"{hour:02d}", AUDIENCE_CONFIRMED))
+            slots.append({
+                "at": datetime.combine(day, time(hour)),
+                "visitors": human["visitors"] if human else 0,
+                "events": human["events"] if human else 0,
+                "confirmed": confirmed["visitors"] if confirmed else 0,
+            })
+        day += timedelta(days=1)
+
+    peak = max([s["visitors"] for s in slots] + [1])
+    for slot in slots:
+        slot["pct"] = round(100 * slot["visitors"] / peak, 1)
+    return {
+        "rows": slots,
+        "peak": peak,
+        "first": slots[0]["at"],
+        "last": slots[-1]["at"],
+        # Which day each bar belongs to only needs saying when the window spans more
+        # than one of them.
+        "multiday": slots[0]["at"].date() != slots[-1]["at"].date(),
+    }
+
+
 def _top(day_from, metric, audience, limit=15, exclude_keys=()):
     """
     Ranked breakdown for one metric, with each row's bar width relative to the leader.
@@ -1028,10 +1090,22 @@ def _confirmed_rates(day_from, limit=15):
 
 @staff_member_required
 def stats(request):
-    try:
-        days = max(1, min(365, int(request.GET.get("days", 30))))
-    except ValueError:
-        days = 30
+    # `days=all` reaches back to the first day anything was recorded, which is why it
+    # is a word rather than a number: the answer changes every day, and next season it
+    # will be longer than any figure hardcoded here. Everything downstream still works
+    # in days, so it is resolved to one immediately. The ceiling is a guard against a
+    # stray ancient row, not a limit anybody should ever meet.
+    requested = request.GET.get("days", "30")
+    all_time = requested == "all"
+    if all_time:
+        first = UsageDaily.objects.aggregate(first=Min("day"))["first"]
+        span = (timezone.localdate() - first).days + 1 if first else 1
+        days = max(1, min(3650, span))
+    else:
+        try:
+            days = max(1, min(365, int(requested)))
+        except ValueError:
+            days = 30
     day_from = timezone.localdate() - timedelta(days=days - 1)
 
     # Which audience the ranked breakdowns below count. Confirmed browsers by default:
@@ -1158,6 +1232,7 @@ def stats(request):
 
     return render(request, "pools/stats.html", {
         "days": days,
+        "all_time": all_time,
         "series": series,
         "totals": {
             "visitors": sum(r["visitors"] for r in series),
@@ -1170,6 +1245,7 @@ def stats(request):
             "staff": sum(r["visitors"] for r in staff),
         },
         "peak_visitors": peak,
+        "hourly": _hourly_series(day_from) if days <= HOURLY_MAX_DAYS else None,
         "first_day": day_from,
         "last_day": timezone.localdate(),
         "pool_views": pool_views,

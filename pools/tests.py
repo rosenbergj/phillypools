@@ -1174,6 +1174,99 @@ class StatsPageTests(TestCase):
         # rejected, which is the whole reason the column is there.
         self.assertEqual(rows["safari/17"]["datacenter"], 2)
 
+    def _staff(self, name):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser(name, f"{name}@example.com", "pw")
+        self.client.login(username=name, password="pw")
+
+    def _hour_row(self, day, hour, audience, visitors):
+        UsageDaily.objects.create(
+            day=day, metric="hour", key=f"{hour:02d}", audience=audience,
+            visitors=visitors, events=visitors,
+        )
+
+    def test_a_one_day_window_is_charted_by_the_hour(self):
+        self._staff("admin9")
+        now = timezone.localtime()
+        self._hour_row(now.date(), now.hour, "human", 4)
+        self._hour_row(now.date(), now.hour, "confirmed", 3)
+
+        hourly = self.client.get("/stats/?days=1").context["hourly"]
+
+        # One bar per hour so far today and none for hours that haven't happened:
+        # a run of empty bars to midnight would read as traffic falling off a cliff.
+        self.assertEqual(len(hourly["rows"]), now.hour + 1)
+        self.assertEqual(hourly["rows"][-1]["visitors"], 4)
+        self.assertEqual(hourly["rows"][-1]["confirmed"], 3)
+        self.assertEqual(hourly["peak"], 4)
+        self.assertFalse(hourly["multiday"])
+
+    def test_a_two_day_window_charts_both_days_by_the_hour(self):
+        self._staff("admin10")
+        now = timezone.localtime()
+        self._hour_row(now.date() - timedelta(days=1), 23, "human", 2)
+        self._hour_row(now.date(), now.hour, "human", 5)
+
+        hourly = self.client.get("/stats/?days=2").context["hourly"]
+
+        # All of yesterday, then today up to the hour in progress.
+        self.assertEqual(len(hourly["rows"]), 24 + now.hour + 1)
+        self.assertEqual(hourly["peak"], 5)
+        self.assertTrue(hourly["multiday"])
+
+    def test_longer_windows_keep_the_per_day_chart(self):
+        self._staff("admin11")
+        now = timezone.localtime()
+        self._hour_row(now.date(), now.hour, "human", 4)
+        self.assertIsNone(self.client.get("/stats/?days=7").context["hourly"])
+
+    def test_a_window_with_no_hours_recorded_falls_back_to_the_daily_chart(self):
+        """Days predating the hour rollup, or a deploy still waiting on
+        `rollup_usage --all`. A flat empty chart beside tiles reporting visitors
+        would say the site was dead all day, which is the one thing it wasn't."""
+        self._staff("admin12")
+        day = timezone.localdate()
+        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/130")
+        call_command("rollup_usage", verbosity=0)
+        UsageDaily.objects.filter(metric="hour").delete()  # as if rolled up before hours existed
+
+        resp = self.client.get("/stats/?days=2")
+        self.assertIsNone(resp.context["hourly"])
+        self.assertEqual(resp.context["totals"]["visitors"], 1)
+
+    def test_all_time_reaches_back_to_the_first_day_recorded(self):
+        self._staff("admin14")
+        today = timezone.localdate()
+        UsageDaily.objects.create(
+            day=today - timedelta(days=400), metric="visitors", key="", visitors=3, events=3
+        )
+
+        resp = self.client.get("/stats/?days=all")
+
+        # Past the 365 the numeric windows are capped at: the cap exists to bound a
+        # typo, not to hide a season that has already been recorded.
+        self.assertEqual(resp.context["days"], 401)
+        self.assertTrue(resp.context["all_time"])
+        self.assertEqual(resp.context["first_day"], today - timedelta(days=400))
+
+    def test_all_time_survives_switching_audience(self):
+        """The audience form resubmits the window; a resolved day count would freeze
+        it at today's length and quietly stop growing tomorrow."""
+        self._staff("admin15")
+        UsageDaily.objects.create(
+            day=timezone.localdate() - timedelta(days=5), metric="visitors", key="",
+            visitors=1, events=1,
+        )
+        html = self.client.get("/stats/?days=all").content.decode()
+        self.assertIn('<input type="hidden" name="days" value="all">', html)
+
+    def test_all_time_with_nothing_recorded_does_not_break(self):
+        self._staff("admin16")
+        resp = self.client.get("/stats/?days=all")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["days"], 1)
+
     def test_unknown_audience_falls_back_to_confirmed(self):
         from django.contrib.auth.models import User
         User.objects.create_superuser("admin7", "a7@example.com", "pw")

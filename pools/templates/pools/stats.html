@@ -98,11 +98,17 @@
     </div>
     {# Each control carries the other's current value, or switching one would reset it. #}
     <div class="btn-group btn-group-sm" role="group">
-      <a href="?days=1&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 1 %} active{% endif %}">Today</a>
-      <a href="?days=7&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 7 %} active{% endif %}">7 days</a>
-      <a href="?days=30&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 30 %} active{% endif %}">30 days</a>
-      <a href="?days=90&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 90 %} active{% endif %}">90 days</a>
-      <a href="?days=365&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 365 %} active{% endif %}">Season</a>
+      {% comment %}
+        The numeric buttons check all_time too: "all time" resolves to a day count,
+        and without the guard it would light up whichever fixed window it happens to
+        equal early in a season.
+      {% endcomment %}
+      <a href="?days=1&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 1 and not all_time %} active{% endif %}">Today</a>
+      <a href="?days=2&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 2 and not all_time %} active{% endif %}">2 days</a>
+      <a href="?days=7&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 7 and not all_time %} active{% endif %}">7 days</a>
+      <a href="?days=30&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 30 and not all_time %} active{% endif %}">30 days</a>
+      <a href="?days=180&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if days == 180 and not all_time %} active{% endif %}">Season</a>
+      <a href="?days=all&amp;audience={{ audience }}" class="btn btn-outline-secondary{% if all_time %} active{% endif %}">All time</a>
     </div>
   </div>
 
@@ -138,10 +144,36 @@
   </div>
 
   {% comment %}
-    A one-day window has nothing to chart: a single bar is always full height,
-    because the only day in view is also the peak. The tiles above say it better.
+    Short windows are charted by the hour instead: one or two bars would say nothing
+    the tiles above don't, and a single bar is always full height anyway, being its
+    own peak. `hourly` is absent when the window has no hour rows to draw, which
+    falls through to the per-day chart rather than showing an empty one.
   {% endcomment %}
-  {% if series|length > 1 %}
+  {% if hourly %}
+  <div class="border rounded p-3 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+      <h2 class="h6 mb-0">Visitors per hour</h2>
+      <div class="small text-muted">
+        <span class="legend-swatch" style="background: var(--usage-total)"></span> all visitors
+        <span class="legend-swatch ms-3" style="background: var(--usage-confirmed)"></span> of which confirmed browsers
+      </div>
+    </div>
+    <div class="usage-chart">
+      {% for row in hourly.rows %}
+        <div class="usage-day" title="{{ row.at|date:'D M j, g A' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
+          <div class="usage-bar" style="height: {{ row.pct }}%">
+            <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="usage-baseline small text-muted pt-1">
+      <span>{% if hourly.multiday %}{{ hourly.first|date:"D " }}{% endif %}{{ hourly.first|date:"g A" }}</span>
+      <span>peak {{ hourly.peak }}/hour</span>
+      <span>{% if hourly.multiday %}{{ hourly.last|date:"D " }}{% endif %}{{ hourly.last|date:"g A" }}</span>
+    </div>
+  </div>
+  {% elif series|length > 1 %}
   <div class="border rounded p-3 mb-4">
     <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
       <h2 class="h6 mb-0">Visitors per day</h2>
@@ -210,7 +242,11 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
     <h2 class="h6 mb-0">Breakdowns</h2>
     <form method="get" class="d-flex align-items-center gap-2">
-      <input type="hidden" name="days" value="{{ days }}">
+      {% comment %}
+        "all" has to survive the round trip as a word: submitting the day count it
+        resolved to would freeze this window at today's length.
+      {% endcomment %}
+      <input type="hidden" name="days" value="{% if all_time %}all{% else %}{{ days }}{% endif %}">
       <label class="small text-muted" for="audience-select">Counting</label>
       <select class="form-select form-select-sm w-auto" id="audience-select" name="audience"
               onchange="this.form.submit()">
