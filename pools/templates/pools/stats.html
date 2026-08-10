@@ -240,38 +240,16 @@
   </div>
 
   <div class="border-top mt-4 pt-3 text-muted small">
-    <p class="mb-1"><strong>How this is measured.</strong> No cookies are set for this and no
-    third-party analytics are used. Visitors are counted with a hash of IP address and browser
-    that is re-salted every night, so the same person is countable within a day and unlinkable
-    across days; IP addresses and browser strings are never stored.</p>
+    <p class="mb-1"><strong>How this is measured.</strong> No cookies, no third-party analytics.
+    Visitors are counted with a hash of IP address and browser that is re-salted nightly, so the
+    same person is countable within a day and unlinkable across days; the addresses and browser
+    strings themselves are never stored.</p>
     <p class="mb-1">&ldquo;Confirmed browsers&rdquo; are visitors whose browser ran the page's own
-    JavaScript &mdash; proof a real browser rendered the page, not just a bot that fetched the HTML.
-    Every page load now reports this, so the gap to the visitor count is mostly people with
-    JavaScript disabled or blocked, plus any bot that slipped past the crawler check without running
-    scripts. The true human number sits between the two figures, nearer the confirmed one.
-    The interaction tile counts only what confirmed browsers did, so unconfirmed traffic
-    cannot pad it; the page-load beacon is left out of that count, since it fires on its own
-    and would otherwise count each page twice.</p>
-    <p class="mb-1">The three-way split counts a page as a distinct URL, so reloading the map is
-    still one page while the map plus a pool's detail page is two, and it counts as
-    &ldquo;used it&rdquo; a popup opened from either the map or the list, a neighborhood picked
-    off the map, or any filter. Clicking a pool in the list opens the same popup a pin does,
-    but it only began being recorded on Jul 25, 2026 &mdash; before that it left no trace at all,
-    so earlier days undercount it and overstate &ldquo;one page, then left&rdquo;. Only
-    confirmed browsers are split: for anyone else, doing nothing is indistinguishable from
-    running no JavaScript, which would file every crawler as a reader who lost interest.</p>
-    <p class="mb-1">Robots are spotted four ways: they name themselves, their browser string
-    contradicts itself in a way no real browser's would, they ask for a path only a
-    vulnerability scanner asks for, or they arrive from a hosting company's address range
-    and never run a line of the page's JavaScript. That last one is asked only about visitors
-    who were never confirmed, since people do browse from behind VPNs and relays in those same
-    ranges; the address is checked in memory and never stored, only the yes or no. Anyone
-    caught is counted as a robot for that whole day, including the ordinary-looking requests
-    they made alongside. Traffic recorded before those
-    checks existed, on Jul 26, 2026 and earlier, could never be run against them &mdash; if it
-    also never ran any JavaScript it is counted as a robot too, which is right about four times
-    in five and wrong the fifth. &ldquo;Browsers&rdquo; below is what the browser string claimed
-    to be, not what it was judged to be, so an unlikely claim stays visible.</p>
+    JavaScript &mdash; proof a real browser rendered the page rather than a bot fetching the HTML.
+    The true human number sits between the two figures, nearer the confirmed one. Robots are left
+    out when they name themselves, send a browser string no real browser would, probe for paths
+    only a scanner wants, or arrive from a hosting provider and never run any JavaScript; anyone
+    caught is discounted for that whole day.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
     ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
   </div>

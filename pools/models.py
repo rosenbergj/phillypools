@@ -441,6 +441,7 @@ class UsageEvent(models.Model):
         ("map_pick", "Neighborhood picked on map"),
         ("pin_click", "Map pin clicked"),
         ("card_click", "Pool clicked in the list"),
+        ("nearby_click", "Pool opened from the closest-pools box"),
         ("pageview_js", "Page loaded (browser confirmed)"),
         ("submit_view", "Submit form viewed"),
         ("submit_done", "Submission completed"),

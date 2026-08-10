@@ -1,5 +1,5 @@
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone as utc_tz
 from pathlib import Path
 from unittest.mock import patch
 from xml.dom import minidom
@@ -495,10 +495,15 @@ class SubmissionThrottleTests(TestCase):
 
 
 class PoolClickTests(TestCase):
-    """Both popup beacons: the pin on the map and the entry in the list."""
+    """The three pool-click beacons: the map pin, the list entry, and the
+    closest-pools box on a detail page."""
 
-    # (endpoint, event recorded) — every case below runs against both.
-    ROUTES = [("/pin-click/", "pin_click"), ("/card-click/", "card_click")]
+    # (endpoint, event recorded) — every case below runs against all of them.
+    ROUTES = [
+        ("/pin-click/", "pin_click"),
+        ("/card-click/", "card_click"),
+        ("/nearby-click/", "nearby_click"),
+    ]
 
     def setUp(self):
         _reset_salt_cache()
@@ -515,12 +520,12 @@ class PoolClickTests(TestCase):
                     UsageEvent.objects.filter(event=event, key="test-pool").count(), 1
                 )
 
-    def test_the_two_routes_stay_separate(self):
-        """Same pool, same popup, but the map and the list must remain tellable apart."""
-        self.client.post("/pin-click/", {"slug": "test-pool"})
-        self.client.post("/card-click/", {"slug": "test-pool"})
-        self.assertEqual(UsageEvent.objects.filter(event="pin_click").count(), 1)
-        self.assertEqual(UsageEvent.objects.filter(event="card_click").count(), 1)
+    def test_the_routes_stay_separate(self):
+        """Same pool reached three ways; which way it was is the whole point."""
+        for url, _ in self.ROUTES:
+            self.client.post(url, {"slug": "test-pool"})
+        for _, event in self.ROUTES:
+            self.assertEqual(UsageEvent.objects.filter(event=event).count(), 1)
 
     def test_unknown_slug_is_ignored_without_error(self):
         for url, _ in self.ROUTES:
@@ -546,6 +551,16 @@ class PoolClickTests(TestCase):
                 ])
                 resp = self.client.post(url, {"slug": "test-pool"})
                 self.assertEqual(resp.status_code, 429)
+
+    def test_the_nearby_beacon_records_where_the_visitor_is_going(self):
+        """Not the page they left: that one is already in their day as a pool_view."""
+        Pool.objects.create(
+            ppr_amenity_id="t2", name="Other Pool", address="2 Main St", slug="other-pool"
+        )
+        self.client.post(
+            "/nearby-click/", {"slug": "other-pool"}, HTTP_REFERER="https://phillypools.app/pools/test-pool/"
+        )
+        self.assertEqual(UsageEvent.objects.get(event="nearby_click").key, "other-pool")
 
     def test_each_route_has_its_own_budget(self):
         """A visitor who has exhausted their pin clicks can still report a list click."""
@@ -657,6 +672,56 @@ class RollupTests(TestCase):
     def _journey(self, key):
         return UsageDaily.objects.get(day=self.today, metric="journey", key=key).visitors
 
+    def _at(self, hour):
+        """A local wall-clock time on the day under test. auto_now_add can't be set
+        on create, so callers write it over the row afterwards with .update()."""
+        return timezone.make_aware(datetime.combine(self.today, time(hour, 30)))
+
+    def _hour(self, key, audience):
+        return UsageDaily.objects.get(
+            day=self.today, metric="hour", key=key, audience=audience
+        ).visitors
+
+    def test_hours_are_recorded_on_philadelphia_s_clock(self):
+        """Rows store UTC, but "when do people check" is a question about local time."""
+        event = self._event(self.today, visitor="night-owl", event="pageview_js")
+        at = self._at(22)
+        UsageEvent.objects.filter(pk=event.pk).update(created_at=at)
+        # The same instant is the small hours of the next day in UTC, so a rollup
+        # that skipped the conversion would file this under a different hour.
+        self.assertNotEqual(at.astimezone(utc_tz.utc).hour, 22)
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._hour("22", "confirmed"), 1)
+        self.assertFalse(
+            UsageDaily.objects.filter(day=self.today, metric="hour")
+            .exclude(key="22").exists()
+        )
+
+    def test_a_visitor_counts_in_every_hour_they_turn_up_in(self):
+        """Hours say when people were here, so they deliberately don't sum to the day."""
+        morning = self._event(self.today, visitor="twice", event="pageview_js")
+        evening = self._event(self.today, visitor="twice", event="pool_view", key="p")
+        quiet = self._event(self.today, visitor="quiet")  # never ran the page's JavaScript
+        UsageEvent.objects.filter(pk=morning.pk).update(created_at=self._at(9))
+        UsageEvent.objects.filter(pk=evening.pk).update(created_at=self._at(18))
+        UsageEvent.objects.filter(pk=quiet.pk).update(created_at=self._at(9))
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._hour("09", "confirmed"), 1)
+        self.assertEqual(self._hour("18", "confirmed"), 1)
+        # One person, counted in both hours, and still one confirmed visitor that day.
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="visitors", key="js_confirmed"
+            ).visitors, 1
+        )
+        # The unconfirmed visitor shows up in the wider audience only.
+        self.assertEqual(self._hour("09", "human"), 2)
+        self.assertEqual(self._hour("18", "human"), 1)
+
     def test_journeys_split_confirmed_browsers_by_page(self):
         # Two pages, so multi-page whether or not they touched anything.
         self._event(self.today, visitor="multi")
@@ -719,6 +784,39 @@ class RollupTests(TestCase):
                 day=self.today, metric="card_click", key="mander", audience="confirmed"
             ).visitors, 2
         )
+
+    def test_nearby_clicks_are_broken_down_per_pool(self):
+        """
+        Which pools the closest-pools box actually sends people to, kept permanently:
+        the raw rows carrying it are pruned, and the pool_view it produces says
+        nothing about where it came from.
+        """
+        self._event(self.today, visitor="aaa", event="nearby_click", key="mander")
+        self._event(self.today, visitor="bbb", event="nearby_click", key="mander")
+        self._event(self.today, visitor="bbb", event="nearby_click", key="cobbs-creek")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="nearby_click", key="mander", audience="confirmed"
+            ).visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="nearby_click", key="cobbs-creek", audience="confirmed"
+            ).visitors, 1
+        )
+
+    def test_a_nearby_click_confirms_and_engages_the_visitor(self):
+        """Only the page's own JavaScript can reach that endpoint, and choosing the
+        next pool to look at is using the page, not just reading it."""
+        self._event(self.today, visitor="hopper", event="pool_view", key="p")
+        self._event(self.today, visitor="hopper", event="nearby_click", key="q")
+        call_command("rollup_usage", verbosity=0)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").visitors, 1
+        )
+        self.assertEqual(self._journey("single_engaged"), 1)
+        self.assertEqual(self._journey("single_passive_detail"), 0)
 
     def test_unconfirmed_visitors_are_left_out_of_the_split(self):
         """A no-JS client can't be told apart from a reader who did nothing."""
@@ -1311,6 +1409,19 @@ class NearbyPoolsTests(TestCase):
         ctx = self._context(self.pools["Home"])
         self.assertEqual(ctx["nearby_pools"], [])
         self.assertTrue(ctx["nearby_only_open"])
+
+    def test_links_carry_the_hooks_the_click_beacon_reads(self):
+        """
+        The beacon in detail.html finds these by id and data-slug. Nothing else on
+        the page would break if they were dropped in a refactor — the box would keep
+        working and simply stop being measurable — so the contract is asserted here.
+        """
+        from django.template.loader import render_to_string
+
+        html = render_to_string("pools/_nearby_pools.html", self._context(self.pools["Home"]))
+        self.assertIn('id="nearby-pools"', html)
+        for name in ["One", "Two", "Three"]:
+            self.assertIn(f'data-slug="{self.pools[name].slug}"', html)
 
     def test_closed_pools_are_excluded_in_season(self):
         Pool.objects.exclude(pk=self.pools["Home"].pk).update(is_active=False)

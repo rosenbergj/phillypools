@@ -275,5 +275,35 @@
       }
     });
   })();
+
+  // A link out of the closest-pools box is the one navigation on this site whose
+  // origin is otherwise unknowable: it lands as an ordinary pool_view, and the
+  // referrer that would explain it is internal and deliberately dropped before
+  // anything is stored. So the click reports itself on the way out, naming the pool
+  // it is heading to — the same question the pin and list beacons answer for the
+  // map. keepalive, because the page it was fired from is already going away.
+  //
+  // Not deduplicated the way the map's beacons are: a second click here can only
+  // happen after coming back to this page, which is a real second decision rather
+  // than the same popup being reopened. The daily cap in the view is what keeps the
+  // endpoint from being used to pad a pool's numbers.
+  (function () {
+    const box = document.getElementById('nearby-pools');
+    if (!box) return;  // Omitted entirely when there is nothing nearby to list.
+    const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+    box.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-slug]');
+      if (!link) return;
+      const body = new FormData();
+      body.append('slug', link.dataset.slug);
+      fetch('/nearby-click/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken },
+        body: body,
+        keepalive: true,
+      }).catch(() => {});  // Never let measurement get in the way of the link.
+    });
+  })();
 </script>
 {% endblock %}

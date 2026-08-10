@@ -188,7 +188,7 @@ def ua_family(user_agent: str) -> str:
 # rollup to distinguish confirmed browsers from merely not-obviously-a-bot traffic.
 # "pageview_js" is the page-load beacon: it confirms passive readers who never
 # filter or click a pin, who otherwise leave no JS trace at all.
-JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "pageview_js"}
+JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "nearby_click", "pageview_js"}
 
 # Requests for a rendered HTML page, as opposed to the JSON and beacon endpoints
 # the page calls afterwards. Counted distinct-by-(event, key), so reloading one
@@ -196,11 +196,17 @@ JS_ONLY_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "pageview_js"
 PAGE_EVENTS = {"index", "pool_view", "submit_view", "submit_done", "other"}
 
 # Doing something with the page rather than only reading it: opening a pool's
-# popup from either the map or the list, picking a neighborhood off the map, and
-# the zip/status/neighborhood filters (which redraw the markers, so they are map
-# use too). "pageview_js" is deliberately absent — it fires on its own and proves
-# only that a browser loaded.
-INTERACTION_EVENTS = {"filter", "map_pick", "pin_click", "card_click"}
+# popup from either the map or the list, following a link out of the closest-pools
+# box, picking a neighborhood off the map, and the zip/status/neighborhood filters
+# (which redraw the markers, so they are map use too). "pageview_js" is
+# deliberately absent — it fires on its own and proves only that a browser loaded.
+#
+# "nearby_click" almost never decides a journey on its own, since the page it leads
+# to makes the visit multi-page anyway. It belongs here for the case where it
+# doesn't: the destination request lost to a dropped connection, or the visitor
+# leaving before it lands. Reading that as "looked at one page and did nothing"
+# would be plainly wrong about someone who chose their next pool.
+INTERACTION_EVENTS = {"filter", "map_pick", "pin_click", "card_click", "nearby_click"}
 
 # Who a stored breakdown counts. Every ranked breakdown is rolled up once for each,
 # so /stats/ can switch between them long after the raw rows are gone. "human" is

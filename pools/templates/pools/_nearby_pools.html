@@ -10,13 +10,17 @@ Renders nothing only when there's genuinely nothing to say: no open pools to lis
 and not the sole-open-pool case. In season that combination means the pool has no
 coordinates, since a city with nothing open at all falls back to the offseason
 presentation before reaching here.
+
+The id and the data-slug attributes are hooks for the click beacon in detail.html;
+the static offseason archive carries them too and simply has no script to read
+them, which is why the beacon lives in that template rather than here.
 {% endcomment %}
 {% if nearby_pools or nearby_only_open %}
-  <div class="card mb-4">
+  <div class="card mb-4" id="nearby-pools">
     <div class="card-body">
       <h2 class="h6 text-uppercase text-muted mb-2">{{ nearby_heading }}</h2>
       <p class="mb-0">
-        {% if nearby_only_open %}This is the only pool open today.{% else %}{% for other, miles in nearby_pools %}<a href="{{ other.get_absolute_url }}">{{ other.name }}</a> ({{ miles|floatformat:1 }} mi){% if not forloop.last %}, {% endif %}{% endfor %}{% if nearby_exhaustive %}, and that's it!{% endif %}{% endif %}
+        {% if nearby_only_open %}This is the only pool open today.{% else %}{% for other, miles in nearby_pools %}<a href="{{ other.get_absolute_url }}" data-slug="{{ other.slug }}">{{ other.name }}</a> ({{ miles|floatformat:1 }} mi){% if not forloop.last %}, {% endif %}{% endfor %}{% if nearby_exhaustive %}, and that's it!{% endif %}{% endif %}
       </p>
     </div>
   </div>

@@ -14,6 +14,7 @@ urlpatterns = [
     path("submit/", views.submit, name="submit"),
     path("pin-click/", views.record_pin_click, name="record_pin_click"),
     path("card-click/", views.record_card_click, name="record_card_click"),
+    path("nearby-click/", views.record_nearby_click, name="record_nearby_click"),
     path("page-loaded/", views.record_page_view, name="record_page_view"),
     path("stats/", views.stats, name="stats"),
 ]

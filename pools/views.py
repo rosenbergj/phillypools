@@ -874,6 +874,28 @@ def record_card_click(request):
     return _record_pool_click(request, "card_click")
 
 
+@require_POST
+def record_nearby_click(request):
+    """
+    A pool was opened from the closest-pools box on another pool's detail page.
+
+    Unlike the two above, this one accompanies a real navigation that the server
+    sees anyway — but only as a bare pool_view, identical to one arriving from a
+    search result: the referrer that would tell them apart is internal, and
+    `referrer_host` drops those on purpose. Without this the box could be sending
+    people to a pool a day or none at all, and the figures would look the same.
+
+    The slug recorded is where the visitor is going, not where they came from,
+    which matches what the pin and list beacons mean by `key`. The page they left
+    is already in their day as its own pool_view.
+
+    The rollup keeps the per-pool counts in UsageDaily, but /stats/ deliberately
+    shows no table for them yet — collecting now is what has a deadline, since the
+    raw rows expire; deciding how to present it does not.
+    """
+    return _record_pool_click(request, "nearby_click")
+
+
 # The page-load beacon fires once per page in every visitor's browser, so its
 # ceiling is higher than the pin's, but it still needs one: the endpoint is
 # unauthenticated and writable, and without a cap a single caller could pad the

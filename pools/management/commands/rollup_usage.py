@@ -10,6 +10,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.db.models import Count, Q
+from django.db.models.functions import ExtractHour
 from django.utils import timezone
 
 from pools.models import UsageDaily, UsageEvent, UsageRollupState
@@ -218,7 +219,8 @@ class Command(BaseCommand):
                 put("event", row["event"], row["events"], row["visitors"], audience)
 
             for event_name, metric in [
-                ("pool_view", "pool_view"), ("pin_click", "pin_click"), ("card_click", "card_click"),
+                ("pool_view", "pool_view"), ("pin_click", "pin_click"),
+                ("card_click", "card_click"), ("nearby_click", "nearby_click"),
             ]:
                 for row in audience_events.filter(event=event_name).exclude(key="").values(
                     "key"
@@ -230,6 +232,31 @@ class Command(BaseCommand):
                     events=Count("id"), visitors=Count("visitor", distinct=True)
                 ):
                     put(metric, row[field], row["events"], row["visitors"], audience)
+
+            # What time of day it was. `created_at` is the only sub-day detail a raw
+            # row carries and the only field no stored metric preserves, so without
+            # this the question "when do people check" becomes unanswerable the moment
+            # the rows are pruned — and unanswerable retroactively, forever.
+            #
+            # Local hours, not UTC: the question is what time it was in Philadelphia,
+            # where the answer plausibly differs between deciding to go this morning
+            # and planning tomorrow from the couch. USE_TZ is on, so ExtractHour
+            # converts into TIME_ZONE before extracting.
+            #
+            # Zero-padded so the keys sort as hours rather than as "0, 1, 10, 11, 2".
+            # These rows deliberately do not sum to the day: someone who looks at 9am
+            # and again at 6pm is a visitor in both hours, which is what makes the
+            # count mean "how many people were here then" instead of a share of a
+            # total. `events` includes the page-load beacon, unlike the js_confirmed
+            # row above — it fires once per page for everyone, so it lifts every hour
+            # alike and leaves the shape across the day, which is the point here,
+            # untouched.
+            for row in (
+                audience_events.annotate(hour=ExtractHour("created_at"))
+                .values("hour")
+                .annotate(events=Count("id"), visitors=Count("visitor", distinct=True))
+            ):
+                put("hour", f"{row['hour']:02d}", row["events"], row["visitors"], audience)
 
         UsageDaily.objects.filter(day=day).delete()
         UsageDaily.objects.bulk_create([
