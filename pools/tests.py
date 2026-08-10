@@ -134,6 +134,30 @@ class ForgedUserAgentTests(TestCase):
                 self.assertEqual(usage.classify_client(ua), "bot")
 
 
+class RetiredBrowserVersionTests(TestCase):
+    """A version too old to still be in anyone's hands is a costume, not a browser."""
+
+    _SAFARI_13 = ("Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) "
+                  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 "
+                  "Safari/604.1")
+
+    def test_safari_13_is_a_bot_however_ordinary_the_rest_of_it_looks(self):
+        self.assertEqual(usage.classify_client(self._SAFARI_13), "bot")
+
+    def test_the_verdict_does_not_swallow_neighbouring_versions(self):
+        for version, family in [("13", "safari/13"), ("12", "safari/12"), ("14", "safari/14")]:
+            ua = self._SAFARI_13.replace("Version/13.0.3", f"Version/{version}.0.3")
+            with self.subTest(version=version):
+                self.assertEqual(usage.ua_family(ua), family)
+                self.assertEqual(
+                    usage.classify_client(ua), "bot" if family in usage.BOT_UA_FAMILIES else "unknown"
+                )
+
+    def test_the_family_is_still_recorded_as_what_it_claimed(self):
+        """The column holds the claim; the verdict lives in client_class."""
+        self.assertEqual(usage.ua_family(self._SAFARI_13), "safari/13")
+
+
 class UaFamilyTests(TestCase):
     def test_families_and_major_versions(self):
         cases = [
@@ -859,6 +883,27 @@ class RollupTests(TestCase):
         )
         self.assertEqual(self._visitors(), 1)
 
+    def test_a_retired_browser_version_is_a_bot_wherever_it_came_from(self):
+        """The rule is the family alone: no rack, and JavaScript that ran, and it is
+        still filed as a bot. Read off the stored family, so it reaches rows written
+        before the rule existed — which is what makes the past recomputable."""
+        self._event(self.today, visitor="old1", ua_family="safari/13")
+        self._event(self.today, visitor="old1", ua_family="safari/13", event="pageview_js")
+        self._event(self.today, visitor="real", ua_family="safari/17")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="bot").visitors, 1
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").visitors, 0
+        )
+        self.assertFalse(
+            UsageDaily.objects.filter(day=self.today, metric="browser", key="safari/13").exists()
+        )
+
     def test_unconfirmed_visitors_are_left_out_of_the_split(self):
         """A no-JS client can't be told apart from a reader who did nothing."""
         self._event(self.today, visitor="quiet")            # HTML only, never confirmed
@@ -1096,13 +1141,15 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin7", "a7@example.com", "pw")
         self.client.login(username="admin7", password="pw")
         day = timezone.localdate()
+        # Old enough to be worth seeing in the table, but not one of the versions
+        # BOT_UA_FAMILIES rejects outright — those never reach a visitor breakdown.
         UsageEvent.objects.create(
-            day=day, event="pageview_js", visitor="aaa", ua_family="safari/13"
+            day=day, event="pageview_js", visitor="aaa", ua_family="safari/14"
         )
         call_command("rollup_usage", verbosity=0)
         resp = self.client.get("/stats/")
         self.assertContains(resp, "Browsers")
-        self.assertContains(resp, "safari/13")
+        self.assertContains(resp, "safari/14")
 
     def test_interaction_tile_reports_confirmed_browsers_only(self):
         from django.contrib.auth.models import User

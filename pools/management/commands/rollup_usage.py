@@ -18,6 +18,7 @@ from pools.services.usage import (
     AUDIENCE_BOT,
     AUDIENCE_CONFIRMED,
     AUDIENCE_HUMAN,
+    BOT_UA_FAMILIES,
     JOURNEY_MULTI_PAGE,
     JOURNEY_SINGLE_ENGAGED,
     JOURNEY_SINGLE_PASSIVE_DETAIL,
@@ -106,8 +107,19 @@ class Command(BaseCommand):
         # ordinary-looking requests it made alongside; and someone walking the
         # retired numeric pool IDs with no referrer looks, on the redirected request
         # itself, like an ordinary pool_view. One bot row taints the day.
+        #
+        # BOT_UA_FAMILIES is tested here as well as in the classifier, and not only
+        # for symmetry: rows written before that rule shipped carry client_class
+        # "unknown", and the family is the one thing about them that survived. Asking
+        # the question of the stored column is what makes the rule retroactive over
+        # every day whose raw rows are still around.
         caught = set(
-            events.filter(Q(client_class="bot") | Q(event="probe") | Q(event="legacy_id"))
+            events.filter(
+                Q(client_class="bot")
+                | Q(event="probe")
+                | Q(event="legacy_id")
+                | Q(ua_family__in=BOT_UA_FAMILIES)
+            )
             .values_list("visitor", flat=True)
             .distinct()
         )

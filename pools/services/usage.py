@@ -67,6 +67,20 @@ _CHROMIUM_SUFFIX = re.compile(r"safari/537\.36\b")
 _SEC_CH_UA_VERSION = re.compile(r'"(?:google chrome|chromium)";v="(\d+)"')
 
 
+# Browser families where the version itself is the tell, matched against
+# `ua_family` rather than the raw string so the same rule can be applied to rows
+# already on disk, which kept the family and never kept the string.
+#
+# Safari 13 is the last release for macOS Mojave and iOS 13, both long out of
+# support: a real one in 2026 is a museum piece, and there are far more of them
+# here than there are museums. The traffic behaves accordingly — it arrives in
+# bursts, never runs a line of the page's JavaScript, and only some of it comes
+# from an address range we can recognise as a rack, which is why the datacenter
+# rule alone kept letting most of it through. Any human still on a genuine
+# Safari 13 is misfiled by this, and that is the trade the whole bot list makes.
+BOT_UA_FAMILIES = {"safari/13"}
+
+
 def _forged_ua(ua: str) -> bool:
     """True if `ua` (already lowercased) is not a string any real browser sends."""
     # A URL where the product token belongs: vulnerability scanners announcing the
@@ -322,6 +336,8 @@ def classify_client(user_agent: str) -> str:
         return "bot"
     ua = user_agent.lower()
     if any(p in ua for p in _BOT_PATTERNS) or _forged_ua(ua):
+        return "bot"
+    if ua_family(ua) in BOT_UA_FAMILIES:
         return "bot"
     return "unknown"
 
