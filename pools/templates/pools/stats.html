@@ -53,6 +53,27 @@
     border-radius: 4px 4px 0 0;
   }
   .usage-day:hover .usage-bar { filter: brightness(.92); }
+  /* A stretch nobody was counting. Hatched rather than coloured, and never sized by
+     any number, so it can't be misread as a quantity; wide enough to label, since a
+     break that has to be hovered to be understood is a bar of zero with extra steps.
+     flex: 0 0 auto keeps it from growing with the bars around it. */
+  .usage-gap {
+    flex: 0 0 auto;
+    min-width: 4.5rem;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: .7rem;
+    line-height: 1.2;
+    color: #adb5bd;
+    border-left: 1px dashed #dee2e6;
+    border-right: 1px dashed #dee2e6;
+    background: repeating-linear-gradient(
+      45deg, transparent, transparent 4px, #f8f9fa 4px, #f8f9fa 8px
+    );
+  }
   .usage-baseline {
     border-top: 1px solid #dee2e6;
     display: flex;
@@ -183,12 +204,23 @@
       </div>
     </div>
     <div class="usage-chart">
-      {% for row in series %}
-        <div class="usage-day" title="{{ row.day|date:'D M j' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
-          <div class="usage-bar" style="height: {{ row.pct }}%">
-            <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+      {% for row in chart %}
+        {% if row.kind == "break" %}
+          {% comment %}
+            Days nobody was counting: the offseason, when the site is a static
+            archive with no database behind it, or an outage. Drawn as a break
+            rather than as bars of zero, which would say nobody came.
+          {% endcomment %}
+          <div class="usage-gap" title="{{ row.days }} day{{ row.days|pluralize }} not collected — {{ row.from|date:'M j, Y' }} to {{ row.to|date:'M j, Y' }}">
+            <span>not collected<br>{{ row.days }} day{{ row.days|pluralize }}</span>
           </div>
-        </div>
+        {% else %}
+          <div class="usage-day" title="{{ row.day|date:'D M j' }} — {{ row.visitors }} visitor{{ row.visitors|pluralize }}, {{ row.confirmed }} confirmed, {{ row.events }} interaction{{ row.events|pluralize }}">
+            <div class="usage-bar" style="height: {{ row.pct }}%">
+              <div class="usage-bar-confirmed" style="height: {% widthratio row.confirmed row.visitors 100 %}%"></div>
+            </div>
+          </div>
+        {% endif %}
       {% endfor %}
     </div>
     <div class="usage-baseline small text-muted pt-1">

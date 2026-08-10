@@ -1235,6 +1235,39 @@ class StatsPageTests(TestCase):
         self.assertIsNone(resp.context["hourly"])
         self.assertEqual(resp.context["totals"]["visitors"], 1)
 
+    def test_days_with_nothing_recorded_become_one_break_in_the_chart(self):
+        self._staff("admin17")
+        today = timezone.localdate()
+        for day in (today - timedelta(days=6), today):
+            UsageDaily.objects.create(day=day, metric="visitors", key="", visitors=2, events=5)
+
+        resp = self.client.get("/stats/?days=7")
+        chart = resp.context["chart"]
+
+        # Five empty days in the middle, drawn once rather than five times over.
+        self.assertEqual([c["kind"] for c in chart], ["bar", "break", "bar"])
+        self.assertEqual(chart[1]["days"], 5)
+        self.assertEqual(chart[1]["from"], today - timedelta(days=5))
+        self.assertEqual(chart[1]["to"], today - timedelta(days=1))
+        # A break is a statement about us, not a number: it can't reach the totals.
+        self.assertEqual(resp.context["totals"]["visitors"], 4)
+        self.assertEqual(resp.context["peak_visitors"], 2)
+
+    def test_a_day_of_nothing_but_robots_is_a_bar_and_not_a_break(self):
+        """The distinction the whole thing rests on. Counts were stored, so somebody
+        was counting — they just counted nobody worth reporting."""
+        self._staff("admin18")
+        UsageEvent.objects.create(
+            day=timezone.localdate(), event="index", visitor="crawler",
+            client_class="bot", ua_family="other",
+        )
+        call_command("rollup_usage", verbosity=0)
+
+        chart = self.client.get("/stats/?days=1").context["chart"]
+
+        self.assertEqual([c["kind"] for c in chart], ["bar"])
+        self.assertEqual(chart[0]["visitors"], 0)
+
     def test_all_time_reaches_back_to_the_first_day_recorded(self):
         self._staff("admin14")
         today = timezone.localdate()

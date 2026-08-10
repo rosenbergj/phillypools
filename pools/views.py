@@ -935,8 +935,19 @@ def record_page_view(request):
     return HttpResponse(status=204)
 
 
-def _daily_series(rows, days):
-    """Turn (day -> count) rows into a dense list over `days`, so gaps read as zeroes."""
+def _daily_series(rows, days, measured_days):
+    """
+    Turn (day -> count) rows into a dense list over `days`, so quiet days read as
+    zeroes and days we were not measuring at all are flagged as such.
+
+    `measured_days` is every day with any stored count of any kind. A day the site
+    was up always leaves some behind — crawler traffic alone sees to that, and
+    robots are counted even though they are kept out of every human figure — so a
+    day with none is one nobody was counting: the months the site is a static
+    archive with no database behind it, an outage, or anything before collection
+    began. Those are not zero-visitor days, and drawing them as zero would make a
+    claim about visitors out of a fact about us.
+    """
     by_day = {r["day"]: r for r in rows}
     today = timezone.localdate()
     out = []
@@ -947,8 +958,34 @@ def _daily_series(rows, days):
             "day": d,
             "visitors": row["visitors"] if row else 0,
             "events": row["events"] if row else 0,
+            "measured": d in measured_days,
         })
     return out
+
+
+def _collapse_gaps(series):
+    """
+    The chart's view of the series: a run of unmeasured days becomes one break
+    instead of a stretch of empty bars.
+
+    Collapsing matters as much as marking them does. A 180-day window opened in May
+    spans a four-month shutdown, and 120 empty slots would squeeze the season's real
+    bars into the right-hand edge of the chart — the gap would take up more of the
+    picture than the data.
+
+    Totals and the peak are computed from the dense series, not from this, so a
+    break can never affect a number.
+    """
+    chart = []
+    for row in series:
+        if row["measured"]:
+            chart.append({"kind": "bar", **row})
+        elif chart and chart[-1]["kind"] == "break":
+            chart[-1]["days"] += 1
+            chart[-1]["to"] = row["day"]
+        else:
+            chart.append({"kind": "break", "days": 1, "from": row["day"], "to": row["day"]})
+    return chart
 
 
 # Windows short enough that a per-day chart is one or two bars, which says nothing
@@ -1134,7 +1171,13 @@ def stats(request):
         .values("day", "visitors", "events")
     )
 
-    series = _daily_series(visitors, days)
+    # Any stored count of any kind, robots included: the question this answers is
+    # whether anybody was counting that day, not whether anybody came.
+    measured_days = set(
+        UsageDaily.objects.filter(day__gte=day_from).values_list("day", flat=True).distinct()
+    )
+
+    series = _daily_series(visitors, days, measured_days)
     confirmed_by_day = {r["day"]: r["visitors"] for r in confirmed}
     bots_by_day = {r["day"]: r["visitors"] for r in bots}
     peak = max([r["visitors"] for r in series] + [1])
@@ -1245,6 +1288,7 @@ def stats(request):
             "staff": sum(r["visitors"] for r in staff),
         },
         "peak_visitors": peak,
+        "chart": _collapse_gaps(series),
         "hourly": _hourly_series(day_from) if days <= HOURLY_MAX_DAYS else None,
         "first_day": day_from,
         "last_day": timezone.localdate(),
