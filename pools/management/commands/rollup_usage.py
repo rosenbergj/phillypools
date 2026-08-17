@@ -28,6 +28,7 @@ from pools.services.usage import (
     USAGE_RAW_RETENTION_DAYS,
     browser_family,
     classify_journey,
+    is_stale_version,
 )
 
 # (metric name, UsageEvent field) breakdowns rolled up verbatim, skipping blanks.
@@ -164,7 +165,26 @@ class Command(BaseCommand):
         )
         datacenter = from_racks - confirmed - staff_visitors
 
-        bot_visitors = caught | legacy | datacenter
+        # Traffic claiming a browser version too old to still be in the wild, which
+        # also never ran the page's JavaScript. Gated on `confirmed` for the same
+        # reason the rack rule is, and for one more: a frozen version is strong
+        # evidence about a fleet but weak evidence about any single visitor, since a
+        # laptop shut in a drawer since spring really does wake up on an old Chrome.
+        # Having run the page settles it either way, so nobody who did is touched.
+        #
+        # Read off the stored family rather than the string, so the rule reaches back
+        # over every day whose raw rows survive — the same property that makes
+        # BOT_UA_FAMILIES retroactive.
+        stale_families = [
+            family
+            for family in rest.exclude(ua_family="").values_list("ua_family", flat=True).distinct()
+            if is_stale_version(family)
+        ]
+        stale = set(
+            rest.filter(ua_family__in=stale_families).values_list("visitor", flat=True).distinct()
+        ) - confirmed - staff_visitors
+
+        bot_visitors = caught | legacy | datacenter | stale
         # Bots are counted, not discarded — their crawl pattern is the only view we
         # have of what Googlebot actually fetches — but they are kept out of every
         # human-facing metric below.
@@ -320,6 +340,18 @@ class Command(BaseCommand):
                 .annotate(events=Count("id"), visitors=Count("visitor", distinct=True))
             ):
                 put("datacenter", row["ua_family"], row["events"], row["visitors"], audience)
+
+        # The stale-version rule's working, stored the same way and for the same
+        # reason: a family it empties out would otherwise vanish from /stats/ with no
+        # trace of why, leaving the rule unauditable the moment the raw rows expire.
+        # Bot audience only — a stale version that ran the JavaScript was spared, and
+        # is already counted as the ordinary visitor the rule decided it was.
+        for row in (
+            rest.filter(visitor__in=stale).exclude(ua_family="")
+            .values("ua_family")
+            .annotate(events=Count("id"), visitors=Count("visitor", distinct=True))
+        ):
+            put("stale_version", row["ua_family"], row["events"], row["visitors"], AUDIENCE_BOT)
 
         UsageDaily.objects.filter(day=day).delete()
         UsageDaily.objects.bulk_create([

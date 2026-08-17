@@ -364,8 +364,9 @@
     <h2 class="h6 mb-0">Confirmation rate by browser</h2>
     <div class="text-muted small mb-2">A check on the confirmed figure itself: real browsers should
     confirm at similar rates, so a family well below the rest is either having its beacon blocked or
-    being impersonated by crawlers &mdash; the last column says which. Hosting-range visitors are
-    counted there instead of under Visitors, having already been filed as robots.</div>
+    being impersonated by crawlers &mdash; the last two columns say which. Visitors filed as robots
+    are counted there instead of under Visitors: either for arriving from a hosting range, or for
+    claiming a browser version too old to be real and never running the page.</div>
     <div class="table-responsive">
       <table class="table table-sm small mb-0">
         <thead>
@@ -375,6 +376,7 @@
             <th class="text-end">Confirmed</th>
             <th class="text-end">Rate</th>
             <th class="text-end">From hosting ranges</th>
+            <th class="text-end">Frozen version</th>
           </tr>
         </thead>
         <tbody>
@@ -385,9 +387,10 @@
               <td class="text-end">{{ row.confirmed }}</td>
               <td class="text-end">{% if row.rate is None %}&mdash;{% else %}{{ row.rate }}%{% endif %}</td>
               <td class="text-end">{{ row.datacenter }}</td>
+              <td class="text-end">{{ row.stale }}</td>
             </tr>
           {% empty %}
-            <tr><td colspan="5" class="text-muted">Nothing recorded yet.</td></tr>
+            <tr><td colspan="6" class="text-muted">Nothing recorded yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -403,8 +406,9 @@
     JavaScript &mdash; proof a real browser rendered the page rather than a bot fetching the HTML.
     The true human number sits between the two figures, nearer the confirmed one. Robots are left
     out when they name themselves, send a browser string no real browser would, probe for paths
-    only a scanner wants, or arrive from a hosting provider and never run any JavaScript; anyone
-    caught is discounted for that whole day.</p>
+    only a scanner wants, or &mdash; without ever running any JavaScript &mdash; arrive from a
+    hosting provider or claim a browser version too far behind to still be in use; anyone caught
+    is discounted for that whole day.</p>
     <p class="mb-0">Individual rows are kept {{ raw_retention_days }} days
     ({{ raw_rows }} on hand now) and then deleted; the daily totals above are permanent.</p>
   </div>

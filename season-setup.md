@@ -79,3 +79,11 @@ The scraper updates `is_active` automatically from the city's data, but it's wor
 ## 5. Review open-ended site announcements
 
 `reset_season` doesn't touch `SiteAnnouncement` — that's a separate, intentionally season-agnostic model. Check the admin (`/admin/pools/siteannouncement/`) for any announcement with no end date; it's still showing on the site and will keep showing into the new season unless you update or delete it.
+
+## 6. Bump the stale-browser-version floor
+
+`STALE_VERSION_FLOOR` in `pools/services/usage.py` names the Chrome major version at or below which a visitor who never runs the page's JavaScript is counted as a robot. It's a statement about how far behind the current release a version is, written as an absolute number — so it goes stale on its own. Chrome ships roughly eleven majors a year, and an offseason is most of one: a floor left alone stops catching the frozen fleets it was written for, which then reappear as visitors.
+
+Set it to about six majors below whatever Chrome stable is when the season opens (it was 145 against a stable of 151 in August 2026). To check the number against real traffic rather than guessing, open `/stats/?days=all` and read "Confirmation rate by browser" from the top down: current Chrome confirms in the high 90s, and the fleets are the versions where that collapses to single digits while the "Frozen version" column fills up. Put the floor just under the lowest version that still confirms normally.
+
+Two things not to do. Don't set it high enough to swallow versions that confirm fine, since one release behind is an ordinary state for a browser that hasn't restarted this week. And don't lower it to spare a version confirming at, say, 10% — the rule already spares every individual visitor who ran the page, so a low rate there costs those people nothing.

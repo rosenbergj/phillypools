@@ -161,6 +161,31 @@ class RetiredBrowserVersionTests(TestCase):
         self.assertEqual(usage.ua_family(self._SAFARI_13), "safari/13")
 
 
+class StaleVersionTests(TestCase):
+    """The floor itself. What it costs a visitor is decided in the rollup, which
+    only holds it against someone who also never ran the page — see RollupTests."""
+
+    def test_versions_at_or_below_the_floor_are_stale(self):
+        floor = usage.STALE_VERSION_FLOOR["chrome"]
+        self.assertTrue(usage.is_stale_version(f"chrome/{floor}"))
+        self.assertTrue(usage.is_stale_version(f"chrome/{floor - 1}"))
+        self.assertFalse(usage.is_stale_version(f"chrome/{floor + 1}"))
+
+    def test_families_without_a_floor_are_never_stale(self):
+        for family in ["safari/13", "firefox/98", "opera/80", "other", ""]:
+            with self.subTest(family=family):
+                self.assertFalse(usage.is_stale_version(family))
+
+    def test_a_stale_version_is_not_a_verdict_on_its_own(self):
+        """Unlike BOT_UA_FAMILIES, the floor never decides a single request: the
+        classifier sees one fetch and cannot know whether the page will be run."""
+        ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+        self.assertEqual(usage.ua_family(ua), "chrome/142")
+        self.assertTrue(usage.is_stale_version("chrome/142"))
+        self.assertEqual(usage.classify_client(ua), "unknown")
+
+
 class UaFamilyTests(TestCase):
     def test_families_and_major_versions(self):
         cases = [
@@ -654,8 +679,10 @@ class RollupTests(TestCase):
     # current rules. A blank one means "written before the user-agent checks existed",
     # which the rollup reads as an uncheckable visitor and files as a bot — so a test
     # that wants an ordinary visitor has to look like a row from after the change.
+    # The version has to be a current one for the same reason: one at or below
+    # STALE_VERSION_FLOOR is filed as a bot unless it runs the page's JavaScript.
     def _event(self, day, event="index", visitor="aaa", client_class="unknown",
-               ua_family="chrome/130", **kw):
+               ua_family="chrome/150", **kw):
         return UsageEvent.objects.create(
             day=day, event=event, visitor=visitor, client_class=client_class,
             ua_family=ua_family, **kw
@@ -848,15 +875,15 @@ class RollupTests(TestCase):
     def test_the_datacenter_rule_records_what_it_caught_by_browser(self):
         """Its verdict is stored as a bot; its working is what makes a poor
         confirmation rate diagnosable later."""
-        self._event(self.today, visitor="rack1", ua_family="chrome/130", datacenter=True)
-        self._event(self.today, visitor="rack2", ua_family="chrome/130", datacenter=True)
+        self._event(self.today, visitor="rack1", ua_family="chrome/150", datacenter=True)
+        self._event(self.today, visitor="rack2", ua_family="chrome/150", datacenter=True)
         self._event(self.today, visitor="rack3", ua_family="safari/17", datacenter=True)
 
         call_command("rollup_usage", verbosity=0)
 
         self.assertEqual(
             UsageDaily.objects.get(
-                day=self.today, metric="datacenter", key="chrome/130", audience="bot"
+                day=self.today, metric="datacenter", key="chrome/150", audience="bot"
             ).visitors, 2
         )
         self.assertEqual(
@@ -866,6 +893,62 @@ class RollupTests(TestCase):
         )
         # And they stay out of the visitor figures, as before.
         self.assertEqual(self._visitors(), 0)
+
+    def test_a_stale_version_that_never_ran_the_page_is_a_bot(self):
+        self._event(self.today, visitor="frozen", ua_family="chrome/142")
+        self._event(self.today, visitor="current", ua_family="chrome/150")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="bot").visitors, 1
+        )
+
+    def test_a_stale_version_that_ran_the_page_is_spared(self):
+        """The straggler on a laptop that spent the season in a drawer. Running the
+        page's JavaScript settles what the version number only suggests."""
+        self._event(self.today, visitor="straggler", ua_family="chrome/142")
+        self._event(self.today, visitor="straggler", event="pageview_js", ua_family="chrome/142")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._visitors(), 1)
+        self.assertEqual(
+            UsageDaily.objects.get(day=self.today, metric="visitors", key="js_confirmed").visitors, 1
+        )
+        self.assertFalse(
+            UsageDaily.objects.filter(day=self.today, metric="stale_version").exists()
+        )
+
+    def test_the_stale_version_rule_records_what_it_caught_by_browser(self):
+        self._event(self.today, visitor="f1", ua_family="chrome/142")
+        self._event(self.today, visitor="f2", ua_family="chrome/142")
+        self._event(self.today, visitor="f3", ua_family="chrome/131")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="stale_version", key="chrome/142", audience="bot"
+            ).visitors, 2
+        )
+        self.assertEqual(
+            UsageDaily.objects.get(
+                day=self.today, metric="stale_version", key="chrome/131", audience="bot"
+            ).visitors, 1
+        )
+        self.assertEqual(self._visitors(), 0)
+
+    def test_the_floor_only_applies_to_families_it_names(self):
+        """Safari 26 is a current release; the floor is Chrome's number, not a
+        version number in general."""
+        self._event(self.today, visitor="mac", ua_family="safari/26")
+        self._event(self.today, visitor="phone", ua_family="safari/18")
+
+        call_command("rollup_usage", verbosity=0)
+
+        self.assertEqual(self._visitors(), 2)
 
     def test_a_confirmed_visitor_from_a_rack_is_filed_as_a_person(self):
         """Somebody on a VPN, which is who the rule is written to spare. They belong
@@ -998,7 +1081,7 @@ class RollupTests(TestCase):
     def test_traffic_predating_the_agent_checks_is_written_off(self):
         """No family recorded means the new rules can never be run against it."""
         self._event(self.today, visitor="legacy", ua_family="")
-        self._event(self.today, visitor="current", ua_family="chrome/130")
+        self._event(self.today, visitor="current", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(self._visitors(), 1)
         self.assertEqual(self._visitors("bot"), 1)
@@ -1039,12 +1122,12 @@ class RollupTests(TestCase):
         self.assertEqual(self._visitors("bot"), 0)
 
     def test_browsers_are_broken_down(self):
-        self._event(self.today, visitor="aaa", event="pageview_js", ua_family="chrome/130")
+        self._event(self.today, visitor="aaa", event="pageview_js", ua_family="chrome/150")
         self._event(self.today, visitor="bbb", event="pageview_js", ua_family="safari/18")
         call_command("rollup_usage", verbosity=0)
         self.assertEqual(
             UsageDaily.objects.get(
-                day=self.today, metric="browser", key="chrome/130", audience="confirmed"
+                day=self.today, metric="browser", key="chrome/150", audience="confirmed"
             ).visitors, 1
         )
 
@@ -1175,11 +1258,11 @@ class StatsPageTests(TestCase):
         # visitor with no JavaScript trace would leave the pool tables empty.
         UsageEvent.objects.create(
             day=timezone.localdate(), event="pool_view", key=pool.slug, visitor="aaa",
-            ua_family="chrome/130",
+            ua_family="chrome/150",
         )
         UsageEvent.objects.create(
             day=timezone.localdate(), event="pageview_js", visitor="aaa",
-            ua_family="chrome/130",
+            ua_family="chrome/150",
         )
         call_command("rollup_usage", verbosity=0)
         resp = self.client.get("/stats/")
@@ -1209,10 +1292,10 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin4", "a4@example.com", "pw")
         self.client.login(username="admin4", password="pw")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="filter", visitor="aaa", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="index", visitor="nojs", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="filter", visitor="aaa", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="index", visitor="nojs", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=7")
@@ -1224,9 +1307,9 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin6", "a6@example.com", "pw")
         self.client.login(username="admin6", password="pw")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="js", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="js", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="nojs", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="js", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="js", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pool_view", key="seen", visitor="nojs", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
 
         default = self.client.get("/stats/?days=7")
@@ -1246,8 +1329,8 @@ class StatsPageTests(TestCase):
         day = timezone.localdate()
         # Chrome: two visitors, both confirmed.
         for n in range(2):
-            UsageEvent.objects.create(day=day, event="index", visitor=f"c{n}", ua_family="chrome/130")
-            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"c{n}", ua_family="chrome/130")
+            UsageEvent.objects.create(day=day, event="index", visitor=f"c{n}", ua_family="chrome/150")
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"c{n}", ua_family="chrome/150")
         # Safari: two visitors, one confirmed, plus two more from hosting ranges that
         # never ran anything and were filed as robots.
         UsageEvent.objects.create(day=day, event="index", visitor="s1", ua_family="safari/17")
@@ -1266,13 +1349,36 @@ class StatsPageTests(TestCase):
         rows = {r["label"]: r for r in resp.context["confirmed_rates"]}
         self.assertIsNone(rows["opera/98"]["rate"])
         self.assertIn('<td class="text-end">&mdash;</td>', resp.content.decode())
-        self.assertEqual(rows["chrome/130"]["rate"], 100)
-        self.assertEqual(rows["chrome/130"]["datacenter"], 0)
+        self.assertEqual(rows["chrome/150"]["rate"], 100)
+        self.assertEqual(rows["chrome/150"]["datacenter"], 0)
         self.assertEqual(rows["safari/17"]["visitors"], 2)
         self.assertEqual(rows["safari/17"]["rate"], 50)
         # The half that didn't confirm is explained by traffic the rule already
         # rejected, which is the whole reason the column is there.
         self.assertEqual(rows["safari/17"]["datacenter"], 2)
+
+    def test_a_family_the_stale_rule_emptied_still_has_a_row(self):
+        """Ranking on surviving visitors would drop it off the table at the exact
+        moment the rule started working, taking the evidence with it."""
+        from django.contrib.auth.models import User
+        User.objects.create_superuser("admin21", "a21@example.com", "pw")
+        self.client.login(username="admin21", password="pw")
+        day = timezone.localdate()
+        for n in range(12):
+            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}", ua_family="chrome/150")
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}", ua_family="chrome/150")
+        for n in range(20):
+            UsageEvent.objects.create(day=day, event="index", visitor=f"f{n}", ua_family="chrome/142")
+        call_command("rollup_usage", verbosity=0)
+
+        resp = self.client.get("/stats/?days=7")
+        rows = {r["label"]: r for r in resp.context["confirmed_rates"]}
+        self.assertEqual(rows["chrome/142"]["visitors"], 0)
+        self.assertEqual(rows["chrome/142"]["stale"], 20)
+        self.assertIsNone(rows["chrome/142"]["rate"])
+        # Ranked above the browser with real visitors, having claimed more traffic.
+        labels = [r["label"] for r in resp.context["confirmed_rates"]]
+        self.assertLess(labels.index("chrome/142"), labels.index("chrome/150"))
 
     def _staff(self, name):
         from django.contrib.auth.models import User
@@ -1326,8 +1432,8 @@ class StatsPageTests(TestCase):
         would say the site was dead all day, which is the one thing it wasn't."""
         self._staff("admin12")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="index", visitor="aaa", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="aaa", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
         UsageDaily.objects.filter(metric="hour").delete()  # as if rolled up before hours existed
 
@@ -1447,8 +1553,8 @@ class StatsPageTests(TestCase):
         self.client.login(username="admin5", password="pw")
         day = timezone.localdate()
         for n in range(5):
-            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}", ua_family="chrome/130")
-            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}", ua_family="chrome/130")
+            UsageEvent.objects.create(day=day, event="pageview_js", visitor=f"v{n}", ua_family="chrome/150")
+            UsageEvent.objects.create(day=day, event="index", visitor=f"v{n}", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=7")
@@ -1466,10 +1572,10 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin8", "a8@example.com", "pw")
         self.client.login(username="admin8", password="pw")
         day = timezone.localdate()
-        UsageEvent.objects.create(day=day, event="index", visitor="lister", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="lister", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pool_view", key="p", visitor="detailer", ua_family="chrome/130")
-        UsageEvent.objects.create(day=day, event="pageview_js", visitor="detailer", ua_family="chrome/130")
+        UsageEvent.objects.create(day=day, event="index", visitor="lister", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="lister", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pool_view", key="p", visitor="detailer", ua_family="chrome/150")
+        UsageEvent.objects.create(day=day, event="pageview_js", visitor="detailer", ua_family="chrome/150")
         call_command("rollup_usage", verbosity=0)
 
         resp = self.client.get("/stats/?days=7")
@@ -1494,7 +1600,7 @@ class StatsPageTests(TestCase):
         User.objects.create_superuser("admin3", "a3@example.com", "pw")
         self.client.login(username="admin3", password="pw")
         began = timezone.localdate() - timedelta(days=5)
-        UsageEvent.objects.create(day=began, event="index", visitor="aaa", ua_family="chrome/130")
+        UsageEvent.objects.create(day=began, event="index", visitor="aaa", ua_family="chrome/150")
         call_command("rollup_usage", all=True, verbosity=0)
 
         # A 30-day window reaches past the first day recorded, so say where it starts.
@@ -1511,10 +1617,10 @@ class StatsPageTests(TestCase):
         self.client.login(username="admin2", password="pw")
         UsageEvent.objects.create(
             day=timezone.localdate() - timedelta(days=3), event="index", visitor="old",
-            ua_family="chrome/130",
+            ua_family="chrome/150",
         )
         UsageEvent.objects.create(
-            day=timezone.localdate(), event="index", visitor="new", ua_family="chrome/130"
+            day=timezone.localdate(), event="index", visitor="new", ua_family="chrome/150"
         )
         call_command("rollup_usage", verbosity=0)
 

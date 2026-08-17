@@ -1109,8 +1109,9 @@ def _top(day_from, metric, audience, limit=15, exclude_keys=()):
 def _confirmed_rates(day_from, limit=15):
     """
     Per claimed browser family: how many visitors, how many of them ran the page's
-    JavaScript, and how much traffic claiming that name was filed as a robot for
-    arriving from a hosting provider's range.
+    JavaScript, and how much traffic claiming that name was filed as a robot — for
+    arriving from a hosting provider's range, or for claiming a version too old to
+    be real and never running the page.
 
     This is the check on the assumption the rest of the page rests on. /stats/
     defaults to confirmed browsers on the grounds that traffic which never ran a
@@ -1119,7 +1120,12 @@ def _confirmed_rates(day_from, limit=15):
     confirms far below the rest, either its users' beacons are being blocked or lost
     (so the confirmed figures undercount real people, and unevenly, since browser
     tracks device and device tracks neighborhood) or crawlers are wearing its name.
-    The hosting-range column is what tells those two apart.
+    The two robot columns are what tell those apart.
+
+    Ranked by how much traffic claimed the name, robots included, rather than by
+    surviving visitors: a family the rules emptied out is exactly the one whose row
+    is worth reading, and ordering on visitors alone would drop it off the bottom of
+    the table at the moment a rule started working.
 
     Rates are computed on visitors summed over the window, like every other figure
     here, so someone who came back on three days counts three times in both halves
@@ -1127,28 +1133,37 @@ def _confirmed_rates(day_from, limit=15):
     """
     families = {}
     rows = (
-        UsageDaily.objects.filter(day__gte=day_from, metric__in=("browser", "datacenter"))
+        UsageDaily.objects.filter(
+            day__gte=day_from, metric__in=("browser", "datacenter", "stale_version")
+        )
         .exclude(key="")
         .values("metric", "key", "audience")
         .annotate(visitors=Sum("visitors"))
     )
     for row in rows:
         family = families.setdefault(
-            row["key"], {"label": row["key"], "visitors": 0, "confirmed": 0, "datacenter": 0}
+            row["key"],
+            {"label": row["key"], "visitors": 0, "confirmed": 0, "datacenter": 0, "stale": 0},
         )
         if row["metric"] == "browser":
             if row["audience"] == AUDIENCE_HUMAN:
                 family["visitors"] = row["visitors"]
             elif row["audience"] == AUDIENCE_CONFIRMED:
                 family["confirmed"] = row["visitors"]
-        # Only the caught ones. A confirmed visitor from a hosting range is a person
-        # behind a VPN and belongs in the two columns to their left, not in a count
-        # of traffic the rule rejected.
-        elif row["audience"] == AUDIENCE_BOT:
+        elif row["audience"] != AUDIENCE_BOT:
+            # Only the caught ones. A confirmed visitor from a hosting range is a
+            # person behind a VPN and belongs in the two columns to their left, not
+            # in a count of traffic the rule rejected. (The stale-version metric is
+            # only ever stored for the bot audience, so this skips nothing there.)
+            continue
+        elif row["metric"] == "datacenter":
             family["datacenter"] = row["visitors"]
+        else:
+            family["stale"] = row["visitors"]
 
     ranked = sorted(
-        families.values(), key=lambda f: (-f["visitors"], -f["datacenter"], f["label"])
+        families.values(),
+        key=lambda f: (-(f["visitors"] + f["datacenter"] + f["stale"]), f["label"]),
     )
     for family in ranked:
         # None, not zero, when there is nobody to have confirmed: a family seen only

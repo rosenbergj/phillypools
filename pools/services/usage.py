@@ -81,6 +81,36 @@ _SEC_CH_UA_VERSION = re.compile(r'"(?:google chrome|chromium)";v="(\d+)"')
 BOT_UA_FAMILIES = {"safari/13"}
 
 
+# Major versions at or below which a claimed browser is too far behind to be a real
+# install of it, keyed by the family name out of `ua_family`.
+#
+# Unlike BOT_UA_FAMILIES this is not a verdict on its own. Safari 13 is a dead end —
+# the last release for hardware that cannot run anything newer — so every one of them
+# is the same age and they are all fake together. Chrome auto-updates on every
+# platform it ships for, so its version tail is a mix: mostly frozen scrapers, but
+# with a few genuine stragglers on machines that were switched off for a season. The
+# rollup therefore only convicts a stale version that also never ran the page's
+# JavaScript, which spares the real ones — see the demotion in rollup_usage.
+#
+# Set to 145 in August 2026, when stable was 151. The break was not subtle: 146
+# through 149 confirmed like any other browser, while 145 and below were desktop-only
+# (against ~80% mobile for current Chrome), arrived with no referrer at all, fetched
+# one page each, and spent a fifth to nearly half of those fetches on the submission
+# form — a link-walker's profile, not a reader's.
+#
+# Chrome ships around eleven majors a year, so this number ages. Bumping it is a
+# start-of-season job; see season-setup.md.
+STALE_VERSION_FLOOR = {"chrome": 145}
+
+
+def is_stale_version(family: str) -> bool:
+    """True if `family` — a `ua_family` value like "chrome/142" — claims a release
+    old enough that an auto-updating browser would not still be sending it."""
+    name, _, version = (family or "").partition("/")
+    floor = STALE_VERSION_FLOOR.get(name)
+    return floor is not None and version.isdigit() and int(version) <= floor
+
+
 def _forged_ua(ua: str) -> bool:
     """True if `ua` (already lowercased) is not a string any real browser sends."""
     # A URL where the product token belongs: vulnerability scanners announcing the
