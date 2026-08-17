@@ -121,6 +121,16 @@
 
     <div class="submit-row" style="margin-top:1em">
       <input type="submit" value="Apply selected" class="default">
+      {% if submission.url %}
+        {% if already_monitored %}
+          <span class="help" style="margin-left:.5em">Already monitored for changes.</span>
+        {% else %}
+          <label style="display:inline-flex;align-items:center;gap:6px;margin-left:.5em;font-weight:normal;cursor:pointer">
+            <input type="checkbox" name="monitor_page">
+            &hellip; and also monitor this page
+          </label>
+        {% endif %}
+      {% endif %}
       <a href="{% url 'admin:pools_submission_change' submission.pk %}" class="button cancel-link">Cancel</a>
     </div>
   </form>

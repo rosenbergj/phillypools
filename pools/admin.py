@@ -585,6 +585,15 @@ class SubmissionAdmin(admin.ModelAdmin):
             messages.success(request, msg)
             for warning in date_warnings:
                 messages.warning(request, f"Date overwrite: {warning}")
+            if request.POST.get("monitor_page") and submission.url:
+                from pools.services.page_monitor import start_monitoring
+                page, created, report = start_monitoring(submission.url)
+                if not created:
+                    messages.info(request, f"Already monitoring {page.url}.")
+                elif report.errors:
+                    messages.warning(request, f"Now monitoring {page.url}, but the first check failed: {'; '.join(report.errors)}")
+                else:
+                    messages.success(request, f"Now monitoring {page.url} — baseline content recorded.")
             return redirect(f"../../{submission_id}/change/")
 
         # GET or POST without action=apply: run the LLM
@@ -648,6 +657,7 @@ class SubmissionAdmin(admin.ModelAdmin):
             "submission": submission,
             "results": results,
             "removed_pools": removed_pools,
+            "already_monitored": bool(submission.url) and MonitoredPage.objects.filter(url=submission.url).exists(),
             "error": error,
             "title": "Re-parse for all pools",
         })
@@ -764,6 +774,16 @@ class MonitoredPageAdmin(admin.ModelAdmin):
             return "n/a"
         return _boolean_icon(bool(obj.content_hash))
     has_hash.short_description = "Initialized"
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # A new page (or one pointed at a new URL, which clears its baseline) is checked
+        # right away rather than waiting for the next cron run.
+        if not change or "url" in form.changed_data:
+            from pools.services.page_monitor import check_page
+            report = check_page(obj)
+            level = messages.WARNING if report.errors else messages.INFO
+            self.message_user(request, f"First check: {report.summary()}", level=level)
 
 
 @admin.register(DigestState)

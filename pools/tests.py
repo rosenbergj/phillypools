@@ -4,16 +4,19 @@ from pathlib import Path
 from unittest.mock import patch
 from xml.dom import minidom
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from pools.models import (
-    Pool, ScheduleChange, Submission, SubmissionThrottle, UsageDaily, UsageEvent,
-    UsageRollupState, VisitorSalt,
+    MonitoredPage, Pool, ScheduleChange, Submission, SubmissionThrottle, UsageDaily,
+    UsageEvent, UsageRollupState, VisitorSalt,
 )
 from pools.services import datacenter, usage
+from pools.services.page_monitor import check_pool_info_page, start_monitoring
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
 from pools.views import SUBMISSION_DAILY_LIMIT, SUBMISSION_DAILY_LIMIT_STAFF, nearby_pools_context
 
@@ -1884,3 +1887,114 @@ class NearbyPoolsScarcityTests(TestCase):
         ctx = self._ctx(self.a)
         self.assertEqual(ctx["nearby_heading"], "Closest pools")
         self.assertIn("B Pool", [p.name for p, _ in ctx["nearby_pools"]])
+
+
+class MonitoredPageCheckTests(TestCase):
+    """A monitored page is checked the moment it's created, not on the next cron run."""
+
+    URL = "https://example.com/pool-info"
+
+    def _response(self, body):
+        resp = type("R", (), {"text": f"<html><body>{body}</body></html>"})()
+        resp.raise_for_status = lambda: None
+        return resp
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_start_monitoring_records_baseline_without_a_submission(self, mock_get):
+        mock_get.return_value = self._response("Opens June 15")
+        page, created, report = start_monitoring(self.URL)
+        self.assertTrue(created)
+        self.assertTrue(page.content_hash)
+        self.assertIsNotNone(page.last_checked)
+        self.assertEqual(report.errors, [])
+        # The baseline itself is not a change, so it must not queue a submission.
+        self.assertFalse(Submission.objects.filter(url=self.URL).exists())
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_start_monitoring_is_idempotent(self, mock_get):
+        mock_get.return_value = self._response("Opens June 15")
+        start_monitoring(self.URL)
+        page, created, report = start_monitoring(self.URL)
+        self.assertFalse(created)
+        self.assertIsNone(report)
+        self.assertEqual(MonitoredPage.objects.filter(url=self.URL).count(), 1)
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_fetch_failure_still_leaves_the_page_monitored(self, mock_get):
+        mock_get.side_effect = Exception("boom")
+        page, created, report = start_monitoring(self.URL)
+        self.assertTrue(created)
+        self.assertEqual(page.content_hash, "")
+        self.assertTrue(report.errors)
+
+    @patch("pools.services.page_monitor._create_submission")
+    @patch("pools.services.page_monitor.requests.get")
+    def test_later_change_creates_a_submission(self, mock_get, mock_create):
+        mock_get.return_value = self._response("Opens June 15")
+        page, _, _ = start_monitoring(self.URL)
+        mock_get.return_value = self._response("Opens June 22")
+        report = check_pool_info_page(page)
+        self.assertTrue(report.highlights)
+        mock_create.assert_called_once_with(self.URL)
+
+
+class MonitorFromApplyPageTests(TestCase):
+    """The multi-pool apply page can start monitoring the source URL."""
+
+    URL = "https://example.com/all-pools"
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser("mod", "mod@example.com", "pw")
+        self.client.force_login(self.user)
+        self.submission = Submission.objects.create(url=self.URL)
+        self.pool = Pool.objects.create(name="A Pool", ppr_amenity_id="id-A", address="1 Main St")
+
+    def _apply(self, **extra):
+        return self.client.post(
+            reverse("admin:pools_submission_reparse", args=[self.submission.pk]),
+            {"action": "apply", "pool_ids": [str(self.pool.pk)],
+             f"opening_date_{self.pool.pk}": "2026-06-15", **extra},
+        )
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_checkbox_starts_monitoring_and_checks_immediately(self, mock_get):
+        resp = type("R", (), {"text": "<html><body>Opens June 15</body></html>"})()
+        resp.raise_for_status = lambda: None
+        mock_get.return_value = resp
+
+        self._apply(monitor_page="on")
+
+        page = MonitoredPage.objects.get(url=self.URL)
+        self.assertEqual(page.page_type, "pool_info")
+        self.assertTrue(page.content_hash)
+        self.assertIsNotNone(page.last_checked)
+        self.pool.refresh_from_db()
+        self.assertEqual(self.pool.opening_date, date(2026, 6, 15))
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_unchecked_box_leaves_the_page_unmonitored(self, mock_get):
+        self._apply()
+        self.assertFalse(MonitoredPage.objects.filter(url=self.URL).exists())
+        mock_get.assert_not_called()
+
+    def _reparse_page(self):
+        result = {"pool_id": self.pool.pk, "pool_name": self.pool.name,
+                  "opening_date": "2026-06-15", "closing_date": None,
+                  "phone_number": "", "notes": ""}
+        with patch("pools.services.llm_parser.build_pool_list", return_value=[]), \
+             patch("pools.services.url_fetcher.fetch_url", return_value="page text"), \
+             patch("pools.services.llm_parser.parse_all_pools", return_value=[result]):
+            return self.client.get(
+                reverse("admin:pools_submission_reparse", args=[self.submission.pk])
+            )
+
+    def test_apply_page_offers_the_checkbox(self):
+        self.assertContains(self._reparse_page(), 'name="monitor_page"')
+
+    def test_already_monitored_url_offers_no_checkbox(self):
+        MonitoredPage.objects.create(url=self.URL, content_hash="abc")
+        resp = self._reparse_page()
+        self.assertNotContains(resp, 'name="monitor_page"')
+        self.assertContains(resp, "Already monitored")
