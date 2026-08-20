@@ -57,7 +57,10 @@
         <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
       </select>
     </div>
-    <div class="col-12 col-sm-auto d-flex align-items-center" style="min-height:2rem">
+    <!-- Its own full-width line at every size, but ordered differently: on a phone the
+         columns stack and it reads directly above Search, while from sm up `order-last`
+         drops it below the filter row, left-aligned under the zip box and above the map. -->
+    <div class="col-12 order-sm-last">
       <div class="form-check mb-0">
         <input class="form-check-input" type="checkbox" name="ada_lift" value="1"
                id="ada-lift-check" {% if ada_lift_only %}checked{% endif %}>
