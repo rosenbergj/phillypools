@@ -83,32 +83,24 @@ the local database, so there's no reason to render a subset. The server keeps wo
 across re-renders even though the command deletes and recreates `offseason-build/`, so you
 don't need to restart it.
 
-**Viewing it from the laptop.** This box is headless, so use an **SSH tunnel** — run this
-on the laptop and open <http://localhost:8800/>:
+**Viewing it from the laptop.** This box is headless, so just browse to it over the LAN:
+**<http://192.168.1.116:8800/>**. Verified working 2026-08-20. `http.server` binds
+`0.0.0.0`, and no firewall is running here (ufw, firewalld, nftables and
+netfilter-persistent are all inactive), so there's nothing to open and no tunnel needed.
+
+Worth knowing if it ever doesn't answer: `enp3s0` carries **both** `192.168.1.116` and
+`192.168.0.116` on a /22, so the LAN spans `192.168.0.0`–`192.168.3.255` and the laptop
+usually sits on `192.168.0.x` while this box answers on `192.168.1.x`. Either address
+reaches it. Check the address you typed before assuming a network problem — and the
+server's own log is the fastest way to tell a dropped packet from a typo, since a request
+that arrives shows up there with the client IP.
+
+If you ever do need to get in without the port being reachable, an SSH tunnel needs
+nothing configured:
 
 ```bash
-ssh -N -L 8800:localhost:8800 josh@192.168.1.116
+ssh -N -L 8800:localhost:8800 josh@192.168.1.116   # then http://localhost:8800/
 ```
-
-(Or add the forward to a session you're already in: `Enter`, then `~C`, then
-`-L 8800:localhost:8800`.)
-
-Use the tunnel rather than hitting `http://192.168.1.116:8800/` directly. `http.server`
-does bind `0.0.0.0`, and the laptop *can* reach this box — SSH to port 22 works from it —
-but a direct connection to 8800 was tried on 2026-08-20 and **not one packet reached the
-server**, so something drops inbound on that port while allowing 22. `ufw.conf` reads
-`ENABLED=no`, which the evidence contradicts, so don't trust that file. The tunnel works
-regardless and needs nothing opened.
-
-If you do want direct LAN access, check `sudo ufw status verbose` first, then:
-
-```bash
-sudo ufw allow from 192.168.0.0/22 to any port 8800 proto tcp
-```
-
-Note `/22`, not `/24`: `enp3s0` carries both `192.168.1.116` and `192.168.0.116` on a /22,
-so the LAN spans `192.168.0.0`–`192.168.3.255` and the laptop sits on `192.168.0.x` while
-this box answers on `192.168.1.x`.
 
 8800 is used here because 8080 is already taken on this box and 8000 is where `runserver`
 lands, so this port won't collide with the live site if you're running both to compare.
