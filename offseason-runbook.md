@@ -72,7 +72,7 @@ that once and the loop is a couple of seconds:
 
 ```bash
 # terminal 1 — leave this running all day
-python -m http.server -d offseason-build
+python -m http.server 8800 -d offseason-build
 
 # terminal 2 — after each edit
 python manage.py render_static_site --season-year 2026
@@ -82,6 +82,22 @@ Then reload the browser. A full render is ~0.4s for all ~70 pages and touches no
 the local database, so there's no reason to render a subset. The server keeps working
 across re-renders even though the command deletes and recreates `offseason-build/`, so you
 don't need to restart it.
+
+**Viewing it from the laptop.** This box is headless, so the point of the port is to reach
+it over the LAN: **<http://192.168.1.116:8800/>**. `http.server` binds `0.0.0.0` by
+default, so it's already listening on every interface — nothing to configure, and no need
+for an SSH tunnel. If the laptop can't connect, the firewall is the thing to check
+(`sudo ufw status`; `ufw.conf` currently says `ENABLED=no`, so it shouldn't be in the way,
+but the service is installed). To open it if it ever is:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 8800 proto tcp
+```
+
+8800 is used here because 8080 is already taken on this box and 8000 is where `runserver`
+lands, so this port won't collide with the live site if you're running both to compare.
+Nothing is published by any of this — `render_static_site` only writes a local directory,
+and the site goes live only at the `wrangler pages deploy` in step 9.
 
 Two things that matter here:
 
