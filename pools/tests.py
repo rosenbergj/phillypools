@@ -2316,3 +2316,77 @@ class AdaLiftTests(TestCase):
         self.assertIn("Indoor", content)
         self.assertNotIn('<br><span class="badge" style="background:#0891b2">Indoor', content)
         self.assertEqual(indoor.pool_type, "indoor")
+
+
+class AdaLiftFilterTests(TestCase):
+    """The lift checkbox is orthogonal to status: it narrows whatever status was
+    already chosen rather than replacing it."""
+
+    def setUp(self):
+        common = dict(latitude=39.95, longitude=-75.16)
+        self.open_lift = Pool.objects.create(
+            name="Open Lift Pool", slug="open-lift", address="1 A St, 19146",
+            ppr_amenity_id="A1", has_ada_lift=True,
+            opening_date=date(2026, 6, 1), closing_date=date(2099, 1, 1), **common)
+        self.open_nolift = Pool.objects.create(
+            name="Open Plain Pool", slug="open-plain", address="2 B St, 19146",
+            ppr_amenity_id="A2", has_ada_lift=False,
+            opening_date=date(2026, 6, 1), closing_date=date(2099, 1, 1), **common)
+        self.shut_lift = Pool.objects.create(
+            name="Shut Lift Pool", slug="shut-lift", address="3 C St, 19146",
+            ppr_amenity_id="A3", has_ada_lift=True, is_active=False, **common)
+
+    def _names(self, **params):
+        return {p["name"] for p in self.client.get(reverse("pools_json"), params).json()["pools"]}
+
+    def test_unchecked_shows_everything(self):
+        self.assertEqual(len(self._names()), 3)
+
+    def test_checked_keeps_only_lift_pools(self):
+        self.assertEqual(self._names(ada_lift="1"), {"Open Lift Pool", "Shut Lift Pool"})
+
+    def test_composes_with_status_rather_than_replacing_it(self):
+        """The whole reason for a checkbox over a dropdown entry."""
+        self.assertEqual(self._names(ada_lift="1", status="open"), {"Open Lift Pool"})
+        self.assertEqual(self._names(status="open"), {"Open Lift Pool", "Open Plain Pool"})
+
+    def test_only_the_literal_1_enables_it(self):
+        self.assertEqual(len(self._names(ada_lift="yes")), 3)
+        self.assertEqual(len(self._names(ada_lift="0")), 3)
+
+    def test_checkbox_renders_checked_from_the_url(self):
+        self.assertContains(self.client.get(reverse("index"), {"ada_lift": "1"}), "ada-lift-check")
+        page = self.client.get(reverse("index"), {"ada_lift": "1"}).content.decode()
+        box = page[page.index('id="ada-lift-check"') - 200:page.index('id="ada-lift-check"') + 60]
+        self.assertIn("checked", box)
+        plain = self.client.get(reverse("index")).content.decode()
+        box2 = plain[plain.index('id="ada-lift-check"') - 200:plain.index('id="ada-lift-check"') + 60]
+        self.assertNotIn("checked", box2)
+
+    def test_usage_is_recorded_so_the_filter_is_reviewable(self):
+        from pools.models import UsageEvent
+        self.client.get(reverse("pools_json"), {"ada_lift": "1"})
+        self.client.get(reverse("pools_json"))
+        vals = list(UsageEvent.objects.values_list("ada_lift_filter", flat=True))
+        self.assertIn("1", vals)
+        self.assertIn("", vals)
+
+    def test_rollup_reports_it_as_its_own_metric(self):
+        """Built directly rather than through the test client: a request with no
+        user-agent rolls up as a bot and would be excluded before reaching the
+        breakdown. The middleware side is covered by the test above."""
+        from pools.models import UsageDaily, UsageEvent
+        UsageEvent.objects.create(
+            day=timezone.localdate(), event="index", visitor="lift1",
+            client_class="unknown", ua_family="chrome/150", ada_lift_filter="1",
+        )
+        UsageEvent.objects.create(
+            day=timezone.localdate(), event="index", visitor="plain1",
+            client_class="unknown", ua_family="chrome/150", ada_lift_filter="",
+        )
+        call_command("rollup_usage", days=1, verbosity=0)
+        row = UsageDaily.objects.filter(metric="ada_lift", key="1").first()
+        self.assertIsNotNone(row)
+        self.assertEqual(row.visitors, 1)
+        # Blanks are skipped, so the metric counts only people who used the filter.
+        self.assertFalse(UsageDaily.objects.filter(metric="ada_lift", key="").exists())

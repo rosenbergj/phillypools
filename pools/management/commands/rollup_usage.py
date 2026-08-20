@@ -34,6 +34,7 @@ from pools.services.usage import (
 # (metric name, UsageEvent field) breakdowns rolled up verbatim, skipping blanks.
 _FIELD_METRICS = [
     ("status_filter", "status_filter"),
+    ("ada_lift", "ada_lift_filter"),
     ("neighborhood", "neighborhood"),
     ("zip", "zip_searched"),
     ("referrer", "referrer_host"),

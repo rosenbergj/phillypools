@@ -57,9 +57,18 @@
         <option value="closed" {% if status_filter == "closed" %}selected{% endif %}>Closed / unknown</option>
       </select>
     </div>
+    <div class="col-12 col-sm-auto d-flex align-items-center" style="min-height:2rem">
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" name="ada_lift" value="1"
+               id="ada-lift-check" {% if ada_lift_only %}checked{% endif %}>
+        <label class="form-check-label small" for="ada-lift-check">
+          Pools with ADA lifts only
+        </label>
+      </div>
+    </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      <a href="/" class="btn btn-outline-secondary btn-sm ms-1{% if not zip_query and not status_filter and not neighborhood_filter %} d-none{% endif %}" id="clear-btn">Clear</a>
+      <a href="/" class="btn btn-outline-secondary btn-sm ms-1{% if not zip_query and not status_filter and not neighborhood_filter and not ada_lift_only %} d-none{% endif %}" id="clear-btn">Clear</a>
     </div>
   </form>
 
@@ -425,7 +434,7 @@
       ? `<div class="alert alert-warning py-2 small mb-3">${escHtml(data.zip_error)}</div>`
       : '';
     document.getElementById('clear-btn').classList.toggle(
-      'd-none', !(data.zip_query || data.status_filter || data.neighborhood_filter)
+      'd-none', !(data.zip_query || data.status_filter || data.neighborhood_filter || data.ada_lift_only)
     );
 
     const col = document.querySelector('.list-col');
@@ -445,10 +454,12 @@
     const zip = document.getElementById('zip-input').value.trim();
     const neighborhood = document.getElementById('neighborhood-select').value;
     const status = document.getElementById('status-select').value;
+    const adaLift = document.getElementById('ada-lift-check').checked;
     const params = new URLSearchParams();
     if (zip) params.set('zip', zip);
     if (neighborhood) params.set('neighborhood', neighborhood);
     if (status) params.set('status', status);
+    if (adaLift) params.set('ada_lift', '1');
     history.pushState({}, '', params.toString() ? '?' + params.toString() : location.pathname);
     const resp = await fetch('/pools-json/?' + params.toString());
     const data = await resp.json();
@@ -488,12 +499,14 @@
     document.getElementById('zip-input').value = params.get('zip') || '';
     document.getElementById('neighborhood-select').value = params.get('neighborhood') || '';
     document.getElementById('status-select').value = params.get('status') || '';
+    document.getElementById('ada-lift-check').checked = params.get('ada_lift') === '1';
     fetchAndRender();
   });
 
   document.getElementById('zip-input').addEventListener('input', () => {
     document.getElementById('neighborhood-select').value = '';
   });
+  document.getElementById('ada-lift-check').addEventListener('change', fetchAndRender);
   document.getElementById('neighborhood-select').addEventListener('change', () => {
     document.getElementById('zip-input').value = '';
     fetchAndRender();

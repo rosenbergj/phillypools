@@ -336,7 +336,8 @@ def _annotate_likes(pools, voter_id: str, year: int):
         pool.user_liked = pool.id in liked_pool_ids
 
 
-def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter: str, voter_id: str = "") -> dict:
+def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter: str,
+                        voter_id: str = "", ada_lift_only: bool = False) -> dict:
     """Filter, sort, and annotate pools. Shared by index and pools_json."""
     pools = list(Pool.objects.all())
     zip_center = None
@@ -393,6 +394,11 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
             if "zumba" in p.weekday_schedule.lower() or "zumba" in p.weekend_schedule.lower()
         ]
 
+    # Independent of status rather than another branch of it: having a lift is a fixed
+    # property of the pool, so it narrows whatever status was already chosen.
+    if ada_lift_only:
+        pools = [p for p in pools if p.has_ada_lift]
+
     for pool in pools:
         pool.map_status = _pool_map_status(pool, today)
         pool.label_text, pool.label_color, pool.label_bold = _pool_status_label(pool, today)
@@ -419,10 +425,11 @@ def _thanks_url(pool_id: str) -> str:
 def index(request):
     zip_query = request.GET.get("zip", "").strip()
     status_filter = request.GET.get("status", "")
+    ada_lift_only = request.GET.get("ada_lift") == "1"
     neighborhood_filter = request.GET.get("neighborhood", "")
 
     voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
-    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id)
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id, ada_lift_only)
     pools = ctx["pools"]
     zip_center = ctx["zip_center"]
 
@@ -459,6 +466,7 @@ def index(request):
         "philly_boundary": _PHILLY_BOUNDARY,
         "zip_error": ctx["zip_error"],
         "status_filter": status_filter,
+        "ada_lift_only": ada_lift_only,
         "neighborhood_filter": neighborhood_filter,
         "neighborhoods": get_neighborhoods(),
         "show_distance": ctx["show_distance"],
@@ -469,10 +477,11 @@ def index(request):
 def pools_json(request):
     zip_query = request.GET.get("zip", "").strip()
     status_filter = request.GET.get("status", "")
+    ada_lift_only = request.GET.get("ada_lift") == "1"
     neighborhood_filter = request.GET.get("neighborhood", "")
 
     voter_id = request.COOKIES.get(LIKE_COOKIE_NAME, "")
-    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id)
+    ctx = _assemble_pool_data(zip_query, neighborhood_filter, status_filter, voter_id, ada_lift_only)
     pools = ctx["pools"]
 
     pools_list = []
@@ -514,6 +523,7 @@ def pools_json(request):
         "neighborhood_filter": neighborhood_filter,
         "zip_query": zip_query,
         "status_filter": status_filter,
+        "ada_lift_only": ada_lift_only,
     })
 
 
@@ -1348,6 +1358,7 @@ def stats(request):
         "pin_clicks": pin_clicks,
         "card_clicks": card_clicks,
         "status_filters": _top(day_from, "status_filter", audience),
+        "ada_lift_filters": _top(day_from, "ada_lift", audience),
         "neighborhoods": _top(day_from, "neighborhood", audience),
         "zips": _top(day_from, "zip", audience),
         "referrers": _top(day_from, "referrer", audience),

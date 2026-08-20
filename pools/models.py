@@ -496,6 +496,11 @@ class UsageEvent(models.Model):
     event = models.CharField(max_length=20, choices=EVENT_CHOICES, db_index=True)
     key = models.CharField(max_length=100, blank=True, help_text="Pool slug for pool views and pin clicks")
     status_filter = models.CharField(max_length=20, blank=True)
+    ada_lift_filter = models.CharField(
+        max_length=4, blank=True,
+        help_text="'1' when the ADA-lift checkbox was on; blank when it wasn't, so the "
+                  "rollup's skip-blanks rule counts only the visitors who used it",
+    )
     neighborhood = models.CharField(max_length=100, blank=True)
     zip_searched = models.CharField(max_length=5, blank=True)
     visitor = models.CharField(max_length=16, db_index=True, help_text="Daily-rotating pseudonym; not linkable across days")

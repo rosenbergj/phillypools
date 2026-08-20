@@ -84,6 +84,7 @@ class UsageMiddleware:
             event=event,
             key=match.kwargs.get("slug", "")[:100],
             status_filter=request.GET.get("status", "")[:20],
+            ada_lift_filter="1" if request.GET.get("ada_lift") == "1" else "",
             neighborhood=request.GET.get("neighborhood", "")[:100],
             zip_searched=clean_zip(request.GET.get("zip", "")),
             visitor=visitor_hash(request, day),
