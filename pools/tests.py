@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.template.utils import get_app_template_dirs
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -2738,3 +2739,68 @@ class OffseasonHistogramRenderTests(TestCase):
         html = self._render()
         for token in ("{#", "#}", "{%", "%}", "{{", "}}"):
             self.assertNotIn(token, html, f"unrendered {token} left in the page")
+
+
+class TemplateSyntaxLeakTests(TestCase):
+    """Django's lexer is `({%.*?%}|{{.*?}}|{#.*?#})` compiled without DOTALL, so
+    none of the three delimiter pairs may span a newline. A tag or comment split
+    across two lines doesn't raise — it's emitted as literal text into the page.
+
+    That has bitten this project twice, both times a `{# ... #}` comment wrapped
+    for line length, and both times the leak reached rendered HTML before anyone
+    noticed. It's invisible in review because the template looks correct. This
+    test reads the templates rather than any particular rendered page, so it
+    covers templates that no test happens to render."""
+
+    DELIMITERS = (("{%", "%}"), ("{{", "}}"), ("{#", "#}"))
+
+    def _project_templates(self):
+        """Every template file we own — app dirs and configured DIRS alike.
+
+        Discovered through Django rather than hardcoded, so a template directory
+        added later is covered automatically, then filtered to BASE_DIR so we
+        aren't linting Django's own admin templates out of site-packages.
+        """
+        base = Path(settings.BASE_DIR).resolve()
+        roots = [Path(d) for d in get_app_template_dirs("templates")]
+        for engine in settings.TEMPLATES:
+            roots += [Path(d) for d in engine.get("DIRS", [])]
+
+        seen = set()
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in sorted(root.rglob("*")):
+                resolved = path.resolve()
+                if not path.is_file() or resolved in seen:
+                    continue
+                if base not in resolved.parents:
+                    continue
+                seen.add(resolved)
+                yield resolved
+
+    def test_project_has_templates_to_check(self):
+        # A discovery bug that found nothing would make every check below vacuous.
+        found = list(self._project_templates())
+        self.assertGreater(len(found), 10, "template discovery found almost nothing")
+
+    def test_no_template_tag_or_comment_spans_a_newline(self):
+        offenders = []
+        for path in self._project_templates():
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except UnicodeDecodeError:
+                continue  # a binary file sitting in a template dir
+            for number, line in enumerate(lines, start=1):
+                for opener, closer in self.DELIMITERS:
+                    if line.count(opener) != line.count(closer):
+                        offenders.append(
+                            f"{path.relative_to(Path(settings.BASE_DIR).resolve())}:"
+                            f"{number}: unbalanced {opener}…{closer} — {line.strip()}"
+                        )
+        self.assertEqual(
+            offenders,
+            [],
+            "Django template delimiters must open and close on the same line; "
+            "these would be published as literal text:\n" + "\n".join(offenders),
+        )
