@@ -132,7 +132,14 @@ def _build_email(pending_subs, pending_prs, new_subs, new_prs, scrape_errors):
         lines.extend(f"- {e}" for e in scrape_errors)
         lines.append("")
 
-    lines.append(f"Pending queue: {SITE_BASE_URL}/admin/pools/submission/?status__exact=pending")
+    queue_url = f"{SITE_BASE_URL}/admin/pools/submission/?status__exact=pending"
+    # The count is what that filtered queue will show, so it counts submissions only —
+    # pending press releases live in a different admin list and are reported above.
+    if pending_subs:
+        waiting = f"{len(pending_subs)} waiting"
+    else:
+        waiting = "nothing waiting"
+    lines.append(f"Pending queue: {queue_url} ({waiting})")
     return subject, "\n".join(lines)
 
 
