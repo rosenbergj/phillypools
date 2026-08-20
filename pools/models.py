@@ -33,12 +33,21 @@ class Pool(models.Model):
     notes = models.TextField(blank=True, help_text="Permanent info about this pool (facilities, accessibility, etc.)")
     updates = models.TextField(blank=True, help_text="Current-season updates from submissions or announcements")
     updates_source_url = models.URLField(blank=True)
-    has_ada_lift = models.BooleanField(
-        default=False,
-        verbose_name="Has ADA lift",
+    ADA_LIFT_CHOICES = [
+        ("yes", "Yes — working"),
+        ("none", "None"),
+        ("broken", "Present but broken"),
+    ]
+    ada_lift = models.CharField(
+        max_length=10,
+        choices=ADA_LIFT_CHOICES,
+        default="none",
+        verbose_name="ADA lift",
         help_text=(
-            "Pool has a wheelchair lift. From the city's ada_lift field; only an explicit "
-            "'Y' counts, so blank and unpopulated are treated the same as 'N'."
+            "The city's feed only distinguishes a lift from no lift — its 'Y' becomes "
+            "'yes' and anything else becomes 'none'. 'Present but broken' is a human "
+            "judgement the feed can't express, so scrape_pools never sets it and never "
+            "overwrites it while the city still reports a lift."
         ),
     )
     is_active = models.BooleanField(default=True)
@@ -83,6 +92,12 @@ class Pool(models.Model):
     def get_absolute_url(self):
         from django.urls import reverse
         return reverse("pool_detail", kwargs={"slug": self.slug})
+
+    @property
+    def has_working_ada_lift(self):
+        """What every visitor-facing surface should ask. A broken lift is worse than
+        useless to someone who needs one, so it must never read as a lift."""
+        return self.ada_lift == "yes"
 
     @property
     def is_open(self):

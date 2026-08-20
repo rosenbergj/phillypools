@@ -397,7 +397,10 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
     # Independent of status rather than another branch of it: having a lift is a fixed
     # property of the pool, so it narrows whatever status was already chosen.
     if ada_lift_only:
-        pools = [p for p in pools if p.has_ada_lift]
+        # Working lifts only. Someone filtering for a lift needs one that works, so a
+        # broken lift is excluded here — it stays visible on the unfiltered list and the
+        # pool page, labelled as broken, rather than being hidden outright.
+        pools = [p for p in pools if p.has_working_ada_lift]
 
     for pool in pools:
         pool.map_status = _pool_map_status(pool, today)
@@ -451,7 +454,7 @@ def index(request):
             "phillypublicpools_url": p.phillypublicpools_url or None,
             "like_count": p.like_count,
             "user_liked": p.user_liked,
-            "has_ada_lift": p.has_ada_lift,
+            "ada_lift": p.ada_lift,
         }
         for p in pools
         if p.latitude and p.longitude
@@ -510,7 +513,7 @@ def pools_json(request):
             "like_count": p.like_count,
             "user_liked": p.user_liked,
             "pool_type": p.pool_type,
-            "has_ada_lift": p.has_ada_lift,
+            "ada_lift": p.ada_lift,
         })
 
     return JsonResponse({

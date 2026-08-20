@@ -121,7 +121,7 @@ class PoolStatusFilter(admin.SimpleListFilter):
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
     list_display = ["name", "neighborhood", "social_media_display", "is_open_display", "opening_date_display", "closing_date_display", "schedule_display", "is_active"]
-    list_filter = [PoolStatusFilter, "is_active", "neighborhood"]
+    list_filter = [PoolStatusFilter, "is_active", "ada_lift", "neighborhood"]
     list_editable = ["is_active"]
     search_fields = ["name", "address", "neighborhood"]
     readonly_fields = ["last_updated", "display_image_preview"]
@@ -140,6 +140,7 @@ class PoolAdmin(admin.ModelAdmin):
             "weekend_schedule", "weekend_schedule_source_url",
         )}),
         ("Info", {"fields": (
+            "ada_lift",
             "notes",
             "updates", "updates_source_url",
         )}),

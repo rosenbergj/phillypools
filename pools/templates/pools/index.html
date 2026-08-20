@@ -95,7 +95,7 @@
           <div id="pool-{{ pool.id }}" class="pool-card p-2 mb-1 rounded" data-slug="{{ pool.slug }}">
             <div class="d-flex justify-content-between align-items-start">
               <div class="d-flex align-items-baseline">
-                <a href="{{ pool.get_absolute_url }}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>{% if pool.like_count %}<span class="text-muted small ms-2 pool-like-count">&#9829; {{ pool.like_count }}</span>{% endif %}{% if pool.pool_type == "indoor" %}<span class="badge ms-2 align-middle" style="background:#0891b2">Indoor</span>{% endif %}{% if pool.has_ada_lift %}<span class="badge ms-2 align-middle" style="background:#4c1d95" title="Pool has a wheelchair lift"><span aria-hidden="true">&#9855;</span> ADA Lift</span>{% endif %}
+                <a href="{{ pool.get_absolute_url }}" class="fw-semibold text-decoration-none">{{ pool.name }}</a>{% if pool.like_count %}<span class="text-muted small ms-2 pool-like-count">&#9829; {{ pool.like_count }}</span>{% endif %}{% if pool.pool_type == "indoor" %}<span class="badge ms-2 align-middle" style="background:#0891b2">Indoor</span>{% endif %}{% if pool.ada_lift == "yes" %}<span class="badge ms-2 align-middle" style="background:#4c1d95" title="Pool has a wheelchair lift"><span aria-hidden="true">&#9855;</span> ADA Lift</span>{% elif pool.ada_lift == "broken" %}<span class="badge ms-2 align-middle" style="background:#6c757d" title="This pool has a wheelchair lift, but it is out of service"><span aria-hidden="true">&#9855;</span> ADA Lift broken</span>{% endif %}
               </div>
               <div class="d-flex align-items-center gap-2" style="flex-shrink:0">
                 {% if show_distance and pool.distance is not None %}
@@ -263,7 +263,7 @@
       <span class="like-icon">${pool.user_liked ? '&#9829;' : '&#9825;'}</span> <span class="like-count">${pool.like_count}</span>
     </button>`;
     return `<div class="d-flex align-items-center justify-content-between gap-1">
-      <strong><a href="${poolUrl(pool.slug)}">${escHtml(pool.name)}</a></strong>${pool.has_ada_lift ? ' <span role="img" aria-label="Has a wheelchair lift" title="Pool has a wheelchair lift">&#9855;</span>' : ''}${likeBtn}
+      <strong><a href="${poolUrl(pool.slug)}">${escHtml(pool.name)}</a></strong>${pool.ada_lift === 'yes' ? ' <span role="img" aria-label="Has a wheelchair lift" title="Pool has a wheelchair lift">&#9855;</span>' : pool.ada_lift === 'broken' ? ' <span role="img" aria-label="Wheelchair lift is broken" title="This pool has a wheelchair lift, but it is out of service">&#9855;</span><small class="text-muted"> broken</small>' : ''}${likeBtn}
     </div><small>${escHtml(pool.address)}</small>${statusLine}${socialLine}${adminLine}`;
   }
 
@@ -375,9 +375,11 @@
     const indoorBadge = pool.pool_type === 'indoor'
       ? '<span class="badge ms-2 align-middle" style="background:#0891b2">Indoor</span>'
       : '';
-    const liftBadge = pool.has_ada_lift
+    const liftBadge = pool.ada_lift === 'yes'
       ? '<span class="badge ms-2 align-middle" style="background:#4c1d95" title="Pool has a wheelchair lift"><span aria-hidden="true">&#9855;</span> ADA Lift</span>'
-      : '';
+      : pool.ada_lift === 'broken'
+        ? '<span class="badge ms-2 align-middle" style="background:#6c757d" title="This pool has a wheelchair lift, but it is out of service"><span aria-hidden="true">&#9855;</span> ADA Lift broken</span>'
+        : '';
     const distHtml = showDistance && pool.distance != null
       ? `<span class="text-muted small" style="min-width:3rem;text-align:right">${pool.distance.toFixed(1)} mi</span>`
       : '';

@@ -18,7 +18,7 @@ POOL_TYPE_MAP = {
     "Spray": "spray",
 }
 
-ALL_FIELDS = ["name", "address", "latitude", "longitude", "neighborhood", "pool_type", "is_active", "has_ada_lift"]
+ALL_FIELDS = ["name", "address", "latitude", "longitude", "neighborhood", "pool_type", "is_active", "ada_lift"]
 
 
 class Command(BaseCommand):
@@ -85,7 +85,8 @@ class Command(BaseCommand):
             # Only an explicit "Y" counts. The field is blank on some records and the
             # city doesn't distinguish "no lift" from "nobody checked", so anything
             # other than a positive claim is treated as no lift rather than unknown.
-            has_ada_lift = (props.get("ada_lift") or "").strip().upper() == "Y"
+            city_has_lift = (props.get("ada_lift") or "").strip().upper() == "Y"
+            ada_lift = "yes" if city_has_lift else "none"
 
             city_comment = (props.get("comments") or "").strip()
 
@@ -103,7 +104,7 @@ class Command(BaseCommand):
                 "neighborhood": neighborhood,
                 "pool_type": pool_type,
                 "is_active": is_active,
-                "has_ada_lift": has_ada_lift,
+                "ada_lift": ada_lift,
             }
 
             existing = Pool.objects.filter(ppr_amenity_id=amenity_id).first()
@@ -117,6 +118,12 @@ class Command(BaseCommand):
                     self.stdout.write(f"  {prefix}Would create: {name}")
             elif existing:
                 update_data = {k: all_defaults[k] for k in fields_to_update}
+                # "broken" is a human judgement about a lift the city still reports,
+                # and the feed has no way to say it. Overwriting it with the feed's
+                # "yes" would silently erase the only information here the city
+                # doesn't have. A city "N" still wins: that says the lift is gone.
+                if existing.ada_lift == "broken" and update_data.get("ada_lift") == "yes":
+                    del update_data["ada_lift"]
                 for attr, val in update_data.items():
                     setattr(existing, attr, val)
                 save_fields = list(update_data.keys())

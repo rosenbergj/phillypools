@@ -2255,12 +2255,12 @@ class AdaLiftTests(TestCase):
         self.lift = Pool.objects.create(
             name="Murphy Pool", slug="murphy-pool-t", address="300 Shunk St., 19148",
             ppr_amenity_id="P0801-S0000-B0000-A0001", latitude=39.9, longitude=-75.1,
-            has_ada_lift=True, opening_date=date(2026, 6, 25),
+            ada_lift="yes", opening_date=date(2026, 6, 25),
         )
         self.no_lift = Pool.objects.create(
             name="Chew Pool", slug="chew-pool-t", address="1800 Washington Ave., 19146",
             ppr_amenity_id="P0802-S0000-B0000-A0001", latitude=39.9, longitude=-75.2,
-            has_ada_lift=False, opening_date=date(2026, 7, 1),
+            ada_lift="none", opening_date=date(2026, 7, 1),
         )
 
     def test_only_an_explicit_y_counts(self):
@@ -2288,9 +2288,9 @@ class AdaLiftTests(TestCase):
 
     def test_flag_is_in_the_json_payload(self):
         data = self.client.get(reverse("pools_json")).json()
-        flags = {p["name"]: p["has_ada_lift"] for p in data["pools"]}
-        self.assertTrue(flags["Murphy Pool"])
-        self.assertFalse(flags["Chew Pool"])
+        flags = {p["name"]: p["ada_lift"] for p in data["pools"]}
+        self.assertEqual(flags["Murphy Pool"], "yes")
+        self.assertEqual(flags["Chew Pool"], "none")
 
     def test_flag_is_in_the_initial_page_payload(self):
         """The map popups are built from pools_geojson on first render, which is a
@@ -2301,9 +2301,9 @@ class AdaLiftTests(TestCase):
         marker = '<script id="pools-data" type="application/json">'
         start = content.index(marker) + len(marker)
         payload = json.loads(content[start:content.index("</script>", start)])
-        flags = {p["name"]: p["has_ada_lift"] for p in payload}
-        self.assertTrue(flags["Murphy Pool"])
-        self.assertFalse(flags["Chew Pool"])
+        flags = {p["name"]: p["ada_lift"] for p in payload}
+        self.assertEqual(flags["Murphy Pool"], "yes")
+        self.assertEqual(flags["Chew Pool"], "none")
 
     def test_attribute_badges_no_longer_stack_under_the_status_badge(self):
         """The <br>-stacked Indoor badge made the card two lines tall with nothing on
@@ -2326,15 +2326,15 @@ class AdaLiftFilterTests(TestCase):
         common = dict(latitude=39.95, longitude=-75.16)
         self.open_lift = Pool.objects.create(
             name="Open Lift Pool", slug="open-lift", address="1 A St, 19146",
-            ppr_amenity_id="A1", has_ada_lift=True,
+            ppr_amenity_id="A1", ada_lift="yes",
             opening_date=date(2026, 6, 1), closing_date=date(2099, 1, 1), **common)
         self.open_nolift = Pool.objects.create(
             name="Open Plain Pool", slug="open-plain", address="2 B St, 19146",
-            ppr_amenity_id="A2", has_ada_lift=False,
+            ppr_amenity_id="A2", ada_lift="none",
             opening_date=date(2026, 6, 1), closing_date=date(2099, 1, 1), **common)
         self.shut_lift = Pool.objects.create(
             name="Shut Lift Pool", slug="shut-lift", address="3 C St, 19146",
-            ppr_amenity_id="A3", has_ada_lift=True, is_active=False, **common)
+            ppr_amenity_id="A3", ada_lift="yes", is_active=False, **common)
 
     def _names(self, **params):
         return {p["name"] for p in self.client.get(reverse("pools_json"), params).json()["pools"]}
@@ -2390,3 +2390,59 @@ class AdaLiftFilterTests(TestCase):
         self.assertEqual(row.visitors, 1)
         # Blanks are skipped, so the metric counts only people who used the filter.
         self.assertFalse(UsageDaily.objects.filter(metric="ada_lift", key="").exists())
+
+
+class AdaLiftBrokenTests(TestCase):
+    """A lift that exists but doesn't work is neither of the other two states, and it
+    must survive contact with a feed that has no way to express it."""
+
+    def setUp(self):
+        self.broken = Pool.objects.create(
+            name="Broken Lift Pool", slug="broken-lift", address="9 D St, 19146",
+            ppr_amenity_id="B1", ada_lift="broken", latitude=39.95, longitude=-75.16,
+            opening_date=date(2026, 6, 1), closing_date=date(2099, 1, 1))
+
+    def test_broken_is_not_a_working_lift(self):
+        self.assertFalse(self.broken.has_working_ada_lift)
+
+    def test_filter_excludes_broken(self):
+        names = {p["name"] for p in
+                 self.client.get(reverse("pools_json"), {"ada_lift": "1"}).json()["pools"]}
+        self.assertNotIn("Broken Lift Pool", names)
+
+    def test_broken_is_still_visible_and_labelled_when_unfiltered(self):
+        page = self.client.get(reverse("index")).content.decode()
+        self.assertIn("ADA Lift broken", page)
+
+    def test_detail_page_says_broken_not_available(self):
+        resp = self.client.get(self.broken.get_absolute_url())
+        self.assertContains(resp, "ADA Lift broken")
+
+    def _feed(self, ada_lift):
+        return {"features": [{"properties": {
+            "ppr_amenity_id": "B1", "pool_name": "Broken Lift Pool",
+            "pool_status": "ACTIVE", "ada_lift": ada_lift,
+            "address_911": "9 D St", "zip_code": "19146", "pool_type": "OUTDOOR",
+        }, "geometry": {"type": "Point", "coordinates": [-75.16, 39.95]}}]}
+
+    def _scrape(self, ada_lift):
+        with patch("pools.management.commands.scrape_pools.requests.get") as g:
+            g.return_value.json.return_value = self._feed(ada_lift)
+            g.return_value.raise_for_status.return_value = None
+            call_command("scrape_pools", "--apply", "--fields", "ada_lift", verbosity=0)
+        self.broken.refresh_from_db()
+        return self.broken.ada_lift
+
+    def test_city_yes_does_not_overwrite_broken(self):
+        """The city still reports a lift; we know it doesn't work. Ours is the better
+        information, and losing it silently is the failure mode worth preventing."""
+        self.assertEqual(self._scrape("Y"), "broken")
+
+    def test_city_no_does_overwrite_broken(self):
+        """'No lift at all' is a claim about the same thing, not a weaker one — if the
+        lift is gone, 'broken' is stale."""
+        self.assertEqual(self._scrape("N"), "none")
+
+    def test_scrape_still_sets_yes_for_an_ordinary_pool(self):
+        Pool.objects.filter(pk=self.broken.pk).update(ada_lift="none")
+        self.assertEqual(self._scrape("Y"), "yes")
