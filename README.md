@@ -80,3 +80,24 @@ others on far fewer.
 it in `DATE_FIELD_MAP` (`pools/services/gis.py`) and detection, submissions, and review
 all start handling it with no other change. The check watches for a close/end-date field
 appearing and reports it, so nobody has to notice by hand.
+
+## How long a pool was open
+
+"Days open" means **opening day to closing day, counting both endpoints** —
+`(closing_date - opening_date).days + 1`. A pool open June 17 through June 17 was open
+one day, not zero.
+
+That definition lives once, in `season_length_days` (`pools/services/season.py`), because
+two things quote it and must not disagree: the duration on each archived pool page
+("7 weeks, 3 days") and the season-length histogram on the offseason index. Both read
+their dates from `season_snapshot` in the same module, which prefers `PoolSeasonHistory`
+and falls back to the pool's live fields.
+
+A pool missing either date has a length of `None`, never `0`. "We don't know" and "was
+open no days" are different claims about a real pool, and only the first is one we can
+make — so such a pool is excluded from the histogram and from the longest/shortest
+bullets, while still counting toward "N pools opened" if it has an opening date.
+
+The summary bullets and the histogram are generated at shutdown by `render_static_site`,
+not by a live view; see `offseason-runbook.md` step 3, including how to preview the build
+from another machine while tweaking it.
