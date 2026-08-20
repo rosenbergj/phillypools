@@ -72,6 +72,8 @@ If the scraper printed a "not found in current feed" warning, check each listed 
 - Pool was removed by the city → delete it or set `is_active = False` with a note explaining why
 - Pool was renamed or re-IDed → manually update `ppr_amenity_id` to match the new feed entry, then re-run the scraper
 
+Also check the `skipped:` count in the scraper's summary. It should be **2** — those are the feed's two records with no `ppr_amenity_id`, which the scraper cannot match and therefore silently ignores: **Lincoln Pool** (a School District pool at Abraham Lincoln High School, marked `Non-PPR Location` in the feed, so it has no PPR asset ID and never will — our record is maintained by hand) and **Carousel House Pool** (closed for rebuild since 2024 and not in our database). A different number means the city added or reclassified a pool that can't be matched by ID, so check the `Skipping feature with no ppr_amenity_id` lines above the summary and decide whether to create or update that pool manually.
+
 ## 4. Check for pools whose active status changed
 
 The scraper updates `is_active` automatically from the city's data, but it's worth a quick scan in the admin (`/admin/pools/pool/`) for anything that looks wrong — a pool that was active last year but is now marked inactive (or vice versa) is worth a second look before the season starts.
