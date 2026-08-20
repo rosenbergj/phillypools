@@ -10,7 +10,7 @@ information isn't centralized anywhere else.
 | Source | Carries | Caveat |
 | --- | --- | --- |
 | **phila.gov press releases** (opening schedule, closings schedule) | Opening and closing dates | Published a few times a season, then frozen. Pools get left off: the 2026 closings release omitted Baker and Ford entirely. |
-| **City ArcGIS layer** (`PPR_Swimming_Pools`, via OpenDataPhilly) | Pool inventory, address, coordinates, `pool_status`, `pool_open_date` | No closing date at all. Keeps being edited after the press releases freeze. |
+| **City ArcGIS layer** (`PPR_Swimming_Pools`, via OpenDataPhilly) | Pool inventory, address, coordinates, `pool_status`, `pool_open_date`, `ada_lift` | No closing date at all. Keeps being edited after the press releases freeze. |
 | **Submissions** (public form, plus monitored pages) | Anything a person can see — hours, signage, closures | Uneven per pool, and depends on who happens to be posting. |
 
 ### The GIS check
@@ -35,6 +35,30 @@ the GIS layer but never reached the opening-schedule page, which had frozen on J
 
 Run `check_pool_gis --dry-run` to preview proposals without writing anything. It runs
 on the same cron as the other checks, via `run_url_watcher`.
+
+### Accessibility: `Pool.ada_lift`
+
+Three states — `yes`, `none`, `broken` — rather than a boolean, because a lift that
+exists but doesn't work is neither of the other two.
+
+`scrape_pools` syncs it from the feed's `ada_lift` column: an explicit `Y` becomes
+`yes`, anything else (including blank) becomes `none`. The city has no way to say
+"broken", so:
+
+- the scraper **never sets** `broken` — it's entered by hand in the admin;
+- a feed `Y` **never overwrites** an existing `broken`, or the next sync would silently
+  erase the one fact here the city doesn't have;
+- a feed `N` **does** overwrite it, because "there is no lift" makes `broken` stale
+  rather than better-informed.
+
+The `?ada_lift=1` filter matches **working lifts only**. A broken lift can't answer
+"show me pools with a lift", but it isn't hidden either — unfiltered views carry a grey
+"ADA Lift broken" badge, and the map popup spells the word out rather than showing the
+bare ♿, which on its own reads as an assurance.
+
+The layer also carries `ada_access`, `ada_restrooms` and `gender_neutral_restrooms`.
+Those are deliberately unused: `ada_lift` is populated on 63 of 64 active records, the
+others on far fewer.
 
 **Closing dates:** the layer has no closing-date field today. If the city adds one, map
 it in `DATE_FIELD_MAP` (`pools/services/gis.py`) and detection, submissions, and review
