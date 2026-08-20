@@ -33,15 +33,25 @@ This writes `offseason-build/` — an archived page for every pool at its real U
 (`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, a `404.html`, and a
 `favicon.ico` built from `offseason/favicon.png`.
 
-It also draws the **season-length histogram** on the index page: how many days each pool
-was open, counted from opening day to closing day inclusive, bucketed 2 days to a bar.
-This is why the command runs at shutdown and not earlier — the chart is only honest once
-every pool has actually closed and its closing date is final. The output line tells you
-what it drew, and that number is worth reading before you deploy:
+It also builds the index page's **season summary** — a short bullet list (how many pools
+opened, the longest and shortest seasons, the earliest opening and the latest closing,
+each naming the pools involved) and, below it, the **season-length histogram**: how many
+days each pool was open, counted from opening day to closing day inclusive, bucketed 2
+days to a bar.
+
+This is why the command runs at shutdown and not earlier — both are only honest once every
+pool has actually closed and its closing date is final. The output lines tell you what
+they covered, and those numbers are worth reading before you deploy:
 
 ```
+Summarised 64 pool opening(s)
 Rendered histogram of 63 season length(s), 39–88 days, median 57
 ```
+
+Every pool tied for an extreme is named, so "Earliest pool opening: June 12 (Hunting Park
+Pool, Kelly Pool)" is the normal shape of those bullets — the city opens in waves and ties
+are common. A pool that opened but has no closing date still counts toward the opened
+total; it just can't win longest, shortest, or latest closing.
 
 If the count is well below the number of pools that opened, some closing dates never
 landed — check those before deploying rather than publishing a chart that quietly omits
@@ -54,6 +64,37 @@ Bucket size is `--histogram-bin-width` (default 2). Widen it if a season's dates
 spikier than usual; it's there so you can re-render without editing code. The definition
 of "days open" lives in `pools/services/season.py` and is shared with the duration text on
 each pool page ("7 weeks, 3 days"), so the chart and the pages can't drift apart.
+
+#### Iterating on the layout
+
+Expect to re-render several times on switchover day, tweaking the index page. Set up for
+that once and the loop is a couple of seconds:
+
+```bash
+# terminal 1 — leave this running all day
+python -m http.server -d offseason-build
+
+# terminal 2 — after each edit
+python manage.py render_static_site --season-year 2026
+```
+
+Then reload the browser. A full render is ~0.4s for all ~70 pages and touches nothing but
+the local database, so there's no reason to render a subset. The server keeps working
+across re-renders even though the command deletes and recreates `offseason-build/`, so you
+don't need to restart it.
+
+Two things that matter here:
+
+- **Sync the prod database first** (`sync-prod-db.md`), once, before you start iterating.
+  Everything after that is local and offline. A render against a stale local database will
+  produce a plausible-looking page with the wrong numbers — check the summary line against
+  what you expect before believing the page.
+- **Edit the templates, never the built HTML.** `offseason-build/` is deleted and rebuilt
+  on every run, so any hand-edit there is gone at the next render. The index — greeting,
+  bullets, chart, pool list — is all in `pools/templates/pools/offseason_index.html`.
+
+Only deploy once you're happy; the `wrangler pages deploy` in step 9 is a separate step
+precisely so you can iterate freely here without publishing each attempt.
 
 Inactive pools are included, in the pages, the index, and the sitemap. `is_active` only
 means we don't expect an opening date; the pool still exists and its page still carries

@@ -22,6 +22,7 @@ from pools.models import Pool
 from pools.services.favicon import ico_from_png
 from pools.services.season import (
     DEFAULT_BIN_WIDTH,
+    build_season_facts,
     build_season_histogram,
     season_length_days,
     season_snapshot,
@@ -144,15 +145,25 @@ class Command(BaseCommand):
 
         pools_without_schedule = []
         season_lengths = []
+        measured = []
         for pool in pools:
             season = season_snapshot(pool, season_year)
             if not (season["weekday_schedule"] or season["weekend_schedule"]):
                 pools_without_schedule.append(pool.name)
             # Gathered from the same snapshot the page below is rendered from, so
-            # the histogram can never disagree with the durations it's drawn from.
+            # the summary and histogram can never disagree with the durations
+            # they're drawn from.
             days = season_length_days(season["opening_date"], season["closing_date"])
             if days is not None:
                 season_lengths.append(days)
+            measured.append(
+                {
+                    "name": pool.name,
+                    "opening_date": season["opening_date"],
+                    "closing_date": season["closing_date"],
+                    "days": days,
+                }
+            )
             where = f" in {pool.neighborhood}" if pool.neighborhood else ""
             # Past tense, because this is written after the season is over. Guarded on
             # the season's opening date rather than is_active alone: a pool that opened
@@ -187,6 +198,10 @@ class Command(BaseCommand):
             (page_dir / "index.html").write_text(html, encoding="utf-8")
         self._say(f"Rendered {len(pools)} pool page(s)")
 
+        facts = build_season_facts(measured)
+        if facts:
+            self._say(f"Summarised {facts.opened} pool opening(s)")
+
         histogram = build_season_histogram(
             season_lengths,
             bin_width=options["histogram_bin_width"],
@@ -217,6 +232,7 @@ class Command(BaseCommand):
                     "meta_description": index_description,
                     "canonical_path": "/",
                     "histogram": histogram,
+                    "facts": facts,
                 },
             ),
             (

@@ -260,3 +260,71 @@ def build_season_histogram(lengths, bin_width=DEFAULT_BIN_WIDTH, uncounted=0):
         longest=lengths[-1],
         median=median,
     )
+
+
+# ---------------------------------------------------------------------------
+# The short factual summary printed above the histogram.
+
+
+@dataclass(frozen=True)
+class SeasonFact:
+    label: str
+    value: str
+    pools: tuple = ()   # every pool tied for this value, in the order given
+
+
+@dataclass(frozen=True)
+class SeasonFacts:
+    opened: int
+    facts: list
+
+    def __bool__(self):
+        """Falsy when no pool opened, so the template can skip the whole list."""
+        return bool(self.opened)
+
+
+def _format_day(value):
+    """'June 20' — no year, since the heading it sits under already says one."""
+    return f"{value:%B} {value.day}"
+
+
+def _extreme(seasons, key, pick, label, format_value):
+    """One bullet: the extreme value of `key`, plus every pool tied for it.
+
+    Ties are the normal case, not an edge case — the city opens pools in waves,
+    so the earliest opening is usually shared by several. Naming only the first
+    would silently drop real pools from a page that claims to list them.
+    """
+    candidates = [s for s in seasons if s[key] is not None]
+    if not candidates:
+        return None
+    best = pick(s[key] for s in candidates)
+    return SeasonFact(
+        label=label,
+        value=format_value(best),
+        pools=tuple(s["name"] for s in candidates if s[key] == best),
+    )
+
+
+def build_season_facts(seasons):
+    """Summarise `seasons` — dicts of name/opening_date/closing_date/days.
+
+    Returns the bullets that can actually be supported by the data; a fact whose
+    underlying dates are all missing is omitted rather than rendered empty.
+    """
+    opened = sum(1 for s in seasons if s["opening_date"])
+    if not opened:
+        return SeasonFacts(opened=0, facts=[])
+
+    days = lambda value: f"{value} day{'s' if value != 1 else ''}"
+    # The last two bracket the city's whole swimming season: the first day any
+    # pool was open and the last day any pool was still open. Deliberately not
+    # earliest-vs-latest *opening*, which would describe the staggered rollout
+    # rather than the span of the summer.
+    candidates = (
+        _extreme(seasons, "days", max, "Longest pool season", days),
+        _extreme(seasons, "days", min, "Shortest pool season", days),
+        _extreme(seasons, "opening_date", min, "Earliest pool opening", _format_day),
+        _extreme(seasons, "closing_date", max, "Latest pool closing", _format_day),
+    )
+    return SeasonFacts(opened=opened, facts=[f for f in candidates if f])

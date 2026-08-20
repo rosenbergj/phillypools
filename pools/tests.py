@@ -21,8 +21,8 @@ from pools.models import (
 from pools.services import datacenter, usage
 from pools.services.page_monitor import check_pool_info_page, start_monitoring
 from pools.services.season import (
-    VIEW_HEIGHT, VIEW_WIDTH, build_season_histogram, format_duration,
-    season_length_days,
+    VIEW_HEIGHT, VIEW_WIDTH, build_season_facts, build_season_histogram,
+    format_duration, season_length_days,
 )
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
 from pools.views import SUBMISSION_DAILY_LIMIT, SUBMISSION_DAILY_LIMIT_STAFF, nearby_pools_context
@@ -2731,6 +2731,45 @@ class OffseasonHistogramRenderTests(TestCase):
         self.assertNotIn(',0"', html)
         self.assertIn(f'viewBox="0 0 {VIEW_WIDTH} {VIEW_HEIGHT}"', html)
 
+    def test_the_summary_bullets_are_written_into_the_index(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        self._make_pool("Amos Pool", date(2026, 7, 31), date(2026, 8, 14))
+        html = self._render()
+        self.assertIn("The 2026 season by the numbers", html)
+        self.assertIn("2 pools opened in 2026", html)
+        self.assertIn("Longest pool season: 88 days", html)
+        self.assertIn("Shortest pool season: 15 days", html)
+        self.assertIn("Earliest pool opening: June 12", html)
+        self.assertIn("Latest pool closing: September 7", html)
+
+    def test_tied_pools_are_listed_together_in_the_page(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        self._make_pool("Lee Pool", date(2026, 6, 12), date(2026, 9, 7))
+        html = self._render()
+        self.assertIn("(Kelly Pool, Lee Pool)", html)
+
+    def test_the_visible_caption_does_not_repeat_the_bullets(self):
+        # Shortest and longest are stated once in the visible page, in the
+        # bullets, where they carry the pool names too. The caption keeps only
+        # what the bullets don't say. The SVG's <desc> is exempt and still
+        # states them: like alt text, it has to describe the chart standalone
+        # for a reader who lands on it out of context.
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        self._make_pool("Amos Pool", date(2026, 7, 31), date(2026, 8, 14))
+        html = self._render()
+        caption = html.split('class="note"')[1].split("</p>")[0]
+        self.assertIn("The median was", caption)
+        self.assertNotIn("shortest", caption)
+        self.assertNotIn("longest", caption)
+        self.assertIn("shortest season was", html.split("<desc")[1].split("</desc>")[0])
+
+    def test_a_season_nobody_opened_renders_neither_bullets_nor_chart(self):
+        self._make_pool("Vogt Pool", None, None, is_active=False)
+        html = self._render()
+        self.assertNotIn('class="facts"', html)
+        self.assertNotIn('class="chart"', html)
+        self.assertIn("Philadelphia public pools", html)
+
     def test_no_template_syntax_leaks_into_the_built_page(self):
         # `{# ... #}` is single-line only; a comment wrapped across two lines is
         # published as literal text. This build is served unchanged for ~8 months,
@@ -2804,3 +2843,95 @@ class TemplateSyntaxLeakTests(TestCase):
             "Django template delimiters must open and close on the same line; "
             "these would be published as literal text:\n" + "\n".join(offenders),
         )
+
+
+class SeasonFactsTests(TestCase):
+    """The bullets above the histogram name specific pools, so the risk isn't a
+    wrong pixel — it's crediting the wrong pool, or quietly dropping one."""
+
+    def _season(self, name, opening, closing):
+        days = season_length_days(opening, closing)
+        return {
+            "name": name, "opening_date": opening, "closing_date": closing, "days": days,
+        }
+
+    def _labelled(self, facts):
+        return {f.label: (f.value, f.pools) for f in facts.facts}
+
+    def test_the_four_extremes_and_the_opened_count(self):
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 14)),
+        ])
+        self.assertEqual(facts.opened, 3)
+        by_label = self._labelled(facts)
+        self.assertEqual(by_label["Longest pool season"], ("88 days", ("Kelly Pool",)))
+        self.assertEqual(by_label["Shortest pool season"], ("39 days", ("Amos Pool",)))
+        self.assertEqual(by_label["Earliest pool opening"], ("June 12", ("Kelly Pool",)))
+
+    def test_the_bracketing_dates_are_first_opening_and_last_closing(self):
+        # Not earliest-vs-latest opening: these two are meant to span the whole
+        # city season, so the second one has to come off the closing dates.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 8, 14)),
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),
+        ])
+        by_label = self._labelled(facts)
+        self.assertEqual(by_label["Earliest pool opening"], ("June 12", ("Kelly Pool",)))
+        self.assertEqual(by_label["Latest pool closing"], ("September 7", ("Amos Pool",)))
+        self.assertNotIn("Latest pool opening", by_label)
+
+    def test_every_pool_tied_for_an_extreme_is_named(self):
+        # The city opens in waves, so ties are the normal case. Naming only the
+        # first would drop real pools from a list that claims to name them.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),
+            self._season("Lee Pool", date(2026, 6, 12), date(2026, 9, 7)),
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),
+        ])
+        by_label = self._labelled(facts)
+        self.assertEqual(by_label["Earliest pool opening"][1], ("Kelly Pool", "Lee Pool"))
+        self.assertEqual(by_label["Longest pool season"][1], ("Kelly Pool", "Lee Pool"))
+        self.assertEqual(
+            by_label["Latest pool closing"][1],
+            ("Kelly Pool", "Lee Pool", "Amos Pool"),
+        )
+
+    def test_a_pool_with_no_closing_date_still_counts_as_opened(self):
+        # It did open; we just can't measure or bracket its season.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),
+            self._season("Baker Pool", date(2026, 6, 30), None),
+        ])
+        self.assertEqual(facts.opened, 2)
+        by_label = self._labelled(facts)
+        self.assertEqual(by_label["Longest pool season"], ("88 days", ("Kelly Pool",)))
+        self.assertEqual(by_label["Latest pool closing"], ("September 7", ("Kelly Pool",)))
+        # But it is eligible to be the earliest opening, since that date exists.
+        self.assertEqual(by_label["Earliest pool opening"][1], ("Kelly Pool",))
+
+    def test_a_season_nobody_opened_produces_no_list(self):
+        facts = build_season_facts([self._season("Vogt Pool", None, None)])
+        self.assertEqual(facts.opened, 0)
+        self.assertFalse(facts)
+
+    def test_facts_with_no_measurable_season_are_omitted_not_blank(self):
+        facts = build_season_facts([self._season("Baker Pool", date(2026, 6, 30), None)])
+        self.assertTrue(facts)
+        by_label = self._labelled(facts)
+        self.assertIn("Earliest pool opening", by_label)
+        self.assertNotIn("Longest pool season", by_label)
+        self.assertNotIn("Latest pool closing", by_label)
+
+    def test_a_one_day_season_is_not_pluralised(self):
+        facts = build_season_facts(
+            [self._season("Kelly Pool", date(2026, 6, 12), date(2026, 6, 12))]
+        )
+        self.assertEqual(self._labelled(facts)["Shortest pool season"][0], "1 day")
+
+    def test_dates_are_written_without_a_leading_zero_or_a_year(self):
+        facts = build_season_facts(
+            [self._season("Kelly Pool", date(2026, 7, 4), date(2026, 9, 7))]
+        )
+        self.assertEqual(self._labelled(facts)["Earliest pool opening"][0], "July 4")
