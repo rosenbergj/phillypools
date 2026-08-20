@@ -36,6 +36,22 @@ the GIS layer but never reached the opening-schedule page, which had frozen on J
 Run `check_pool_gis --dry-run` to preview proposals without writing anything. It runs
 on the same cron as the other checks, via `run_url_watcher`.
 
+**A single "GIS fetch failed" in the digest email is usually nothing.** ArcGIS Online
+intermittently answers a perfectly good request with HTTP 200 whose *body* is an error
+— `{'code': 400, 'message': 'Invalid URL', 'details': ['Invalid URL']}` is the one
+seen — and `fetch_features` has no retry, so one flaky response becomes one reported
+error. The URL it requests is a module constant, so it can't be malformed on our side.
+Before investigating, just re-request the endpoint a few times:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/PPR_Swimming_Pools/FeatureServer/0/query?where=1%3D1&outFields=pool_name&returnGeometry=false&f=json"
+```
+
+If that comes back fine, the error was transient and there's nothing to fix. A genuine
+outage announces itself instead: the digest rate-limits error mail to one per 24 hours,
+so a persistently broken source emails every day rather than going quiet.
+
 ### Accessibility: `Pool.ada_lift`
 
 Three states — `yes`, `none`, `broken` — rather than a boolean, because a lift that
