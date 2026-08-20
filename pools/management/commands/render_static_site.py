@@ -19,6 +19,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from pools.models import Pool
+from pools.services.favicon import ico_from_png
 from pools.views import nearby_pools_context
 
 DEFAULT_BASE_URL = "https://phillypools.app"
@@ -160,6 +161,22 @@ class Command(BaseCommand):
                 shutil.copy2(item, out / item.name)
             copied += 1
         self._say(f"Copied {copied} asset(s) from {assets}")
+
+        # The live site answers /favicon.ico from a Django view, which isn't here
+        # to do it once the site is static — and Google's favicon crawler goes to
+        # that path. Built from the favicon.png just copied above, so the icon
+        # search results show survives the offseason unchanged.
+        favicon_png = out / "favicon.png"
+        if favicon_png.exists():
+            (out / "favicon.ico").write_bytes(ico_from_png(favicon_png.read_bytes()))
+            self._say("Rendered favicon.ico")
+        else:
+            # Not fatal — a custom --assets dir is free to leave it out — but loud,
+            # because a real deploy missing it loses the icon in search results.
+            self.stderr.write(
+                f"No favicon.png in {assets}: skipping favicon.ico, and "
+                "<link rel=icon> will point at a file that isn't there."
+            )
 
         shared = {
             "base_url": base_url,

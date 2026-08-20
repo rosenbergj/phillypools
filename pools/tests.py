@@ -1,9 +1,11 @@
+import struct
 import tempfile
 from datetime import date, datetime, time, timedelta, timezone as utc_tz
 from pathlib import Path
 from unittest.mock import patch
 from xml.dom import minidom
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -2446,3 +2448,83 @@ class AdaLiftBrokenTests(TestCase):
     def test_scrape_still_sets_yes_for_an_ordinary_pool(self):
         Pool.objects.filter(pk=self.broken.pk).update(ada_lift="none")
         self.assertEqual(self._scrape("Y"), "yes")
+
+
+class FaviconTests(TestCase):
+    """Google's favicon crawler goes to /favicon.ico, so that path has to answer —
+    with the public icon, not the darker one /stats and the admin use."""
+
+    def _served(self):
+        return self.client.get("/favicon.ico")
+
+    def test_favicon_ico_serves_an_icon(self):
+        response = self._served()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/x-icon")
+        # ICONDIR: reserved 0, type 1 (icon), one image.
+        self.assertEqual(struct.unpack("<HHH", response.content[:6]), (0, 1, 1))
+
+    def test_favicon_ico_wraps_the_public_icon_not_the_admin_one(self):
+        from django.contrib.staticfiles import finders
+
+        public = Path(finders.find("favicon.png")).read_bytes()
+        admin = Path(finders.find("favicon-admin.png")).read_bytes()
+        served = self._served().content
+        self.assertIn(public, served)
+        self.assertNotIn(admin, served)
+
+    def test_favicon_ico_declares_the_size_and_offset_of_the_image(self):
+        from django.contrib.staticfiles import finders
+
+        public = Path(finders.find("favicon.png")).read_bytes()
+        served = self._served().content
+        width, height, _, _, _, _, length, offset = struct.unpack(
+            "<BBBBHHII", served[6:22]
+        )
+        self.assertEqual((width, height), (96, 96))
+        self.assertEqual(length, len(public))
+        self.assertEqual(offset, 22)
+        self.assertEqual(served[offset:offset + length], public)
+
+    def test_favicon_ico_is_cacheable(self):
+        self.assertIn("max-age=", self._served()["Cache-Control"])
+
+    def test_a_non_square_icon_is_refused_rather_than_written_wrong(self):
+        from pools.services.favicon import png_side_length
+
+        oblong = b"\x89PNG" + b"\x00" * 12 + struct.pack(">II", 96, 48)
+        with self.assertRaises(ValueError):
+            png_side_length(oblong)
+
+
+class OffseasonFaviconTests(TestCase):
+    """The offseason build is served by Cloudflare Pages with no Django behind it,
+    so /favicon.ico has to be a real file in the output, not a view."""
+
+    def test_the_offseason_assets_carry_the_public_icon(self):
+        from django.contrib.staticfiles import finders
+
+        offseason = Path(settings.BASE_DIR) / "offseason" / "favicon.png"
+        self.assertTrue(offseason.exists(), f"{offseason} is missing")
+        self.assertEqual(
+            offseason.read_bytes(),
+            Path(finders.find("favicon.png")).read_bytes(),
+            "the offseason icon has drifted from the live site's",
+        )
+
+    def test_render_writes_both_favicon_forms(self):
+        Pool.objects.create(name="Test Pool", slug="test-pool")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "build"
+            call_command("render_static_site", "--out", str(out), verbosity=0)
+
+            png = out / "favicon.png"
+            ico = out / "favicon.ico"
+            self.assertTrue(png.exists(), "favicon.png missing from the build")
+            self.assertTrue(ico.exists(), "favicon.ico missing from the build")
+            self.assertEqual(struct.unpack("<HHH", ico.read_bytes()[:6]), (0, 1, 1))
+            self.assertIn(png.read_bytes(), ico.read_bytes())
+
+            # The <link> has to keep pointing at the file that's actually there.
+            html = (out / "index.html").read_text()
+            self.assertIn('<link rel="icon" type="image/png" href="/favicon.png">', html)

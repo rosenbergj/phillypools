@@ -19,6 +19,7 @@ from pools.models import (
     SubmissionThrottle, UsageDaily, UsageEvent, UsageRollupState,
 )
 from pools.services.datacenter import is_datacenter_ip
+from pools.services.favicon import ICO_CONTENT_TYPE, ico_from_png
 from pools.services.geocoder import geocode_zip, get_zip_polygon
 from pools.services.neighborhoods import get_neighborhoods, get_neighborhood_centroid, get_neighborhood_geometry
 from pools.services.usage import (
@@ -833,6 +834,40 @@ def submit(request):
 def submit_thanks(request):
     pool_id = request.GET.get("pool", "")
     return render(request, "pools/submit_thanks.html", {"pool_id": pool_id if pool_id.isdigit() else ""})
+
+
+# Google's favicon crawler is a separate, infrequent pass from the page crawl, and
+# the root path is what it reaches for most reliably — the <link rel="icon"> in
+# base.html alone had left search results with no icon. Serving it here rather than
+# linking to /static/ also pins the URL: the static storage puts a content hash in
+# the filename, so every icon change would otherwise move the URL out from under
+# whatever Google had cached.
+FAVICON_MAX_AGE = 60 * 60 * 24  # a day; short enough that swapping the icon lands
+
+_favicon_cache = None
+
+
+def favicon_ico(request):
+    """Serve the public site's icon at /favicon.ico.
+
+    Deliberately `favicon.png`, the icon base.html uses — not `favicon-admin.png`,
+    which /stats and the admin override with. This is the one search results show.
+    It's wrapped into a real .ico so this path answers identically whether Django
+    is serving the site or the offseason build is (see pools/services/favicon.py).
+    The bytes are a couple of KB and never change within a deploy, so they're
+    built once and held.
+    """
+    global _favicon_cache
+    if _favicon_cache is None:
+        from django.contrib.staticfiles import finders
+
+        path = finders.find("favicon.png")
+        if path is None:  # pragma: no cover - only if the asset is deleted
+            return HttpResponse(status=404)
+        _favicon_cache = ico_from_png(Path(path).read_bytes())
+    response = HttpResponse(_favicon_cache, content_type=ICO_CONTENT_TYPE)
+    response["Cache-Control"] = f"public, max-age={FAVICON_MAX_AGE}"
+    return response
 
 
 # Opening a pool's popup never reaches the server on its own, from the map or from

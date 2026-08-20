@@ -30,7 +30,8 @@ python manage.py render_static_site --season-year 2026
 ```
 
 This writes `offseason-build/` — an archived page for every pool at its real URL
-(`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, and a `404.html`.
+(`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, a `404.html`, and a
+`favicon.ico` built from `offseason/favicon.png`.
 
 Inactive pools are included, in the pages, the index, and the sitemap. `is_active` only
 means we don't expect an opening date; the pool still exists and its page still carries
@@ -178,7 +179,9 @@ or the pool list means editing `pools/templates/pools/offseason_index.html` and
 re-rendering, not editing built HTML.
 
 Preview via the Cloudflare Pages URL before switching DNS in the next step. Spot-check a
-few pool pages, `/sitemap.xml`, and `/robots.txt`.
+few pool pages, `/sitemap.xml`, `/robots.txt`, and `/favicon.ico` — Google's favicon
+crawler goes to that last path, and the live site answers it from a Django view that
+isn't there once the site is static, so the build generates the file instead.
 
 ### 10. Switch DNS to Cloudflare Pages
 
