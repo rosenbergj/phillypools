@@ -32,12 +32,16 @@
    #      carry per-visitor pseudonyms and there's no reason to copy them onto a
    #      laptop. UsageDaily (aggregate counts only) does come along, so /stats/
    #      has something to show locally.
+   #    - excludes SubmissionThrottle: its `visitor` column is the same daily-rotating
+   #      pseudonym UsageEvent carries, so it belongs on the same side of that line.
+   #      Only per-visitor daily submission counts are lost, which dev has no use for.
    #    - excludes contenttypes/permissions/sessions/admin logs — Django regenerates these
    #      locally and loading prod's copies causes PK collisions against a fresh local DB
    railway ssh --service web -- python manage.py dumpdata \
      --exclude pools.PoolLike \
      --exclude pools.UsageEvent \
      --exclude pools.VisitorSalt \
+     --exclude pools.SubmissionThrottle \
      --exclude contenttypes \
      --exclude auth.permission \
      --exclude sessions.session \
