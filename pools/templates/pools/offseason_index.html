@@ -1,4 +1,4 @@
-<!doctype html>
+{% load l10n %}<!doctype html>
 <html lang="en">
 {% comment %}
 Standalone on purpose: this page keeps the original hand-written offseason
@@ -95,6 +95,48 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       color: #6c757d;
       margin-top: .15rem;
     }
+    .chart {
+      width: 100%;
+      max-width: 40rem;
+      margin: 3rem 0 0;
+      border-top: 1px solid #c8d8ec;
+    }
+    .chart h1 {
+      font-size: 1rem;
+      font-weight: normal;
+      color: #1a3a5c;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin: 1.5rem 0 .75rem;
+    }
+    .chart svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .chart .bar { fill: #4a7fb5; }
+    .chart .grid { stroke: #d7e3f2; }
+    .chart .axis { stroke: #a8c0dc; }
+    .chart text {
+      font-family: Georgia, serif;
+      font-size: 13px;
+      fill: #5d7f9e;
+    }
+    .chart .axis-title { fill: #1a3a5c; }
+    /* The SVG scales to the column, so on a phone it lands near half size and
+       13-unit labels render at ~6px. These are viewBox units, not screen pixels:
+       enlarging them here trades some plot area for legible axes. */
+    @media (max-width: 640px) {
+      .chart text { font-size: 24px; }
+      .chart .grid, .chart .axis { stroke-width: 1.6; }
+    }
+    .chart .note {
+      font-size: .85rem;
+      line-height: 1.5;
+      color: #6c757d;
+      text-align: left;
+      margin: .75rem 0 0;
+    }
     .credit {
       font-size: .85rem;
       color: #6c757d;
@@ -106,6 +148,59 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
 <body>
   <p>Hope you had a great summer! See you in the spring!</p>
   <img src="/pic.png" alt="Swimmers enjoying a Philadelphia public pool">
+
+  {% if histogram %}
+  {% localize off %}
+  <div class="chart">
+    <h1>How long the pools stayed open in {{ season_year }}</h1>
+    <svg viewBox="0 0 {{ histogram.view_width }} {{ histogram.view_height }}"
+         role="img" aria-labelledby="chart-title chart-desc"
+         preserveAspectRatio="xMidYMid meet">
+      <title id="chart-title">Days open per pool, {{ season_year }} season</title>
+      <desc id="chart-desc">{{ histogram.summary }}</desc>
+
+      {% for tick in histogram.y_ticks %}
+        <line class="grid" x1="{{ histogram.plot_left }}" y1="{{ tick.position }}"
+              x2="{{ histogram.plot_right }}" y2="{{ tick.position }}"></line>
+        <text x="{{ histogram.plot_left|add:'-8' }}" y="{{ tick.position|add:'4' }}"
+              text-anchor="end">{{ tick.label }}</text>
+      {% endfor %}
+
+      {% for bar in histogram.bars %}
+        {% if bar.count %}
+          <rect class="bar" x="{{ bar.x }}" y="{{ bar.y }}"
+                width="{{ bar.width }}" height="{{ bar.height }}">
+            <title>{{ bar.label }} days: {{ bar.count }} pool{{ bar.count|pluralize }}</title>
+          </rect>
+        {% endif %}
+      {% endfor %}
+
+      <line class="axis" x1="{{ histogram.plot_left }}" y1="{{ histogram.plot_bottom }}"
+            x2="{{ histogram.plot_right }}" y2="{{ histogram.plot_bottom }}"></line>
+      {% for tick in histogram.x_ticks %}
+        <line class="axis" x1="{{ tick.position }}" y1="{{ histogram.plot_bottom }}"
+              x2="{{ tick.position }}" y2="{{ histogram.plot_bottom|add:'4' }}"></line>
+        <text x="{{ tick.position }}" y="{{ histogram.plot_bottom|add:'20' }}"
+              text-anchor="middle">{{ tick.label }}</text>
+      {% endfor %}
+
+      <text class="axis-title" x="{{ histogram.plot_right }}"
+            y="{{ histogram.plot_bottom|add:'48' }}" text-anchor="end">days open</text>
+      <text class="axis-title" x="12" y="{{ histogram.plot_middle }}" text-anchor="middle"
+            transform="rotate(-90 12 {{ histogram.plot_middle }})">pools</text>
+    </svg>
+    <p class="note">
+      {% comment %}
+      Long lines on purpose: wrapping these mid-sentence would put stray newlines
+      inside phrases that tests and readers both expect to be contiguous.
+      {% endcomment %}
+      Each bar counts the pools whose season fell in a {{ histogram.bin_width }}-day bucket, measured from opening day to closing day and counting both.
+      The shortest season was {{ histogram.shortest }} days and the longest {{ histogram.longest }}; the median was {{ histogram.median_label }}.
+      {% if histogram.uncounted %}Based on the {{ histogram.counted }} pool{{ histogram.counted|pluralize }} with both an opening and a closing date on record; {{ histogram.uncounted }} other{{ histogram.uncounted|pluralize }} did not open in {{ season_year }} or had no dates announced.{% endif %}
+    </p>
+  </div>
+  {% endlocalize %}
+  {% endif %}
 
   <div class="pools">
     <h1>{{ pools|length }} Philadelphia public pools</h1>

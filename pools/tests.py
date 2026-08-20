@@ -19,6 +19,10 @@ from pools.models import (
 )
 from pools.services import datacenter, usage
 from pools.services.page_monitor import check_pool_info_page, start_monitoring
+from pools.services.season import (
+    VIEW_HEIGHT, VIEW_WIDTH, build_season_histogram, format_duration,
+    season_length_days,
+)
 from pools.services.usage import USAGE_RAW_RETENTION_DAYS
 from pools.views import SUBMISSION_DAILY_LIMIT, SUBMISSION_DAILY_LIMIT_STAFF, nearby_pools_context
 
@@ -2528,3 +2532,209 @@ class OffseasonFaviconTests(TestCase):
             # The <link> has to keep pointing at the file that's actually there.
             html = (out / "index.html").read_text()
             self.assertIn('<link rel="icon" type="image/png" href="/favicon.png">', html)
+
+
+class SeasonLengthTests(TestCase):
+    """Days open is quoted in two places on the offseason site — the duration on
+    each pool page and the histogram on the index — so the definition
+    (opening day to closing day, counting both) has to be pinned down once."""
+
+    def test_both_endpoints_are_counted(self):
+        self.assertEqual(season_length_days(date(2026, 6, 17), date(2026, 6, 17)), 1)
+        self.assertEqual(season_length_days(date(2026, 6, 17), date(2026, 6, 18)), 2)
+        self.assertEqual(season_length_days(date(2026, 6, 12), date(2026, 9, 7)), 88)
+
+    def test_a_missing_date_is_unknown_rather_than_zero(self):
+        # "We don't know" and "was open no days" are different claims; only the
+        # first one is one we can make about a pool with a date missing.
+        self.assertIsNone(season_length_days(None, date(2026, 8, 30)))
+        self.assertIsNone(season_length_days(date(2026, 6, 17), None))
+        self.assertIsNone(season_length_days(None, None))
+
+    def test_a_closing_date_before_the_opening_date_is_not_a_negative_season(self):
+        self.assertIsNone(season_length_days(date(2026, 8, 30), date(2026, 6, 17)))
+
+    def test_format_duration_matches_the_day_count(self):
+        # 10 weeks, 5 days == 75 days: the prose and the number agree.
+        opening, closing = date(2026, 6, 17), date(2026, 8, 30)
+        self.assertEqual(season_length_days(opening, closing), 75)
+        self.assertEqual(format_duration(opening, closing), "10 weeks, 5 days")
+        self.assertEqual(format_duration(date(2026, 6, 17), date(2026, 6, 23)), "1 week")
+        self.assertEqual(format_duration(date(2026, 6, 17), date(2026, 6, 19)), "3 days")
+
+
+class SeasonHistogramTests(TestCase):
+    """The histogram is rendered once and served unchanged for ~8 months, so
+    what must not regress is the arithmetic: the bars have to add up to the
+    pools counted, and the axis has to mean days."""
+
+    def test_bins_are_anchored_to_multiples_of_the_bin_width(self):
+        # Anchoring to the shortest season instead would re-cut every bucket
+        # boundary whenever one pool's date changed between renders.
+        hist = build_season_histogram([39, 40, 41], bin_width=2)
+        self.assertEqual([(b.start, b.end) for b in hist.bars], [(38, 39), (40, 41)])
+        self.assertEqual([b.count for b in hist.bars], [1, 2])
+
+    def test_every_pool_lands_in_exactly_one_bar(self):
+        lengths = [39, 41, 42, 43, 43, 51, 57, 57, 88]
+        hist = build_season_histogram(lengths, bin_width=2)
+        self.assertEqual(sum(b.count for b in hist.bars), len(lengths))
+        self.assertEqual(hist.counted, len(lengths))
+
+    def test_empty_interior_buckets_are_kept(self):
+        # The gap between the main cluster and the handful of long seasons is
+        # real information — dropping empty bars would close it up and imply a
+        # continuous distribution.
+        hist = build_season_histogram([40, 41, 60, 61], bin_width=2)
+        self.assertEqual(len(hist.bars), 11)
+        self.assertEqual([b.count for b in hist.bars if b.count], [2, 2])
+        self.assertTrue(any(b.count == 0 for b in hist.bars))
+
+    def test_single_day_bins_are_labelled_with_one_number(self):
+        hist = build_season_histogram([57, 58], bin_width=1)
+        self.assertEqual([b.label for b in hist.bars], ["57", "58"])
+
+    def test_wider_bins_are_labelled_as_a_range(self):
+        hist = build_season_histogram([57], bin_width=2)
+        self.assertEqual(hist.bars[0].label, "56–57")
+
+    def test_bars_sit_on_the_baseline_and_stay_inside_the_plot(self):
+        hist = build_season_histogram([39, 57, 57, 57, 88], bin_width=2)
+        for bar in hist.bars:
+            self.assertAlmostEqual(bar.y + bar.height, hist.plot_bottom, places=1)
+            self.assertGreaterEqual(round(bar.y, 1), hist.plot_top)
+            self.assertGreaterEqual(bar.x, hist.plot_left)
+            self.assertLessEqual(round(bar.x + bar.width, 1), hist.plot_right)
+
+    def test_the_tallest_bar_never_overshoots_the_top_gridline(self):
+        hist = build_season_histogram([57] * 9 + [39], bin_width=2)
+        top_tick = max(t.value for t in hist.y_ticks)
+        self.assertGreaterEqual(top_tick, 9)
+        self.assertAlmostEqual(min(t.position for t in hist.y_ticks), hist.plot_top, places=1)
+
+    def test_the_day_axis_is_labelled_in_days_not_buckets(self):
+        hist = build_season_histogram([39, 57, 88], bin_width=2)
+        # 90 included: the axis runs to the end of the last bucket (88–89), not to
+        # the longest season, so the final bar isn't drawn hanging off the edge.
+        self.assertEqual(
+            [t.label for t in hist.x_ticks], ["40", "50", "60", "70", "80", "90"]
+        )
+
+    def test_median_of_an_even_and_an_odd_number_of_pools(self):
+        self.assertEqual(build_season_histogram([40, 50, 60]).median, 50)
+        self.assertEqual(build_season_histogram([40, 50, 60, 70]).median, 55)
+        # Rendered as '55', not '55.0'.
+        self.assertEqual(build_season_histogram([40, 50, 60, 70]).median_label, "55")
+        self.assertEqual(build_season_histogram([40, 51]).median_label, "45.5")
+
+    def test_shortest_and_longest_survive_unsorted_input(self):
+        hist = build_season_histogram([57, 39, 88, 51])
+        self.assertEqual((hist.shortest, hist.longest), (39, 88))
+
+    def test_no_seasons_means_no_chart(self):
+        # The index omits the section entirely rather than publishing empty axes.
+        self.assertIsNone(build_season_histogram([]))
+
+    def test_a_meaningless_bin_width_is_rejected(self):
+        with self.assertRaises(ValueError):
+            build_season_histogram([57], bin_width=0)
+
+    def test_the_summary_describes_the_chart_for_a_screen_reader(self):
+        hist = build_season_histogram([39, 57, 57, 88], bin_width=2, uncounted=8)
+        self.assertIn("4 pools", hist.summary)
+        self.assertIn("2-day buckets", hist.summary)
+        self.assertIn("shortest season was 39 days", hist.summary)
+        self.assertIn("longest 88", hist.summary)
+
+
+class OffseasonHistogramRenderTests(TestCase):
+    """The chart is generated by the shutdown render, so what's tested here is
+    that it lands in the built page and agrees with the pages beside it."""
+
+    def setUp(self):
+        self.out = Path(tempfile.mkdtemp()) / "build"
+        self.assets = Path(tempfile.mkdtemp()) / "assets"
+        self.assets.mkdir(parents=True)
+        (self.assets / "pic.png").write_bytes(b"png")
+
+    def _render(self, **kwargs):
+        call_command(
+            "render_static_site",
+            season_year=2026,
+            out=str(self.out),
+            assets=str(self.assets),
+            verbosity=0,
+            **kwargs,
+        )
+        return (self.out / "index.html").read_text()
+
+    def _make_pool(self, name, opening=None, closing=None, **kwargs):
+        return Pool.objects.create(
+            name=name,
+            ppr_amenity_id=name.lower().replace(" ", "-"),
+            address="1 Main St",
+            opening_date=opening,
+            closing_date=closing,
+            **kwargs,
+        )
+
+    def test_the_chart_is_written_into_the_index(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        self._make_pool("Amos Pool", date(2026, 7, 31), date(2026, 9, 7))
+        html = self._render()
+        self.assertIn('class="chart"', html)
+        self.assertIn("How long the pools stayed open in 2026", html)
+        self.assertIn("<title>88–89 days: 1 pool</title>", html)   # Kelly, 88 days
+        self.assertIn("<title>38–39 days: 1 pool</title>", html)   # Amos, 39 days
+
+    def test_the_chart_and_the_pool_page_report_the_same_season(self):
+        # The whole reason both read from season_snapshot: a reader can get to
+        # the pool page from this index, and the two must not contradict.
+        pool = self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        index = self._render()
+        page = (self.out / "pools" / pool.slug / "index.html").read_text()
+        self.assertIn("12 weeks, 4 days", page)  # == 88 days
+        self.assertIn("the longest 88", index)
+
+    def test_pools_we_could_not_measure_are_counted_in_the_caption(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        self._make_pool("Baker Pool", date(2026, 6, 30), None)
+        self._make_pool("Vogt Pool", None, None, is_active=False)
+        html = self._render()
+        self.assertIn("Based on the 1 pool with", html)
+        self.assertIn("2 others did not open in 2026 or had no dates announced", html)
+
+    def test_no_caveat_when_every_pool_has_both_dates(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        html = self._render()
+        self.assertNotIn("did not open in 2026 or had no dates announced", html)
+
+    def test_the_bin_width_is_settable_from_the_command_line(self):
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        html = self._render(histogram_bin_width=1)
+        self.assertIn("<title>88 days: 1 pool</title>", html)
+        self.assertIn("fell in a 1-day bucket", html)
+
+    def test_a_season_with_no_dates_renders_the_page_without_a_chart(self):
+        self._make_pool("Vogt Pool", None, None, is_active=False)
+        html = self._render()
+        self.assertNotIn('class="chart"', html)
+        self.assertIn("Philadelphia public pools", html)  # rest of the page intact
+
+    def test_svg_numbers_are_not_localised(self):
+        # A locale that formats 254.0 as "254,0" would silently corrupt every
+        # coordinate in the chart.
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        with self.settings(LANGUAGE_CODE="de-de"):
+            html = self._render()
+        self.assertNotIn(',0"', html)
+        self.assertIn(f'viewBox="0 0 {VIEW_WIDTH} {VIEW_HEIGHT}"', html)
+
+    def test_no_template_syntax_leaks_into_the_built_page(self):
+        # `{# ... #}` is single-line only; a comment wrapped across two lines is
+        # published as literal text. This build is served unchanged for ~8 months,
+        # so a leak like that would sit on the homepage all winter.
+        self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
+        html = self._render()
+        for token in ("{#", "#}", "{%", "%}", "{{", "}}"):
+            self.assertNotIn(token, html, f"unrendered {token} left in the page")

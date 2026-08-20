@@ -20,67 +20,15 @@ from django.utils import timezone
 
 from pools.models import Pool
 from pools.services.favicon import ico_from_png
+from pools.services.season import (
+    DEFAULT_BIN_WIDTH,
+    build_season_histogram,
+    season_length_days,
+    season_snapshot,
+)
 from pools.views import nearby_pools_context
 
 DEFAULT_BASE_URL = "https://phillypools.app"
-
-
-def _format_duration(opening_date, closing_date):
-    """'7 weeks, 3 days' for a completed season, or None if it can't be computed."""
-    if not (opening_date and closing_date):
-        return None
-    total = (closing_date - opening_date).days + 1
-    if total <= 0:
-        return None
-    weeks, days = divmod(total, 7)
-    parts = []
-    if weeks:
-        parts.append(f"{weeks} week{'s' if weeks != 1 else ''}")
-    if days:
-        parts.append(f"{days} day{'s' if days != 1 else ''}")
-    return ", ".join(parts)
-
-
-def season_snapshot(pool, season_year):
-    """Everything the static page needs about `pool`'s `season_year`.
-
-    Reads PoolSeasonHistory first, since that's the durable record, but falls
-    back to the pool's live fields. The fallback is load-bearing in two cases:
-
-      * `_upsert_season_history` only creates a history row when the pool has an
-        opening or closing date (models.py), so a pool that got schedule text but
-        never got dates has no row at all — without the fallback its page would
-        render with no hours.
-      * This command runs before `reset_season` (which stays at the *start* of
-        the next season), so the live fields are still populated and are the
-        freshest copy of the schedule.
-    """
-    history = pool.season_history.filter(year=season_year).first()
-
-    opening_date = history.opening_date if history else None
-    closing_date = history.closing_date if history else None
-    weekday_schedule = (history.weekday_schedule if history else "") or ""
-    weekend_schedule = (history.weekend_schedule if history else "") or ""
-
-    # Only trust the live dates if they belong to the season being rendered; a
-    # stale prior-season date would otherwise be relabeled as this season's.
-    if not opening_date and pool.opening_date and pool.opening_date.year == season_year:
-        opening_date = pool.opening_date
-    if not closing_date and pool.closing_date and pool.closing_date.year == season_year:
-        closing_date = pool.closing_date
-
-    if not weekday_schedule:
-        weekday_schedule = pool.weekday_schedule or ""
-    if not weekend_schedule:
-        weekend_schedule = pool.weekend_schedule or ""
-
-    return {
-        "opening_date": opening_date,
-        "closing_date": closing_date,
-        "weekday_schedule": weekday_schedule,
-        "weekend_schedule": weekend_schedule,
-        "duration": _format_duration(opening_date, closing_date),
-    }
 
 
 class Command(BaseCommand):
@@ -111,6 +59,16 @@ class Command(BaseCommand):
             help=(
                 "Directory of hand-maintained static assets copied verbatim into the "
                 "output (default: offseason/ at the repo root)."
+            ),
+        )
+        parser.add_argument(
+            "--histogram-bin-width",
+            type=int,
+            default=DEFAULT_BIN_WIDTH,
+            help=(
+                "Bucket size, in days, for the season-length histogram on the index "
+                f"page (default: {DEFAULT_BIN_WIDTH}). Widen it if a season's dates "
+                "come out spikier than usual."
             ),
         )
         parser.add_argument(
@@ -185,10 +143,16 @@ class Command(BaseCommand):
         }
 
         pools_without_schedule = []
+        season_lengths = []
         for pool in pools:
             season = season_snapshot(pool, season_year)
             if not (season["weekday_schedule"] or season["weekend_schedule"]):
                 pools_without_schedule.append(pool.name)
+            # Gathered from the same snapshot the page below is rendered from, so
+            # the histogram can never disagree with the durations it's drawn from.
+            days = season_length_days(season["opening_date"], season["closing_date"])
+            if days is not None:
+                season_lengths.append(days)
             where = f" in {pool.neighborhood}" if pool.neighborhood else ""
             # Past tense, because this is written after the season is over. Guarded on
             # the season's opening date rather than is_active alone: a pool that opened
@@ -223,6 +187,22 @@ class Command(BaseCommand):
             (page_dir / "index.html").write_text(html, encoding="utf-8")
         self._say(f"Rendered {len(pools)} pool page(s)")
 
+        histogram = build_season_histogram(
+            season_lengths,
+            bin_width=options["histogram_bin_width"],
+            uncounted=len(pools) - len(season_lengths),
+        )
+        if histogram is None:
+            # Nothing to draw, so the index omits the chart rather than publishing
+            # empty axes. Normal for a --season-year with no dates on record.
+            self._say(f"No {season_year} season lengths: skipping the histogram")
+        else:
+            self._say(
+                f"Rendered histogram of {histogram.counted} season length(s), "
+                f"{histogram.shortest}–{histogram.longest} days, "
+                f"median {histogram.median_label}"
+            )
+
         index_description = (
             f"Philly Pools tracks hours and schedules for {len(pools)} Philadelphia "
             f"public pools. The {season_year} season has ended — browse "
@@ -236,6 +216,7 @@ class Command(BaseCommand):
                     "page_title": "Philly Pools — Philadelphia Public Pool Schedules",
                     "meta_description": index_description,
                     "canonical_path": "/",
+                    "histogram": histogram,
                 },
             ),
             (

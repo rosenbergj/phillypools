@@ -33,6 +33,28 @@ This writes `offseason-build/` — an archived page for every pool at its real U
 (`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, a `404.html`, and a
 `favicon.ico` built from `offseason/favicon.png`.
 
+It also draws the **season-length histogram** on the index page: how many days each pool
+was open, counted from opening day to closing day inclusive, bucketed 2 days to a bar.
+This is why the command runs at shutdown and not earlier — the chart is only honest once
+every pool has actually closed and its closing date is final. The output line tells you
+what it drew, and that number is worth reading before you deploy:
+
+```
+Rendered histogram of 63 season length(s), 39–88 days, median 57
+```
+
+If the count is well below the number of pools that opened, some closing dates never
+landed — check those before deploying rather than publishing a chart that quietly omits
+them. Pools with a missing date aren't guessed at or counted as zero; they're excluded
+and disclosed in the caption under the chart ("Based on the 63 pools with both an opening
+and a closing date on record; N others…"). A season with no dates at all draws no chart
+at all, rather than empty axes.
+
+Bucket size is `--histogram-bin-width` (default 2). Widen it if a season's dates come out
+spikier than usual; it's there so you can re-render without editing code. The definition
+of "days open" lives in `pools/services/season.py` and is shared with the duration text on
+each pool page ("7 weeks, 3 days"), so the chart and the pages can't drift apart.
+
 Inactive pools are included, in the pages, the index, and the sitemap. `is_active` only
 means we don't expect an opening date; the pool still exists and its page still carries
 an address, notes, and last season's history. A pool that never opened is labeled "Did
