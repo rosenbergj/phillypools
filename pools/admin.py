@@ -407,6 +407,7 @@ class SubmissionAdmin(admin.ModelAdmin):
     readonly_fields = [
         "submitted_at",
         "image_preview",
+        "raw_fetched_content_display",
         "llm_response_display",
         "date_overwrite_warning",
         "current_opening_date",
@@ -440,9 +441,12 @@ class SubmissionAdmin(admin.ModelAdmin):
         ("Review", {
             "fields": ("status", "reviewed_at", "moderator_notes"),
         }),
-        ("Raw LLM response", {
+        ("Source content", {
             "classes": ("collapse",),
-            "fields": ("llm_response_display",),
+            "description": "What was fetched, and what the LLM made of it. Submissions from "
+                           "structured sources (the city GIS layer) carry the full city record "
+                           "here and no LLM response.",
+            "fields": ("raw_fetched_content_display", "llm_response_display"),
         }),
     )
 
@@ -695,6 +699,15 @@ class SubmissionAdmin(admin.ModelAdmin):
             )
         return "—"
     image_preview.short_description = "Image preview"
+
+    def raw_fetched_content_display(self, obj):
+        if not obj.raw_fetched_content:
+            return "—"
+        return format_html(
+            "<pre style='white-space:pre-wrap;max-height:400px;overflow:auto'>{}</pre>",
+            obj.raw_fetched_content,
+        )
+    raw_fetched_content_display.short_description = "Fetched source content"
 
     def llm_response_display(self, obj):
         if obj.llm_response:

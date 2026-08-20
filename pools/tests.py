@@ -2207,3 +2207,41 @@ class PoolGisCheckTests(TestCase):
         from pools.services.gis import epoch_ms_to_date
         # Amos Pool's real value from the layer: UTC midnight on 2026-07-31.
         self.assertEqual(epoch_ms_to_date(1785456000000), date(2026, 7, 31))
+
+
+class SubmissionRawContentAdminTests(TestCase):
+    """The fetched source record has to be visible to the reviewer. GIS submissions
+    carry the whole city record there and no LLM response, so if this field isn't
+    rendered there is nothing to judge the proposal against."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser("admin2", "a2@example.com", "pw")
+        self.client.force_login(self.user)
+        self.pool = Pool.objects.create(
+            name="Dendy Pool", slug="dendy-pool-2",
+            address="1501 N. 10th St., 19122",
+            ppr_amenity_id="P0999-S0000-B0000-A0001",
+            opening_date=date(2026, 7, 5),
+        )
+
+    def test_fetched_content_is_rendered_on_the_change_page(self):
+        sub = Submission.objects.create(
+            url="https://opendataphilly.org/datasets/ppr-swimming-pools/",
+            parsed_pool=self.pool,
+            parsed_opening_date=date(2026, 7, 1),
+            raw_fetched_content='{"pool_status": "ACTIVE", "comments": "Renovated (2025)."}',
+        )
+        resp = self.client.get(
+            reverse("admin:pools_submission_change", args=[sub.pk])
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Renovated (2025)")
+        self.assertContains(resp, "Fetched source content")
+
+    def test_blank_content_renders_a_dash_not_an_error(self):
+        sub = Submission.objects.create(url="https://example.com/x", parsed_pool=self.pool)
+        resp = self.client.get(
+            reverse("admin:pools_submission_change", args=[sub.pk])
+        )
+        self.assertEqual(resp.status_code, 200)
