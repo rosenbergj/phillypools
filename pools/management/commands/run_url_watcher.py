@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 
 from pools.services.digest import send_digest_if_needed
 
-CHECK_COMMANDS = ["check_pool_schedule", "check_heat_emergency"]
+CHECK_COMMANDS = ["check_pool_schedule", "check_heat_emergency", "check_pool_gis"]
 
 # Runs alongside the checks rather than on its own schedule: it's idempotent, so
 # every pass just refreshes the current day's counts and prunes expired raw rows.

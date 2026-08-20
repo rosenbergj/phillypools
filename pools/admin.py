@@ -12,7 +12,7 @@ from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
-from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolLike, PoolSeasonHistory, ScheduleChange, SiteAnnouncement, Submission
+from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolGisState, PoolLike, PoolSeasonHistory, ScheduleChange, SiteAnnouncement, Submission
 
 
 class SubmissionImageWidget(forms.Widget):
@@ -784,6 +784,22 @@ class MonitoredPageAdmin(admin.ModelAdmin):
             report = check_page(obj)
             level = messages.WARNING if report.errors else messages.INFO
             self.message_user(request, f"First check: {report.summary()}", level=level)
+
+
+@admin.register(PoolGisState)
+class PoolGisStateAdmin(admin.ModelAdmin):
+    """Read-only window on what GIS last said, plus the one editable knob that
+    matters: clearing a `proposed_*` date makes `check_pool_gis` offer that value
+    again on its next run, which is how you undo a rejection you've changed your
+    mind about."""
+    list_display = ["pool", "gis_status", "gis_opening_date", "proposed_opening_date", "last_checked", "last_changed"]
+    list_filter = ["gis_status"]
+    list_select_related = ["pool"]
+    search_fields = ["pool__name"]
+    readonly_fields = ["pool", "gis_status", "gis_opening_date", "gis_closing_date", "last_checked", "last_changed"]
+
+    def has_add_permission(self, request):
+        return False  # rows are created by check_pool_gis
 
 
 @admin.register(DigestState)

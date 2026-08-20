@@ -228,6 +228,39 @@ class MonitoredPage(models.Model):
         return self.url
 
 
+class PoolGisState(models.Model):
+    """What the city's ArcGIS layer last said about one pool, and what we last
+    proposed from it.
+
+    `check_pool_gis` proposes a GIS date once — when it differs from what the pool
+    holds — and then records it here. Without that memory the check would re-propose
+    a rejected date on every cron run, since rejecting a submission deliberately
+    leaves the pool's own value alone. A new proposal only follows a genuine change
+    in GIS."""
+
+    pool = models.OneToOneField(Pool, on_delete=models.CASCADE, related_name="gis_state")
+
+    gis_status = models.CharField(max_length=30, blank=True, help_text="pool_status as last seen in GIS")
+    gis_opening_date = models.DateField(null=True, blank=True, help_text="pool_open_date as last seen in GIS")
+    gis_closing_date = models.DateField(null=True, blank=True, help_text="Unused until the city adds a closing-date field")
+
+    proposed_opening_date = models.DateField(
+        null=True, blank=True,
+        help_text="Last opening date proposed to review from GIS. Suppresses repeat proposals of the same value.",
+    )
+    proposed_closing_date = models.DateField(null=True, blank=True)
+
+    last_checked = models.DateTimeField(null=True, blank=True)
+    last_changed = models.DateTimeField(null=True, blank=True, help_text="When a GIS value for this pool last differed from the previous check")
+
+    class Meta:
+        verbose_name = "pool GIS state"
+        verbose_name_plural = "pool GIS state"
+
+    def __str__(self):
+        return f"GIS state for {self.pool.name}"
+
+
 class Submission(models.Model):
     CONFIDENCE_CHOICES = [
         ("high", "High"),

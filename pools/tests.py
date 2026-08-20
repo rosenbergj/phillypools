@@ -2104,3 +2104,106 @@ class MonitorFromApplyPageTests(TestCase):
         resp = self._reparse_page()
         self.assertNotContains(resp, 'name="monitor_page"')
         self.assertContains(resp, "Already monitored")
+
+
+class PoolGisCheckTests(TestCase):
+    """`check_pool_gis` turns disagreements between the city's GIS layer and our data
+    into reviewable submissions — once each, not once per cron run."""
+
+    def setUp(self):
+        self.pool = Pool.objects.create(
+            name="Dendy Pool",
+            slug="dendy-pool",
+            address="1501-39 N. 10th St., 19122",
+            ppr_amenity_id="P0100-S0000-B0000-A0001",
+            opening_date=date(2026, 7, 5),
+        )
+
+    def _attrs(self, open_date="2026-07-01", status="ACTIVE", amenity_id=None):
+        ms = None
+        if open_date:
+            d = date.fromisoformat(open_date)
+            ms = int(datetime(d.year, d.month, d.day, tzinfo=utc_tz.utc).timestamp() * 1000)
+        return {
+            "ppr_amenity_id": amenity_id or self.pool.ppr_amenity_id,
+            "pool_name": "Dendy Pool",
+            "pool_status": status,
+            "pool_open_date": ms,
+        }
+
+    def _run(self, attrs_list, fields=None, **kwargs):
+        from pools.services.gis import check_pool_gis
+        with patch("pools.services.gis.fetch_features", return_value=attrs_list), \
+             patch("pools.services.gis.fetch_layer_field_names", return_value=fields or ["pool_open_date"]):
+            return check_pool_gis(**kwargs)
+
+    def test_differing_date_creates_a_submission(self):
+        report = self._run([self._attrs()])
+        self.assertTrue(report.highlights)
+        sub = Submission.objects.get()
+        self.assertEqual(sub.parsed_pool, self.pool)
+        self.assertEqual(sub.parsed_opening_date, date(2026, 7, 1))
+        self.assertEqual(sub.status, "pending")
+        # Applying it must cite something a visitor can read, not a JSON endpoint.
+        self.assertIn("opendataphilly.org", sub.url)
+
+    def test_same_value_is_not_proposed_twice(self):
+        self._run([self._attrs()])
+        self._run([self._attrs()])
+        self.assertEqual(Submission.objects.count(), 1)
+
+    def test_new_gis_value_is_proposed_again(self):
+        self._run([self._attrs()])
+        self._run([self._attrs(open_date="2026-07-09")])
+        self.assertEqual(Submission.objects.count(), 2)
+        self.assertEqual(
+            Submission.objects.order_by("-id").first().parsed_opening_date,
+            date(2026, 7, 9),
+        )
+
+    def test_agreement_proposes_nothing(self):
+        report = self._run([self._attrs(open_date="2026-07-05")])
+        self.assertFalse(Submission.objects.exists())
+        self.assertFalse(report.highlights)
+
+    def test_inactive_record_is_recorded_but_not_proposed(self):
+        from pools.models import PoolGisState
+        self._run([self._attrs(status="INACTIVE")])
+        self.assertFalse(Submission.objects.exists())
+        state = PoolGisState.objects.get(pool=self.pool)
+        self.assertEqual(state.gis_status, "INACTIVE")
+        self.assertEqual(state.gis_opening_date, date(2026, 7, 1))
+
+    def test_pool_without_amenity_id_is_skipped(self):
+        Pool.objects.create(
+            name="Lincoln Indoor Pool", slug="lincoln-pool",
+            address="3201 Ryan Ave., 19136", ppr_amenity_id="",
+        )
+        report = self._run([self._attrs()])
+        self.assertTrue(any("no ppr_amenity_id" in n for n in report.notes))
+
+    def test_new_closing_date_field_is_flagged(self):
+        report = self._run(
+            [self._attrs(open_date="2026-07-05")],
+            fields=["pool_open_date", "pool_close_date"],
+        )
+        self.assertTrue(any("pool_close_date" in h for h in report.highlights))
+
+    def test_dry_run_writes_nothing(self):
+        from pools.models import PoolGisState
+        report = self._run([self._attrs()], dry_run=True)
+        self.assertTrue(report.highlights)
+        self.assertFalse(Submission.objects.exists())
+        self.assertFalse(PoolGisState.objects.exists())
+
+    def test_fetch_failure_is_reported_not_raised(self):
+        from pools.services.gis import check_pool_gis
+        with patch("pools.services.gis.fetch_features", side_effect=RuntimeError("boom")):
+            report = check_pool_gis()
+        self.assertTrue(report.errors)
+        self.assertFalse(Submission.objects.exists())
+
+    def test_epoch_conversion_does_not_shift_a_day(self):
+        from pools.services.gis import epoch_ms_to_date
+        # Amos Pool's real value from the layer: UTC midnight on 2026-07-31.
+        self.assertEqual(epoch_ms_to_date(1785456000000), date(2026, 7, 31))
