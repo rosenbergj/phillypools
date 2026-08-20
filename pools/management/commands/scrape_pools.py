@@ -18,7 +18,7 @@ POOL_TYPE_MAP = {
     "Spray": "spray",
 }
 
-ALL_FIELDS = ["name", "address", "latitude", "longitude", "neighborhood", "pool_type", "is_active"]
+ALL_FIELDS = ["name", "address", "latitude", "longitude", "neighborhood", "pool_type", "is_active", "has_ada_lift"]
 
 
 class Command(BaseCommand):
@@ -82,6 +82,11 @@ class Command(BaseCommand):
             status_raw = (props.get("pool_status") or "").lower()
             is_active = "inactive" not in status_raw and "closed" not in status_raw
 
+            # Only an explicit "Y" counts. The field is blank on some records and the
+            # city doesn't distinguish "no lift" from "nobody checked", so anything
+            # other than a positive claim is treated as no lift rather than unknown.
+            has_ada_lift = (props.get("ada_lift") or "").strip().upper() == "Y"
+
             city_comment = (props.get("comments") or "").strip()
 
             neighborhood = (
@@ -98,6 +103,7 @@ class Command(BaseCommand):
                 "neighborhood": neighborhood,
                 "pool_type": pool_type,
                 "is_active": is_active,
+                "has_ada_lift": has_ada_lift,
             }
 
             existing = Pool.objects.filter(ppr_amenity_id=amenity_id).first()

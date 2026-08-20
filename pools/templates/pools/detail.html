@@ -52,6 +52,9 @@
   <div class="d-flex align-items-center gap-2 mt-2 mb-1">
     <h1 class="h3 mb-0">{{ pool.name }}</h1>
     <span class="badge bg-light text-muted border text-capitalize">{{ pool.get_pool_type_display }}</span>
+    {% if pool.has_ada_lift %}
+      <span class="badge" style="background:#4c1d95" title="Pool has a wheelchair lift"><span aria-hidden="true">&#9855;</span> ADA Lift</span>
+    {% endif %}
     {% if not pool.is_active %}
       <span class="badge" style="background:#842029">Won't open</span>
     {% elif pool.map_status == "open" %}

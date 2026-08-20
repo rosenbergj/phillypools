@@ -2245,3 +2245,74 @@ class SubmissionRawContentAdminTests(TestCase):
             reverse("admin:pools_submission_change", args=[sub.pk])
         )
         self.assertEqual(resp.status_code, 200)
+
+
+class AdaLiftTests(TestCase):
+    """Wheelchair-lift data comes from the city's ada_lift field, where only an
+    explicit 'Y' is a positive claim."""
+
+    def setUp(self):
+        self.lift = Pool.objects.create(
+            name="Murphy Pool", slug="murphy-pool-t", address="300 Shunk St., 19148",
+            ppr_amenity_id="P0801-S0000-B0000-A0001", latitude=39.9, longitude=-75.1,
+            has_ada_lift=True, opening_date=date(2026, 6, 25),
+        )
+        self.no_lift = Pool.objects.create(
+            name="Chew Pool", slug="chew-pool-t", address="1800 Washington Ave., 19146",
+            ppr_amenity_id="P0802-S0000-B0000-A0001", latitude=39.9, longitude=-75.2,
+            has_ada_lift=False, opening_date=date(2026, 7, 1),
+        )
+
+    def test_only_an_explicit_y_counts(self):
+        from pools.management.commands.scrape_pools import Command  # noqa: F401
+        for raw, expected in [("Y", True), ("y", True), (" Y ", True),
+                              ("N", False), ("", False), (None, False)]:
+            self.assertEqual((raw or "").strip().upper() == "Y", expected, raw)
+
+    def _card(self, content, pool):
+        """The card markup for one pool. Counting across the whole page would also
+        catch the badge inside the JS template literal that renders cards client-side."""
+        start = content.index(f'id="pool-{pool.id}"')
+        rest = content[start:]
+        end = rest.find('id="pool-', 1)
+        return rest[:end] if end != -1 else rest
+
+    def test_badge_shows_on_the_list_only_for_lift_pools(self):
+        content = self.client.get(reverse("index")).content.decode()
+        self.assertIn("ADA Lift", self._card(content, self.lift))
+        self.assertNotIn("ADA Lift", self._card(content, self.no_lift))
+
+    def test_badge_shows_on_the_detail_page(self):
+        self.assertContains(self.client.get(self.lift.get_absolute_url()), "ADA Lift")
+        self.assertNotContains(self.client.get(self.no_lift.get_absolute_url()), "ADA Lift")
+
+    def test_flag_is_in_the_json_payload(self):
+        data = self.client.get(reverse("pools_json")).json()
+        flags = {p["name"]: p["has_ada_lift"] for p in data["pools"]}
+        self.assertTrue(flags["Murphy Pool"])
+        self.assertFalse(flags["Chew Pool"])
+
+    def test_flag_is_in_the_initial_page_payload(self):
+        """The map popups are built from pools_geojson on first render, which is a
+        separate builder from the pools_json endpoint the filtered re-render uses.
+        Adding the field to only one leaves popups silently without it."""
+        import json
+        content = self.client.get(reverse("index")).content.decode()
+        marker = '<script id="pools-data" type="application/json">'
+        start = content.index(marker) + len(marker)
+        payload = json.loads(content[start:content.index("</script>", start)])
+        flags = {p["name"]: p["has_ada_lift"] for p in payload}
+        self.assertTrue(flags["Murphy Pool"])
+        self.assertFalse(flags["Chew Pool"])
+
+    def test_attribute_badges_no_longer_stack_under_the_status_badge(self):
+        """The <br>-stacked Indoor badge made the card two lines tall with nothing on
+        the left of the second one. Attribute badges now sit beside the name instead."""
+        indoor = Pool.objects.create(
+            name="Lincoln Indoor Pool", slug="lincoln-t", address="3201 Ryan Ave., 19136",
+            ppr_amenity_id="", pool_type="indoor", latitude=40.0, longitude=-75.0,
+        )
+        content = self.client.get(reverse("index")).content.decode()
+        self.assertIn("Indoor", content)
+        self.assertNotIn('<br><span class="badge" style="background:#0891b2">Indoor', content)
+        self.assertEqual(indoor.pool_type, "indoor")

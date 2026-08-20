@@ -444,6 +444,7 @@ def index(request):
             "phillypublicpools_url": p.phillypublicpools_url or None,
             "like_count": p.like_count,
             "user_liked": p.user_liked,
+            "has_ada_lift": p.has_ada_lift,
         }
         for p in pools
         if p.latitude and p.longitude
@@ -500,6 +501,7 @@ def pools_json(request):
             "like_count": p.like_count,
             "user_liked": p.user_liked,
             "pool_type": p.pool_type,
+            "has_ada_lift": p.has_ada_lift,
         })
 
     return JsonResponse({

@@ -33,6 +33,14 @@ class Pool(models.Model):
     notes = models.TextField(blank=True, help_text="Permanent info about this pool (facilities, accessibility, etc.)")
     updates = models.TextField(blank=True, help_text="Current-season updates from submissions or announcements")
     updates_source_url = models.URLField(blank=True)
+    has_ada_lift = models.BooleanField(
+        default=False,
+        verbose_name="Has ADA lift",
+        help_text=(
+            "Pool has a wheelchair lift. From the city's ada_lift field; only an explicit "
+            "'Y' counts, so blank and unpopulated are treated the same as 'N'."
+        ),
+    )
     is_active = models.BooleanField(default=True)
     last_updated = models.DateTimeField(auto_now=True)
 
