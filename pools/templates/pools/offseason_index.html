@@ -160,13 +160,6 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       .chart text { font-size: 24px; }
       .chart .grid, .chart .axis { stroke-width: 1.6; }
     }
-    .chart .note {
-      font-size: .85rem;
-      line-height: 1.5;
-      color: #6c757d;
-      text-align: left;
-      margin: .75rem 0 0;
-    }
     .credit {
       font-size: .85rem;
       color: #6c757d;
@@ -231,15 +224,6 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       <text class="axis-title" x="12" y="{{ histogram.plot_middle }}" text-anchor="middle"
             transform="rotate(-90 12 {{ histogram.plot_middle }})">pools</text>
     </svg>
-    <p class="note">
-      {% comment %}
-      Long lines on purpose: wrapping these mid-sentence would put stray newlines
-      inside phrases that tests and readers both expect to be contiguous.
-      {% endcomment %}
-      Each bar counts the pools whose season fell in a {{ histogram.bin_width }}-day bucket, measured from opening day to closing day and counting both.
-      The median was {{ histogram.median_label }} days.
-      {% if histogram.uncounted %}Based on the {{ histogram.counted }} pool{{ histogram.counted|pluralize }} with both an opening and a closing date on record; {{ histogram.uncounted }} other{{ histogram.uncounted|pluralize }} did not open in {{ season_year }} or had no dates announced.{% endif %}
-    </p>
   </div>
   {% endlocalize %}
   {% endif %}

@@ -2697,24 +2697,31 @@ class OffseasonHistogramRenderTests(TestCase):
         self.assertIn("12 weeks, 4 days", page)  # == 88 days
         self.assertIn("the longest 88", index)
 
-    def test_pools_we_could_not_measure_are_counted_in_the_caption(self):
+    def test_pools_we_could_not_measure_are_still_counted_for_the_renderer(self):
+        # The visible caption that used to disclose this was removed on request,
+        # so `uncounted` is no longer rendered — but it still has to be right,
+        # since it's what the command reports at render time and what a caption
+        # would be rebuilt from.
         self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
         self._make_pool("Baker Pool", date(2026, 6, 30), None)
         self._make_pool("Vogt Pool", None, None, is_active=False)
-        html = self._render()
-        self.assertIn("Based on the 1 pool with", html)
-        self.assertIn("2 others did not open in 2026 or had no dates announced", html)
+        self._render()
+        hist = build_season_histogram([88], uncounted=2)
+        self.assertEqual((hist.counted, hist.uncounted), (1, 2))
 
-    def test_no_caveat_when_every_pool_has_both_dates(self):
+    def test_the_chart_carries_no_prose_caption(self):
         self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
         html = self._render()
-        self.assertNotIn("did not open in 2026 or had no dates announced", html)
+        self.assertIn('class="chart"', html)
+        self.assertNotIn('class="note"', html)
+        self.assertNotIn("Each bar counts the pools", html)
 
     def test_the_bin_width_is_settable_from_the_command_line(self):
         self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
         html = self._render(histogram_bin_width=1)
         self.assertIn("<title>88 days: 1 pool</title>", html)
-        self.assertIn("fell in a 1-day bucket", html)
+        # Single-day buckets label bars with one number rather than a range.
+        self.assertNotIn("–", html.split("<rect")[1].split("</rect>")[0])
 
     def test_a_season_with_no_dates_renders_the_page_without_a_chart(self):
         self._make_pool("Vogt Pool", None, None, is_active=False)
@@ -2748,19 +2755,14 @@ class OffseasonHistogramRenderTests(TestCase):
         html = self._render()
         self.assertIn("(Kelly Pool, Lee Pool)", html)
 
-    def test_the_visible_caption_does_not_repeat_the_bullets(self):
-        # Shortest and longest are stated once in the visible page, in the
-        # bullets, where they carry the pool names too. The caption keeps only
-        # what the bullets don't say. The SVG's <desc> is exempt and still
-        # states them: like alt text, it has to describe the chart standalone
-        # for a reader who lands on it out of context.
+    def test_the_bullets_are_the_only_place_the_extremes_are_stated(self):
+        # The prose caption under the chart is gone, so the bullets carry these.
+        # The SVG's <desc> is exempt and still states them: like alt text, it has
+        # to describe the chart standalone for a reader who lands on it alone.
         self._make_pool("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7))
         self._make_pool("Amos Pool", date(2026, 7, 31), date(2026, 8, 14))
         html = self._render()
-        caption = html.split('class="note"')[1].split("</p>")[0]
-        self.assertIn("The median was", caption)
-        self.assertNotIn("shortest", caption)
-        self.assertNotIn("longest", caption)
+        self.assertIn("Longest pool season: 88 days", html)
         self.assertIn("shortest season was", html.split("<desc")[1].split("</desc>")[0])
 
     def test_a_season_nobody_opened_renders_neither_bullets_nor_chart(self):
