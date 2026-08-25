@@ -1835,7 +1835,7 @@ class NearbyPoolsTests(TestCase):
         )
         # Heading reflects that this pool isn't usable today...
         self.assertEqual(self._context(home)["nearby_heading"], "Closest open pools")
-        # ...and it's excluded from its neighbours' lists for the same reason.
+        # ...and it's excluded from its neighbors' lists for the same reason.
         listed = [p.name for p, _ in self._context(self.pools["One"])["nearby_pools"]]
         self.assertNotIn("Home Pool", listed)
 

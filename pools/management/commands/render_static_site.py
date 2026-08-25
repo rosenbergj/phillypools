@@ -180,7 +180,7 @@ class Command(BaseCommand):
                     "pool": pool,
                     "season": season,
                     "did_not_open": did_not_open,
-                    # Offseason: neighbours regardless of status, since nothing is open
+                    # Offseason: neighbors regardless of status, since nothing is open
                     # and an inactive pool is still a place someone may want to know about.
                     **nearby_pools_context(pool, pools, today, offseason=True),
                     "page_title": f"{pool.name} — {season_year} Schedule — Philly Pools",
@@ -200,7 +200,7 @@ class Command(BaseCommand):
 
         facts = build_season_facts(measured)
         if facts:
-            self._say(f"Summarised {facts.opened} pool opening(s)")
+            self._say(f"Summarized {facts.opened} pool opening(s)")
 
         histogram = build_season_histogram(
             season_lengths,

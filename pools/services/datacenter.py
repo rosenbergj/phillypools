@@ -13,10 +13,10 @@ Two things are deliberately left out of the list below:
 * Any claim to completeness. This is a hand-written list of the providers that
   actually turn up scraping small sites, so it will always be missing somebody,
   and the ranges shift under it over time. That is survivable because it is one
-  signal among several rather than the only line of defence, and because the
+  signal among several rather than the only line of defense, and because the
   rollup only ever consults it about visitors who never ran the page's
   JavaScript. Missing a range costs a crawler counted as a visitor; that is the
-  cheaper mistake, and the one this file should keep erring towards.
+  cheaper mistake, and the one this file should keep erring toward.
 """
 import ipaddress
 

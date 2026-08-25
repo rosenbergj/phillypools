@@ -44,7 +44,7 @@ pool has actually closed and its closing date is final. The output lines tell yo
 they covered, and those numbers are worth reading before you deploy:
 
 ```
-Summarised 64 pool opening(s)
+Summarized 64 pool opening(s)
 Rendered histogram of 63 season length(s), 39–88 days, median 57
 ```
 

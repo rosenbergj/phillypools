@@ -24,7 +24,7 @@ def png_to_ico(png_bytes, size):
 
     Why bother, when the live site could just serve the PNG under an .ico URL:
     Cloudflare Pages types files by extension, so in the offseason build PNG
-    bytes named .ico would go out labelled as an icon and be a lie. Producing a
+    bytes named .ico would go out labeled as an icon and be a lie. Producing a
     real .ico keeps one answer at /favicon.ico across both ways we host.
     """
     if not 1 <= size <= 256:
@@ -36,7 +36,7 @@ def png_to_ico(png_bytes, size):
         size % 256,
         0,  # palette size, 0 for a truecolour image
         0,  # reserved
-        1,  # colour planes
+        1,  # color planes
         32,  # bits per pixel
         len(png_bytes),
         len(header) + 16,  # the image starts right after this entry

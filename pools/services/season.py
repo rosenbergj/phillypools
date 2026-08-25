@@ -138,7 +138,7 @@ class SeasonHistogram:
 
     @property
     def plot_middle(self):
-        """Vertical centre of the plot area, for the rotated y-axis label."""
+        """Vertical center of the plot area, for the rotated y-axis label."""
         return round((self.plot_top + self.plot_bottom) / 2, 2)
 
     @property
@@ -307,7 +307,7 @@ def _extreme(seasons, key, pick, label, format_value):
 
 
 def build_season_facts(seasons):
-    """Summarise `seasons` — dicts of name/opening_date/closing_date/days.
+    """Summarize `seasons` — dicts of name/opening_date/closing_date/days.
 
     Returns the bullets that can actually be supported by the data; a fact whose
     underlying dates are all missing is omitted rather than rendered empty.

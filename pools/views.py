@@ -271,7 +271,7 @@ def nearby_pools_context(pool, all_pools, today, offseason=False):
     The heading depends on what the box is offering, so it can't be a fixed
     string: in season it lists pools open *today*, which is either an
     alternative to a closed pool or a companion to an open one. Out of season
-    nothing is open, so it lists neighbours regardless of status.
+    nothing is open, so it lists neighbors regardless of status.
 
     Returns `nearby_heading`, `nearby_pools`, and two flags the template uses to
     say something more useful than a bare list when the city is nearly shut:
@@ -294,7 +294,7 @@ def nearby_pools_context(pool, all_pools, today, offseason=False):
 
     # Nothing open anywhere — mid-season citywide closure, or the season's over but
     # the site is still live. "Closest open pools" has no answer, so present it the
-    # way the offseason archive does: nearest neighbours regardless of status.
+    # way the offseason archive does: nearest neighbors regardless of status.
     if not open_pools:
         return nearby_pools_context(pool, all_pools, today, offseason=True)
 
@@ -400,7 +400,7 @@ def _assemble_pool_data(zip_query: str, neighborhood_filter: str, status_filter:
     if ada_lift_only:
         # Working lifts only. Someone filtering for a lift needs one that works, so a
         # broken lift is excluded here — it stays visible on the unfiltered list and the
-        # pool page, labelled as broken, rather than being hidden outright.
+        # pool page, labeled as broken, rather than being hidden outright.
         pools = [p for p in pools if p.has_working_ada_lift]
 
     for pool in pools:

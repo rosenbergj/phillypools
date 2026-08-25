@@ -76,7 +76,7 @@ exists but doesn't work is neither of the other two.
   rather than better-informed.
 
 The `?ada_lift=1` filter matches **working lifts only**. A broken lift can't answer
-"show me pools with a lift", but it isn't hidden either — unfiltered views carry a grey
+"show me pools with a lift", but it isn't hidden either — unfiltered views carry a gray
 "ADA Lift broken" badge, and the map popup spells the word out rather than showing the
 bare ♿, which on its own reads as an assurance.
 

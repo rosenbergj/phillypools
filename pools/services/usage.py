@@ -75,7 +75,7 @@ _SEC_CH_UA_VERSION = re.compile(r'"(?:google chrome|chromium)";v="(\d+)"')
 # support: a real one in 2026 is a museum piece, and there are far more of them
 # here than there are museums. The traffic behaves accordingly — it arrives in
 # bursts, never runs a line of the page's JavaScript, and only some of it comes
-# from an address range we can recognise as a rack, which is why the datacenter
+# from an address range we can recognize as a rack, which is why the datacenter
 # rule alone kept letting most of it through. Any human still on a genuine
 # Safari 13 is misfiled by this, and that is the trade the whole bot list makes.
 BOT_UA_FAMILIES = {"safari/13"}
@@ -146,7 +146,7 @@ _PROBE_PATTERNS = [
 # Headers a client sets when it is fetching a page on the chance it will be needed,
 # rather than because anyone asked for it: Chrome and the standard use Sec-Purpose,
 # older Chrome sent Purpose, Firefox sends X-Moz and Safari X-Purpose. Google's
-# prefetch proxy carries these too, which is what makes it recognisable at all —
+# prefetch proxy carries these too, which is what makes it recognizable at all —
 # the user-agent it forwards is the real browser's and gives nothing away.
 _SPECULATIVE_HEADERS = [
     ("HTTP_SEC_PURPOSE", ("prefetch", "prerender")),
@@ -438,11 +438,11 @@ def forged_browser_headers(request) -> bool:
 
 def classify_request(request, navigation: bool = False) -> str:
     """
-    As classify_client, but recognises the site's own staff first, and on page
+    As classify_client, but recognizes the site's own staff first, and on page
     navigations also cross-checks the user-agent against the rest of the headers.
 
     Staff traffic stays inside the visitor totals — the admin browsing the live
-    site is still a real person using it — but is labelled so its share can be
+    site is still a real person using it — but is labeled so its share can be
     seen and, if it ever grows enough to distort a number, subtracted after the
     fact from data already collected.
     """
