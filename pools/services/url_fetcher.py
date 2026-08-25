@@ -3,14 +3,12 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; PhillyPools/1.0; +https://phillypools.app)"
-}
+from pools.services.user_agents import SUBMISSION_HEADERS
 
 
 def fetch_url(url: str, max_chars: int = 8000) -> str:
     """Fetch a URL and return its stripped text content."""
-    resp = requests.get(url, headers=_HEADERS, timeout=10)
+    resp = requests.get(url, headers=SUBMISSION_HEADERS, timeout=10)
     resp.raise_for_status()
 
     content_type = resp.headers.get("content-type", "")

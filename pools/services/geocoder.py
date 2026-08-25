@@ -1,10 +1,11 @@
 import requests
 
+from pools.services.user_agents import GEOCODER as USER_AGENT
+
 _cache: dict[str, tuple[float, float] | None] = {}
 _polygon_cache: dict[str, dict | None] = {}
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "PhillyPools/1.0 (josh@josh-rosenberg.com)"
 
 
 def geocode_zip(zip_code: str) -> tuple[float, float] | None:

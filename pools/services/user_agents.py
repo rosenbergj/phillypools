@@ -7,9 +7,11 @@ on which call you caught:
   not anyone asked. That's the one a sysadmin might reasonably want to throttle.
 - `SUBMISSION` is not a crawler. It's a single fetch of a single URL that a person
   pasted into the submit form seconds earlier, and it follows no links. Calling it
-  a bot would be inaccurate, and would also — incidentally — trip the naive
-  `/bot|crawler|spider/i` blocklists that some small sites run, on the one call
-  where a block leaves a human waiting.
+  a bot would simply be inaccurate. Note that this does *not* buy it a pass from the
+  naive `/bot|crawler|spider/i` blocklists some small sites run: the +URL below has
+  "bot" in it, so those match every string here regardless of token. Being findable
+  is worth more than being unblockable, and if a site would rather we didn't fetch
+  it, we'd rather know.
 - `ADMIN` is a one-off backfill someone ran by hand from a terminal.
 
 All three keep the `Mozilla/5.0 (compatible; ...)` prefix. It reads like a

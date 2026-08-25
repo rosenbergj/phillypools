@@ -13,10 +13,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from pools.models import HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, Submission
-
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; PhillyPools/1.0; +https://phillypools.app)"
-}
+from pools.services.user_agents import CRAWLER_HEADERS
 
 
 @dataclass
@@ -34,7 +31,7 @@ class CheckReport:
 
 def _fetch(url, report):
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15)
+        resp = requests.get(url, headers=CRAWLER_HEADERS, timeout=15)
         resp.raise_for_status()
     except Exception as e:
         report.errors.append(f"Fetch error for {url}: {e}")

@@ -60,6 +60,43 @@ outage still announces itself: past the threshold every run reports an error, an
 digest rate-limits error mail to one per 24 hours, so a persistently broken source
 emails once a day rather than going quiet.
 
+### How we identify ourselves
+
+Every outbound request carries a User-Agent from `pools/services/user_agents.py`,
+which is the only place these strings are written. Three tokens, because the honest
+answer differs by call:
+
+| Token | Sent by | What it is |
+|---|---|---|
+| `PhillyPoolsBot/1.0` | `page_monitor`, `gis` | The cron. Fetches a fixed list of pages, follows no links. |
+| `PhillyPools-Submission/1.0` | `url_fetcher` | One URL a visitor pasted seconds ago. Not a crawler. |
+| `PhillyPools-Admin/1.0` | `scrape_pools`, `rescrape_inactive`, `import_ppr_addresses`, `populate_phillypublicpools_urls` | Hand-run backfills. |
+
+The geocoder is deliberately different — Nominatim's usage policy wants an
+application name and a contact address, not a browser string — and the Turnstile
+verify POST sends nothing, being a server-to-server API call with a secret rather
+than a page fetch someone might want to attribute.
+
+All of them end in `+https://phillypools.app/bot/`, a page explaining who we are and
+how to make us stop. **That page has to exist in both serving modes**: a Django route
+in `pools/urls.py` and `bot/index.html` from `render_static_site`, sharing one body
+template. A test asserts the advertised URL returns 200, because every request we
+make points strangers at it.
+
+Keeping the `Mozilla/5.0 (compatible; ...)` prefix is deliberate — Googlebot and
+bingbot both send it, and www.phila.gov's WAF answers a bare `python-requests` UA
+with **403**. The identification is in the token and the URL, not in pretending to
+be a browser. Note that the info URL contains "bot", so a naive `/bot/i` blocklist
+matches all of our agents, `-Submission` included; that's accepted rather than worked
+around.
+
+Another test walks the AST of every module under `pools/` and fails on any
+`requests.get`/`post` with no `headers=` (the Turnstile call is exempted by URL), so a
+new call site can't quietly go out as `python-requests/2.x`.
+
+Not done yet: we don't read `robots.txt`. The /bot page says so plainly, and says a
+request by hand is what stops us in the meantime.
+
 ### Accessibility: `Pool.ada_lift`
 
 Three states — `yes`, `none`, `broken` — rather than a boolean, because a lift that

@@ -16,6 +16,8 @@ import time
 
 import requests
 
+from pools.services.user_agents import CRAWLER_HEADERS
+
 # Human-readable dataset page. Applied submissions put this in the pool's
 # *_source_url, which renders as a public "[link]" on the pool detail page, so it
 # has to be something a visitor can actually read — not a JSON query URL.
@@ -25,10 +27,6 @@ FEATURE_SERVER_URL = (
     "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/"
     "PPR_Swimming_Pools/FeatureServer/0"
 )
-
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; PhillyPools/1.0; +https://phillypools.app)"
-}
 
 # The FeatureServer intermittently answers a valid query with
 # {"code": 400, "message": "Invalid URL"} — its own hiccup, not a bad request from
@@ -75,7 +73,7 @@ def _get_json(url, params, timeout):
     """GET one ArcGIS endpoint, retrying transient failures. Raises the last error."""
     for attempt in range(len(_FETCH_RETRY_BACKOFF) + 1):
         try:
-            resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+            resp = requests.get(url, params=params, headers=CRAWLER_HEADERS, timeout=timeout)
             resp.raise_for_status()
             payload = resp.json()
             if "error" in payload:

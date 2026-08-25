@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 
 from pools.models import Pool
+from pools.services.user_agents import ADMIN_HEADERS
 
 A_TO_Z_URL = (
     "https://phillypublicpools.com/jump-into-the-free-public-pools-in-philly/"
@@ -47,7 +48,7 @@ class Command(BaseCommand):
         overwrite = options["overwrite"]
 
         self.stdout.write(f"Fetching {A_TO_Z_URL} ...")
-        resp = requests.get(A_TO_Z_URL, timeout=15)
+        resp = requests.get(A_TO_Z_URL, headers=ADMIN_HEADERS, timeout=15)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")

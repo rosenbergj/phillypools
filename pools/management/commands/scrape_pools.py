@@ -2,6 +2,7 @@ import requests
 from datetime import date
 from django.core.management.base import BaseCommand
 from pools.models import Pool
+from pools.services.user_agents import ADMIN_HEADERS
 
 GEOJSON_URL = (
     "https://hub.arcgis.com/api/v3/datasets/"
@@ -38,7 +39,7 @@ class Command(BaseCommand):
 
         self.stdout.write("Fetching pool data from OpenDataPhilly...")
         try:
-            response = requests.get(GEOJSON_URL, timeout=30)
+            response = requests.get(GEOJSON_URL, headers=ADMIN_HEADERS, timeout=30)
             response.raise_for_status()
         except requests.RequestException as e:
             self.stderr.write(f"Failed to fetch data: {e}")

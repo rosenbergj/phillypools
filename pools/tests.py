@@ -2565,6 +2565,110 @@ class FaviconTests(TestCase):
             png_side_length(oblong)
 
 
+class OutboundUserAgentTests(TestCase):
+    """Who we say we are when we call someone else's server.
+
+    The /bot page publishes these strings and promises what each one does, so the
+    binding between a call site and its token is part of the promise, not a detail."""
+
+    def _sent_headers(self, fn, patch_target, *args, **kwargs):
+        with patch(patch_target) as get:
+            get.return_value = Mock(
+                raise_for_status=Mock(),
+                text="<html></html>",
+                headers={"content-type": "text/html"},
+                json=Mock(return_value={"features": [], "fields": []}),
+            )
+            fn(*args, **kwargs)
+        return get.call_args.kwargs["headers"]
+
+    def test_scheduled_page_checks_send_the_crawler(self):
+        from pools.services.page_monitor import CheckReport, _fetch
+        from pools.services.user_agents import CRAWLER
+
+        headers = self._sent_headers(
+            _fetch, "pools.services.page_monitor.requests.get",
+            "https://www.phila.gov/x/", CheckReport(),
+        )
+        self.assertEqual(headers["User-Agent"], CRAWLER)
+
+    def test_gis_sends_the_crawler(self):
+        from pools.services.gis import fetch_features
+        from pools.services.user_agents import CRAWLER
+
+        headers = self._sent_headers(fetch_features, "pools.services.gis.requests.get")
+        self.assertEqual(headers["User-Agent"], CRAWLER)
+
+    def test_a_submitted_url_is_not_fetched_as_a_bot(self):
+        """This call happens because a person pasted a link a moment ago. Calling it a
+        crawler would be untrue, and would invite blocks on the one fetch that has
+        someone waiting on it."""
+        from pools.services.url_fetcher import fetch_url
+        from pools.services.user_agents import SUBMISSION
+
+        headers = self._sent_headers(
+            fetch_url, "pools.services.url_fetcher.requests.get", "https://example.com/",
+        )
+        self.assertEqual(headers["User-Agent"], SUBMISSION)
+        # The product token, not the whole string: the +URL says /bot/ in every agent
+        # we send, so a substring filter can't tell them apart anyway.
+        token = headers["User-Agent"].split("(compatible; ")[1].split("/")[0]
+        self.assertNotIn("bot", token.lower())
+
+    def test_geocoder_keeps_the_shape_nominatim_asks_for(self):
+        """Nominatim's usage policy wants an application name and a real contact
+        address, not a browser string — so this one deliberately isn't like the rest."""
+        from pools.services.user_agents import GEOCODER
+
+        self.assertFalse(GEOCODER.startswith("Mozilla/"))
+        self.assertIn("@", GEOCODER)
+
+    def test_every_agent_points_at_a_page_that_answers(self):
+        from pools.services import user_agents
+
+        strings = [user_agents.CRAWLER, user_agents.SUBMISSION,
+                   user_agents.ADMIN, user_agents.GEOCODER]
+        path = user_agents.INFO_URL.replace("https://phillypools.app", "")
+        for string in strings:
+            self.assertIn(user_agents.INFO_URL, string)
+        self.assertEqual(self.client.get(path).status_code, 200)
+
+    def test_no_outbound_call_forgets_to_identify_us(self):
+        """A static sweep, because the failure mode is a *new* call site rather than
+        one of the ones fixed today: a bare requests.get sends python-requests/x.y,
+        which www.phila.gov answers with 403 and which tells a stranger nothing about
+        who we are."""
+        import ast
+
+        root = Path(settings.BASE_DIR) / "pools"
+        offenders = []
+        for path in sorted(root.rglob("*.py")):
+            if path.name == "tests.py" or "migrations" in path.parts:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if not (isinstance(func, ast.Attribute) and func.attr in {"get", "post"}):
+                    continue
+                if "requests" not in getattr(func.value, "id", ""):
+                    continue
+                if any(kw.arg == "headers" for kw in node.keywords):
+                    continue
+                # Cloudflare's Turnstile verify endpoint is a server-to-server API
+                # call, not a page fetch: there is no operator on the other end to
+                # inform, and it authenticates with a secret rather than a UA.
+                first = node.args[0] if node.args else None
+                if isinstance(first, ast.Constant) and "challenges.cloudflare.com" in str(first.value):
+                    continue
+                offenders.append(f"{path.relative_to(root)}:{node.lineno}")
+        self.assertEqual(
+            offenders, [],
+            "outbound request(s) with no User-Agent — import one from "
+            "pools.services.user_agents",
+        )
+
+
 class BotInfoPageTests(TestCase):
     """The /bot URL is named in every request this app makes, so it has to exist on
     both the live site and the offseason build, and it has to describe the strings we

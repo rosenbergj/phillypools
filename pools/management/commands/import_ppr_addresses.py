@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 
 from pools.models import Pool
+from pools.services.user_agents import ADMIN_HEADERS
 
 # 2024 first (most pools); 2026 fills gaps. Earlier year takes priority.
 SCHEDULE_URLS = [
@@ -13,12 +14,9 @@ SCHEDULE_URLS = [
 ]
 
 
-_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; phillypools-admin/1.0)"}
-
-
 def _parse_schedule_page(url) -> dict[str, str]:
     """Return {pool_name_as_written: address} parsed from a phila.gov schedule page."""
-    resp = requests.get(url, timeout=30, headers=_HEADERS)
+    resp = requests.get(url, timeout=30, headers=ADMIN_HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     result = {}
