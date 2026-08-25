@@ -27,7 +27,7 @@ from pools.services.season import (
     season_length_days,
     season_snapshot,
 )
-from pools.views import nearby_pools_context
+from pools.views import bot_page_context, nearby_pools_context
 
 DEFAULT_BASE_URL = "https://phillypools.app"
 
@@ -245,6 +245,21 @@ class Command(BaseCommand):
                     "robots_meta": "noindex, follow",
                 },
             ),
+            (
+                # Same URL the User-Agent strings point at all year. The fetchers keep
+                # naming it while the site is static, so this page has to outlive the
+                # Railway project — see pools/services/user_agents.py.
+                "bot/index.html",
+                "pools/offseason_bot.html",
+                {
+                    "page_title": "About our bot — Philly Pools",
+                    "meta_description": (
+                        "What PhillyPoolsBot fetches, why, and how to make it stop."
+                    ),
+                    "canonical_path": "/bot/",
+                    **bot_page_context(),
+                },
+            ),
             ("robots.txt", "pools/offseason_robots.txt", {}),
             ("sitemap.xml", "pools/offseason_sitemap.xml", {}),
         )
@@ -258,7 +273,9 @@ class Command(BaseCommand):
                     **extra,
                 },
             )
-            (out / name).write_text(content, encoding="utf-8")
+            path = out / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
             self._say(f"Rendered {name}")
 
         # Not a warning: PPR simply doesn't publish hours for many pools, and roughly

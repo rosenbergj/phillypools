@@ -1,0 +1,111 @@
+{% comment %}
+The whole of the /bot page, shared by the live template and the offseason one so
+the two can't drift. The bases differ (the live one emits a usage beacon and
+resolves static assets through Django); the words must not.
+
+Everything here has to stay literally true — this page is what a stranger judges us
+by. The agent table is rendered from pools/services/user_agents.py, which is the
+same module the fetching code imports, so it describes strings we really send.
+{% endcomment %}
+<div class="container py-4" style="max-width: 720px">
+
+  <h1 class="h3 mb-3">About our bot</h1>
+
+  <p>
+    If one of these showed up in your logs, this page is here to tell you who we are,
+    what we fetched and how to make us stop.
+  </p>
+
+  <p>
+    <strong>Philly Pools</strong> (<a href="/">phillypools.app</a>) is a small free site
+    that tracks opening dates, closing dates and hours for Philadelphia's public pools.
+    There are no ads on it and nothing is sold. It's run by one person and a lot of
+    volunteered tips.
+  </p>
+
+  <h2 class="h5 mt-4">What we send</h2>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr><th scope="col">Agent</th><th scope="col">When it runs</th><th scope="col">What it asks for</th></tr>
+      </thead>
+      <tbody>
+        {% for agent in agents %}
+        <tr>
+          <td><code>{{ agent.name }}</code></td>
+          <td class="small">{{ agent.when }}</td>
+          <td class="small">{{ agent.what }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="small text-muted mb-1">The full strings, if you're matching on them:</p>
+  <pre class="small bg-light border rounded p-2 mb-4"><code>{% for agent in agents %}{{ agent.string }}
+{% endfor %}</code></pre>
+
+  {% comment %}
+  Named rather than positional ("the first", "the second"): the rows are rendered
+  from PUBLIC_AGENTS, so ordering this prose by position would quietly start
+  describing the wrong agent the day someone reorders that list. It also reads
+  better for the person who arrived here having seen exactly one of these strings.
+  {% endcomment %}
+  <p>
+    Only <code>PhillyPoolsBot</code> is a robot. <code>PhillyPools-Submission</code>
+    is a single fetch of a single URL that somebody pasted into our submit form
+    moments earlier — one page, no link-following. <code>PhillyPools-Admin</code> is a
+    person at a terminal running a one-off job.
+  </p>
+
+  <h2 class="h5 mt-4">What we don't do</h2>
+
+  <ul>
+    <li>
+      <strong>We don't crawl.</strong> The scheduled checks fetch a fixed, hand-picked
+      list of {% if monitored_page_count %}{{ monitored_page_count }} page{{ monitored_page_count|pluralize }}{% else %}pages{% endif %}
+      and follow no links out of them.
+    </li>
+    <li>
+      <strong>We read pages; we don't poke at them.</strong> No form submissions, no
+      logins, nothing behind authentication, no attempt at anything a browser wouldn't
+      request.
+    </li>
+    <li>
+      <strong>We don't republish your page.</strong> What reaches the site is a pool's
+      dates and hours, alongside a link back to you as the source.
+    </li>
+    <li>
+      <strong>We don't hammer.</strong> A failed request is retried at most twice,
+      seconds apart, and then left alone until the next scheduled run.
+    </li>
+  </ul>
+
+  <h2 class="h5 mt-4">Making us stop</h2>
+
+  <p>
+    Ask. {{ contact_html|safe }} A person reads it, and we'll skip your site — we have
+    no interest in fetching anything from anyone who'd rather we didn't.
+  </p>
+
+  <p class="small text-muted">
+    In fairness, you should know that we don't read <code>robots.txt</code> yet. Our
+    scheduled fetches go to a short list of pages chosen by hand rather than anything
+    found by crawling, so there has never been a directive for us to discover — but
+    that's an explanation, not an excuse, and support for it is on the list. Until it
+    lands, a request sent to the link above is what stops us, and it's honored by hand.
+  </p>
+
+  <h2 class="h5 mt-4">Why you're seeing us</h2>
+
+  <p class="mb-0">
+    Most of our fetches go to <a href="https://www.phila.gov/departments/philadelphia-parks-recreation/" target="_blank" rel="noopener">Philadelphia Parks &amp; Recreation</a>
+    and to the city's <a href="https://opendataphilly.org/datasets/ppr-swimming-pools/" target="_blank" rel="noopener">public pool dataset</a>.
+    If we turned up somewhere else, it's almost certainly because you posted something
+    about a specific pool — a hand-lettered sign, an "open late tonight" note — and a
+    visitor sent us the link. That kind of post is often the only place a pool's real
+    hours exist, which is the entire reason this site is here.
+  </p>
+
+</div>

@@ -836,6 +836,36 @@ def submit_thanks(request):
     return render(request, "pools/submit_thanks.html", {"pool_id": pool_id if pool_id.isdigit() else ""})
 
 
+# The URL every fetcher names in its User-Agent, so the page has to exist on both
+# the live site and the offseason build — see render_static_site, which writes the
+# same body to bot/index.html. Its content comes from pools/services/user_agents.py,
+# the module the fetching code imports, so the page can't advertise a string we
+# don't send.
+def bot_info(request):
+    """Who we are, what we fetch, and how to make us stop."""
+    return render(request, "pools/bot.html", bot_page_context())
+
+
+def bot_page_context():
+    """Shared by the live view and the offseason renderer."""
+    from pools.models import MonitoredPage
+    from pools.services.user_agents import PUBLIC_AGENTS
+
+    return {
+        "agents": PUBLIC_AGENTS,
+        # Stated rather than approximated: "we fetch three pages" is checkable, and
+        # a visitor who counts is entitled to find it true.
+        "monitored_page_count": MonitoredPage.objects.count(),
+        "contact_html": BOT_CONTACT_HTML,
+    }
+
+
+BOT_CONTACT_HTML = (
+    'Open an issue at <a href="https://github.com/rosenbergj/phillypools/issues" '
+    'target="_blank" rel="noopener">github.com/rosenbergj/phillypools</a>.'
+)
+
+
 # Google's favicon crawler is a separate, infrequent pass from the page crawl, and
 # the root path is what it reaches for most reliably — the <link rel="icon"> in
 # base.html alone had left search results with no icon. Serving it here rather than

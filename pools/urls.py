@@ -5,6 +5,7 @@ from pools import views
 urlpatterns = [
     path("robots.txt", TemplateView.as_view(template_name="pools/robots.txt", content_type="text/plain")),
     path("favicon.ico", views.favicon_ico, name="favicon"),
+    path("bot/", views.bot_info, name="bot_info"),
     path("", views.index, name="index"),
     path("neighborhood-at/", views.neighborhood_at, name="neighborhood_at"),
     path("pools-json/", views.pools_json, name="pools_json"),

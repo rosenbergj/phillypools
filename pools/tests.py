@@ -2565,6 +2565,61 @@ class FaviconTests(TestCase):
             png_side_length(oblong)
 
 
+class BotInfoPageTests(TestCase):
+    """The /bot URL is named in every request this app makes, so it has to exist on
+    both the live site and the offseason build, and it has to describe the strings we
+    actually send rather than a scheme someone once wrote down."""
+
+    def test_page_lists_every_agent_we_send(self):
+        from pools.services.user_agents import PUBLIC_AGENTS
+
+        html = self.client.get("/bot/").content.decode()
+        for agent in PUBLIC_AGENTS:
+            self.assertIn(agent["string"], html)
+
+    def test_the_prose_names_agents_that_exist(self):
+        """The paragraph explaining which agent is actually a robot names them rather
+        than counting rows, so it can't be broken by reordering PUBLIC_AGENTS — but it
+        can be broken by renaming one, which this catches."""
+        from pools.services.user_agents import PUBLIC_AGENTS
+
+        html = self.client.get("/bot/").content.decode()
+        for agent in PUBLIC_AGENTS:
+            token = agent["name"].split("/")[0]
+            self.assertIn(f"<code>{token}</code>", html)
+
+    def test_page_states_the_real_monitored_page_count(self):
+        """"We fetch N pages" is checkable, so it has to be counted, not guessed."""
+        MonitoredPage.objects.create(url="https://www.phila.gov/a/", content_hash="a")
+        MonitoredPage.objects.create(url="https://www.phila.gov/b/", content_hash="b")
+        expected = MonitoredPage.objects.count()
+        html = self.client.get("/bot/").content.decode()
+        self.assertIn(f"list of {expected} pages", html)
+
+    def test_the_advertised_url_is_the_one_that_answers(self):
+        """The +URL in the User-Agent is a promise. If the constant and the route ever
+        disagree, every request we make points strangers at a 404."""
+        from pools.services.user_agents import INFO_URL
+
+        path = INFO_URL.replace("https://phillypools.app", "")
+        self.assertEqual(self.client.get(path).status_code, 200)
+
+    def test_offseason_build_serves_it_at_the_same_url(self):
+        Pool.objects.create(name="Test Pool", slug="test-pool")
+        from pools.services.user_agents import CRAWLER
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "build"
+            call_command("render_static_site", "--out", str(out), verbosity=0)
+            page = out / "bot" / "index.html"
+            self.assertTrue(page.exists(), "bot/index.html missing from the build")
+            html = page.read_text()
+            self.assertIn(CRAWLER, html)
+            self.assertIn('<link rel="canonical" href="https://phillypools.app/bot/"', html)
+            # The offseason base, not the live one: no beacon, no CSRF, no manifest.
+            self.assertNotIn("page-loaded", html)
+
+
 class OffseasonFaviconTests(TestCase):
     """The offseason build is served by Cloudflare Pages with no Django behind it,
     so /favicon.ico has to be a real file in the output, not a view."""

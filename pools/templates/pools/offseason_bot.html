@@ -1,0 +1,10 @@
+{% extends "pools/offseason_base.html" %}
+
+{% comment %}
+The bot page has to survive the offseason: the fetchers keep naming its URL in
+every request they make, and a sysadmin who got annoyed in August may well go
+looking in February. Same body as the live page, different base — see
+pools/_bot_body.html.
+{% endcomment %}
+
+{% block content %}{% include "pools/_bot_body.html" %}{% endblock %}
