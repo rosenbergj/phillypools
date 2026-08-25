@@ -36,12 +36,19 @@ the GIS layer but never reached the opening-schedule page, which had frozen on J
 Run `check_pool_gis --dry-run` to preview proposals without writing anything. It runs
 on the same cron as the other checks, via `run_url_watcher`.
 
-**A single "GIS fetch failed" in the digest email is usually nothing.** ArcGIS Online
-intermittently answers a perfectly good request with HTTP 200 whose *body* is an error
-— `{'code': 400, 'message': 'Invalid URL', 'details': ['Invalid URL']}` is the one
-seen — and `fetch_features` has no retry, so one flaky response becomes one reported
-error. The URL it requests is a module constant, so it can't be malformed on our side.
-Before investigating, just re-request the endpoint a few times:
+**Fetch failures are deliberately quiet.** ArcGIS Online intermittently answers a
+perfectly good request with HTTP 200 whose *body* is an error —
+`{'code': 400, 'message': 'Invalid URL', 'details': ['Invalid URL']}` is the one seen.
+The URL it requests is a module constant, so it can't be malformed on our side, and a
+retry seconds later works. Two things keep that off email: `_get_json` retries each
+request (2s then 5s), and `GisCheckState` counts consecutive failed check runs so that
+a failure is only reported as an *error* — the thing the digest emails on — once
+`FAILURE_ALERT_THRESHOLD` (4) runs in a row have failed, which on the five-a-day cron
+is most of a day of a dead source. Below that it's a `note`: visible in the Railway
+cron log, silent in your inbox. The first success clears the streak.
+
+To check the streak by hand, look at **GIS check state** in the admin. To check the
+endpoint, re-request it a few times:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' \
@@ -49,8 +56,9 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 ```
 
 If that comes back fine, the error was transient and there's nothing to fix. A genuine
-outage announces itself instead: the digest rate-limits error mail to one per 24 hours,
-so a persistently broken source emails every day rather than going quiet.
+outage still announces itself: past the threshold every run reports an error, and the
+digest rate-limits error mail to one per 24 hours, so a persistently broken source
+emails once a day rather than going quiet.
 
 ### Accessibility: `Pool.ada_lift`
 

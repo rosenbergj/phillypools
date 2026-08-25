@@ -2,8 +2,10 @@ import struct
 import tempfile
 from datetime import date, datetime, time, timedelta, timezone as utc_tz
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from xml.dom import minidom
+
+import requests
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -2203,12 +2205,73 @@ class PoolGisCheckTests(TestCase):
         self.assertFalse(Submission.objects.exists())
         self.assertFalse(PoolGisState.objects.exists())
 
-    def test_fetch_failure_is_reported_not_raised(self):
+    def _fail_fetch(self, times=1, **kwargs):
         from pools.services.gis import check_pool_gis
         with patch("pools.services.gis.fetch_features", side_effect=RuntimeError("boom")):
-            report = check_pool_gis()
-        self.assertTrue(report.errors)
+            for _ in range(times):
+                report = check_pool_gis(**kwargs)
+        return report
+
+    def test_fetch_failure_is_reported_not_raised(self):
+        report = self._fail_fetch()
+        self.assertTrue(any("boom" in n for n in report.notes))
         self.assertFalse(Submission.objects.exists())
+
+    def test_one_off_fetch_failure_does_not_email(self):
+        """The city's FeatureServer hiccups; errors are what the digest emails on, so
+        a lone failure has to stay out of them."""
+        from pools.models import GisCheckState
+        report = self._fail_fetch()
+        self.assertFalse(report.errors)
+        self.assertEqual(GisCheckState.load().consecutive_fetch_failures, 1)
+
+    def test_a_streak_of_failures_is_reported_as_an_error(self):
+        from pools.services.gis import FAILURE_ALERT_THRESHOLD
+        report = self._fail_fetch(times=FAILURE_ALERT_THRESHOLD - 1)
+        self.assertFalse(report.errors)
+        report = self._fail_fetch()
+        self.assertTrue(any("boom" in e for e in report.errors))
+
+    def test_success_clears_the_failure_streak(self):
+        from pools.models import GisCheckState
+        from pools.services.gis import FAILURE_ALERT_THRESHOLD
+        self._fail_fetch(times=FAILURE_ALERT_THRESHOLD)
+        report = self._run([self._attrs(open_date="2026-07-05")])
+        self.assertEqual(GisCheckState.load().consecutive_fetch_failures, 0)
+        self.assertTrue(any("recovered" in n for n in report.notes))
+        # The next lone failure starts counting from scratch.
+        self.assertFalse(self._fail_fetch().errors)
+
+    def test_dry_run_reports_a_failure_without_touching_the_streak(self):
+        from pools.models import GisCheckState
+        report = self._fail_fetch(dry_run=True)
+        self.assertTrue(report.errors)
+        self.assertFalse(GisCheckState.objects.exists())
+
+    def test_transient_fetch_error_is_retried(self):
+        """ArcGIS answers a valid query with its own "Invalid URL" error now and then;
+        a retry seconds later works, so most failures never reach the streak at all."""
+        from pools.services import gis
+        good = {"features": [{"attributes": self._attrs()}]}
+        responses = [
+            Mock(json=Mock(return_value={"error": {"code": 400, "message": "Invalid URL"}}),
+                 raise_for_status=Mock()),
+            Mock(json=Mock(return_value=good), raise_for_status=Mock()),
+        ]
+        with patch.object(gis, "_FETCH_RETRY_BACKOFF", (0,)), \
+             patch("pools.services.gis.requests.get", side_effect=responses) as get:
+            attrs = gis.fetch_features()
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(attrs[0]["pool_name"], "Dendy Pool")
+
+    def test_fetch_gives_up_after_the_last_retry(self):
+        from pools.services import gis
+        with patch.object(gis, "_FETCH_RETRY_BACKOFF", (0, 0)), \
+             patch("pools.services.gis.requests.get",
+                   side_effect=requests.ConnectionError("no route")) as get:
+            with self.assertRaises(requests.ConnectionError):
+                gis.fetch_features()
+        self.assertEqual(get.call_count, 3)
 
     def test_epoch_conversion_does_not_shift_a_day(self):
         from pools.services.gis import epoch_ms_to_date

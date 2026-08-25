@@ -12,6 +12,7 @@ That gap is the reason this exists.
 """
 import datetime
 import json
+import time
 
 import requests
 
@@ -28,6 +29,17 @@ FEATURE_SERVER_URL = (
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; PhillyPools/1.0; +https://phillypools.app)"
 }
+
+# The FeatureServer intermittently answers a valid query with
+# {"code": 400, "message": "Invalid URL"} — its own hiccup, not a bad request from
+# us — and a retry seconds later succeeds. Retrying in-process removes most of
+# those before anything downstream ever sees a failure.
+_FETCH_RETRY_BACKOFF = (2, 5)
+
+# How many check runs in a row must fail before a fetch failure is worth an email.
+# The cron runs five times a day, so this is most of a day of a dead source; below
+# it the failure is a note, which shows up in the cron log and nowhere else.
+FAILURE_ALERT_THRESHOLD = 4
 
 # Pool date field -> the GIS attribute it comes from. The layer carries no closing
 # date today; if the city ever adds one, map it here and everything downstream —
@@ -59,34 +71,42 @@ def epoch_ms_to_date(value):
     return datetime.datetime.fromtimestamp(value / 1000, datetime.UTC).date()
 
 
+def _get_json(url, params, timeout):
+    """GET one ArcGIS endpoint, retrying transient failures. Raises the last error."""
+    for attempt in range(len(_FETCH_RETRY_BACKOFF) + 1):
+        try:
+            resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+            resp.raise_for_status()
+            payload = resp.json()
+            if "error" in payload:
+                raise RuntimeError(f"ArcGIS error: {payload['error']}")
+            return payload
+        except Exception:
+            if attempt == len(_FETCH_RETRY_BACKOFF):
+                raise
+            time.sleep(_FETCH_RETRY_BACKOFF[attempt])
+
+
 def fetch_features(timeout=30):
     """Return the layer's records as a list of attribute dicts. Raises on failure;
     callers turn that into a report error."""
-    resp = requests.get(
+    payload = _get_json(
         f"{FEATURE_SERVER_URL}/query",
-        params={
+        {
             "where": "1=1",
             "outFields": ",".join(ATTRIBUTES),
             "returnGeometry": "false",
             "f": "json",
         },
-        headers=_HEADERS,
-        timeout=timeout,
+        timeout,
     )
-    resp.raise_for_status()
-    payload = resp.json()
-    if "error" in payload:
-        raise RuntimeError(f"ArcGIS error: {payload['error']}")
     return [f.get("attributes", {}) for f in payload.get("features", [])]
 
 
 def fetch_layer_field_names(timeout=30):
     """Field names defined on the layer, used to notice new date columns."""
-    resp = requests.get(
-        FEATURE_SERVER_URL, params={"f": "json"}, headers=_HEADERS, timeout=timeout
-    )
-    resp.raise_for_status()
-    return [f["name"] for f in resp.json().get("fields", [])]
+    payload = _get_json(FEATURE_SERVER_URL, {"f": "json"}, timeout)
+    return [f["name"] for f in payload.get("fields", [])]
 
 
 def detect_unmapped_date_fields(field_names):
@@ -138,7 +158,7 @@ def check_pool_gis(dry_run=False):
     differences. Never raises — problems come back as `errors` on the report."""
     from django.utils import timezone
 
-    from pools.models import Pool, PoolGisState, Submission
+    from pools.models import GisCheckState, Pool, PoolGisState, Submission
     from pools.services.page_monitor import CheckReport
 
     report = CheckReport()
@@ -146,8 +166,15 @@ def check_pool_gis(dry_run=False):
     try:
         features = fetch_features()
     except Exception as e:
-        report.errors.append(f"GIS fetch failed: {e}")
+        _report_fetch_failure(report, e, dry_run, GisCheckState, timezone.now())
         return report
+
+    if not dry_run:
+        recovered = GisCheckState.load().record_success()
+        if recovered:
+            report.notes.append(
+                f"GIS fetch recovered after {recovered} failure(s) in a row"
+            )
 
     try:
         unmapped = detect_unmapped_date_fields(fetch_layer_field_names())
@@ -236,6 +263,28 @@ def check_pool_gis(dry_run=False):
         report.notes.append(f"GIS agrees with our data ({len(by_amenity_id)} records checked)")
 
     return report
+
+
+def _report_fetch_failure(report, error, dry_run, GisCheckState, now):
+    """Record a failed fetch, and decide whether it's worth waking anyone up.
+
+    A single failure is almost always the FeatureServer's own hiccup and clears by
+    the next run, so it lands in `notes`. Only a streak — the source really being
+    gone — goes in `errors`, which is what the digest email is built from."""
+    if dry_run:
+        report.errors.append(f"GIS fetch failed: {error}")
+        return
+
+    state = GisCheckState.load()
+    state.record_failure(error, now)
+    streak = state.consecutive_fetch_failures
+    detail = f"GIS fetch failed ({streak} in a row since {state.first_failure_at:%Y-%m-%d %H:%M} UTC): {error}"
+    if streak >= FAILURE_ALERT_THRESHOLD:
+        report.errors.append(detail)
+    else:
+        report.notes.append(
+            f"{detail} — not reporting as an error until {FAILURE_ALERT_THRESHOLD} in a row"
+        )
 
 
 def _create_gis_submission(pool, attrs, differences, Submission):

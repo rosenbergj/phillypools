@@ -12,7 +12,7 @@ from django.utils.html import escape, format_html, format_html_join, mark_safe
 
 from django.db.models import Q
 
-from pools.models import DigestState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolGisState, PoolLike, PoolSeasonHistory, ScheduleChange, SiteAnnouncement, Submission
+from pools.models import DigestState, GisCheckState, HeatEmergencyPressRelease, HeatHealthEmergency, MonitoredPage, Pool, PoolAlternateName, PoolGisState, PoolLike, PoolSeasonHistory, ScheduleChange, SiteAnnouncement, Submission
 
 
 class SubmissionImageWidget(forms.Widget):
@@ -814,6 +814,20 @@ class PoolGisStateAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False  # rows are created by check_pool_gis
+
+
+@admin.register(GisCheckState)
+class GisCheckStateAdmin(admin.ModelAdmin):
+    """How the ArcGIS fetch is doing. A non-zero streak that keeps growing is the
+    signal that the layer is really gone rather than hiccuping."""
+    list_display = ["__str__", "consecutive_fetch_failures", "first_failure_at", "last_failure_at"]
+    readonly_fields = ["consecutive_fetch_failures", "first_failure_at", "last_failure_at", "last_error"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(DigestState)

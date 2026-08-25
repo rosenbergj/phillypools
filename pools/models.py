@@ -284,6 +284,55 @@ class PoolGisState(models.Model):
         return f"GIS state for {self.pool.name}"
 
 
+class GisCheckState(models.Model):
+    """Singleton row tracking how the last ArcGIS fetch went.
+
+    The city's FeatureServer intermittently answers a perfectly valid query with
+    `{"code": 400, "message": "Invalid URL"}` — a server-side hiccup, not a bug on
+    our end. Reporting each one as a scraper error mailed a digest roughly once a
+    day for nothing, so `check_pool_gis` counts consecutive failures here and only
+    raises an error once the streak says the source is actually down."""
+
+    consecutive_fetch_failures = models.PositiveIntegerField(
+        default=0, help_text="Reset to 0 by the first successful fetch.",
+    )
+    first_failure_at = models.DateTimeField(
+        null=True, blank=True, help_text="Start of the current failure streak.",
+    )
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "GIS check state"
+        verbose_name_plural = "GIS check state"
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def record_failure(self, error, now):
+        self.consecutive_fetch_failures += 1
+        if self.first_failure_at is None:
+            self.first_failure_at = now
+        self.last_failure_at = now
+        self.last_error = str(error)
+        self.save()
+
+    def record_success(self):
+        """Clear the streak; returns how many failures it had reached."""
+        previous = self.consecutive_fetch_failures
+        if previous or self.first_failure_at or self.last_error:
+            self.consecutive_fetch_failures = 0
+            self.first_failure_at = None
+            self.last_error = ""
+            self.save()
+        return previous
+
+    def __str__(self):
+        return "GIS check state"
+
+
 class Submission(models.Model):
     CONFIDENCE_CHOICES = [
         ("high", "High"),
