@@ -30,8 +30,13 @@ python manage.py render_static_site --season-year 2026
 ```
 
 This writes `offseason-build/` — an archived page for every pool at its real URL
-(`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, a `404.html`, and a
-`favicon.ico` built from `offseason/favicon.png`.
+(`/pools/<slug>/`), plus the index, `sitemap.xml`, `robots.txt`, a `404.html`, a
+`favicon.ico` built from `offseason/favicon.png`, and `bot/index.html`.
+
+That last one matters more in the offseason than in season: every request the app
+makes carries `+https://phillypools.app/bot/` in its User-Agent, so a sysadmin who
+got annoyed in August may well go looking in February, when there's no Django left
+to answer. It's rendered from the same body template as the live page.
 
 It also builds the index page's **season summary** — a short bullet list (how many pools
 opened, the longest and shortest seasons, the earliest opening and the latest closing,
@@ -266,9 +271,10 @@ or the pool list means editing `pools/templates/pools/offseason_index.html` and
 re-rendering, not editing built HTML.
 
 Preview via the Cloudflare Pages URL before switching DNS in the next step. Spot-check a
-few pool pages, `/sitemap.xml`, `/robots.txt`, and `/favicon.ico` — Google's favicon
-crawler goes to that last path, and the live site answers it from a Django view that
-isn't there once the site is static, so the build generates the file instead.
+few pool pages, `/sitemap.xml`, `/robots.txt`, `/favicon.ico`, and `/bot/`. The last two
+are the ones with no Django behind them any more: Google's favicon crawler goes to
+`/favicon.ico`, which the live site answers from a view, and `/bot/` is the URL every
+User-Agent we send points at all year.
 
 ### 10. Switch DNS to Cloudflare Pages
 
