@@ -97,6 +97,33 @@ new call site can't quietly go out as `python-requests/2.x`.
 Not done yet: we don't read `robots.txt`. The /bot page says so plainly, and says a
 request by hand is what stops us in the meantime.
 
+### Conditional requests on monitored pages
+
+`page_monitor` sends `If-None-Match`/`If-Modified-Since` from the validators stored on
+`MonitoredPage`, so an unchanged phila.gov page answers **304 with an empty body**
+rather than ~70KB, five times a day, three pages. Verified live: their ETag is stable
+across fetches, a bogus one correctly gets a 200, and the validator comes back *weak*
+(`W/"..."`) because `requests` asks for gzip — weak is correct here, since it asserts
+equivalence of content rather than of octets.
+
+Trusting someone else's validator is the whole risk, so it's bounded three ways:
+
+- **A 304 only ever moves `last_checked`.** Never `content_hash`, never `last_changed`,
+  and crucially never `last_full_fetch` — if it did, a server answering 304 forever
+  would push the forced-refetch deadline forever and the floor below would never fire.
+- **`FULL_FETCH_MAX_AGE` (23 hours)** — if the last real body is older than that, we
+  send no validators and demand the page. So a lying ETag, or a CDN edge answering 304
+  from a stale copy, can hide a change for at most a day. 23 rather than 24 so the same
+  daily cron slot always trips it, instead of the forced fetch drifting an hour later
+  each day.
+- **`EXTRACTOR_VERSION`** — stored per row, and a mismatch forces a full fetch. Without
+  it, improving `_extract_content` would silently never run against pages that haven't
+  changed: the page is identical, but what we'd read out of it isn't. **Bump it whenever
+  you change how a page body is read.**
+
+The cron log distinguishes `Not modified (304)` from `No change (full fetch)`, so the
+two are visible as different events.
+
 ### Accessibility: `Pool.ada_lift`
 
 Three states — `yes`, `none`, `broken` — rather than a boolean, because a lift that

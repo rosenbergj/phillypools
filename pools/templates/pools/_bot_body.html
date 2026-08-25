@@ -80,6 +80,12 @@ same module the fetching code imports, so it describes strings we really send.
       <strong>We don't hammer.</strong> A failed request is retried at most twice,
       seconds apart, and then left alone until the next scheduled run.
     </li>
+    <li>
+      <strong>We don't re-download what hasn't changed.</strong> Scheduled checks send
+      <code>If-None-Match</code> and <code>If-Modified-Since</code>, so an unchanged
+      page costs you a 304 with an empty body instead of a full render. We ask for the
+      whole page once a day regardless, in case a cached validator has gone stale.
+    </li>
   </ul>
 
   <h2 class="h5 mt-4">Making us stop</h2>

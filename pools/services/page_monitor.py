@@ -6,6 +6,7 @@ un-baselined until the next cron run.
 """
 import hashlib
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import requests
 from bs4 import BeautifulSoup
@@ -29,14 +30,84 @@ class CheckReport:
         return "; ".join(self.errors + self.highlights + self.notes)
 
 
-def _fetch(url, report):
+# Bump whenever the way we read a page body changes — `_extract_content`, or the
+# press-release parsing below. Conditional requests mean an unchanged page is never
+# re-read, so without this a parser fix would silently never run against the pages
+# already baselined: the page is identical, but what we'd get out of it is not.
+EXTRACTOR_VERSION = 1
+
+# How stale the last real body may get before we stop sending validators and demand
+# one. This is the floor on how long a lying ETag — or a CDN edge answering 304 from
+# a stale copy — could hide a change from us. 23 rather than 24 hours so the same
+# daily cron slot always trips it instead of the forced fetch drifting later each day.
+FULL_FETCH_MAX_AGE = timedelta(hours=23)
+
+
+@dataclass
+class Fetched:
+    """One attempt at a page. Exactly one of these is true: `failed`, `not_modified`,
+    or `html` holds a body."""
+    html: str | None = None
+    not_modified: bool = False
+    failed: bool = False
+    etag: str = ""
+    last_modified: str = ""
+
+
+def _validators_for(page, now):
+    """Headers that let the server answer 304 — or nothing, when we want a real body.
+
+    phila.gov hands us a *weak* validator (`W/"..."`), because `requests` asks for
+    gzip and the compressed representation isn't byte-identical to the raw one.
+    Weak is the right strength for this job: it promises the content is equivalent,
+    not that the octets match, and equivalence is exactly the question we're asking.
+    It does mean the guarantee rests on the server's notion of "the same page",
+    which is what FULL_FETCH_MAX_AGE below is the backstop for.
+
+    We deliberately ask for the full page when we've never stored a validator, when
+    the parser has moved on since this hash was computed, or when the last body we
+    actually saw is older than FULL_FETCH_MAX_AGE.
+    """
+    if page.extractor_version != EXTRACTOR_VERSION:
+        return {}
+    if page.last_full_fetch is None or now - page.last_full_fetch > FULL_FETCH_MAX_AGE:
+        return {}
+    headers = {}
+    if page.etag:
+        headers["If-None-Match"] = page.etag
+    if page.last_modified:
+        headers["If-Modified-Since"] = page.last_modified
+    return headers
+
+
+def _fetch(url, report, validators=None):
     try:
-        resp = requests.get(url, headers=CRAWLER_HEADERS, timeout=15)
+        resp = requests.get(
+            url, headers={**CRAWLER_HEADERS, **(validators or {})}, timeout=15
+        )
+        # Checked before raise_for_status, which is indifferent to a 3xx: this is a
+        # successful answer meaning "your copy is current", not an error.
+        if resp.status_code == 304:
+            return Fetched(not_modified=True)
         resp.raise_for_status()
     except Exception as e:
         report.errors.append(f"Fetch error for {url}: {e}")
-        return None
-    return resp.text
+        return Fetched(failed=True)
+    return Fetched(
+        html=resp.text,
+        etag=resp.headers.get("ETag", ""),
+        last_modified=resp.headers.get("Last-Modified", ""),
+    )
+
+
+def _record_body(page, fetched, now):
+    """Remember what the server said about the body we just read. Only ever called on
+    a 200 — a 304 must not advance `last_full_fetch`, or the forced refetch above
+    would never come due and the floor would be no floor at all."""
+    page.etag = fetched.etag
+    page.last_modified = fetched.last_modified
+    page.last_full_fetch = now
+    page.extractor_version = EXTRACTOR_VERSION
 
 
 def check_page(page):
@@ -62,27 +133,38 @@ def _extract_content(html: str) -> str:
 
 def check_pool_info_page(page):
     report = CheckReport()
-    html = _fetch(page.url, report)
-    if html is None:
-        return report
-
-    content = _extract_content(html)
-    new_hash = hashlib.sha256(content.encode()).hexdigest()
     now = timezone.now()
-
-    if not page.content_hash:
-        # First run — record baseline without creating a submission
-        page.content_hash = new_hash
-        page.last_checked = now
-        page.save()
-        report.notes.append(f"Initialized: {page.url}")
+    fetched = _fetch(page.url, report, _validators_for(page, now))
+    if fetched.failed:
         return report
 
     page.last_checked = now
 
-    if new_hash == page.content_hash:
+    if fetched.not_modified:
+        # The server's validator covers the whole body, which is a superset of the
+        # text we hash — so "byte-identical body" implies "identical extract", and a
+        # 304 can't be hiding a change. Nothing else on the row moves.
         page.save(update_fields=["last_checked"])
-        report.notes.append(f"No change: {page.url}")
+        report.notes.append(f"Not modified (304): {page.url}")
+        return report
+
+    _record_body(page, fetched, now)
+    content = _extract_content(fetched.html)
+    new_hash = hashlib.sha256(content.encode()).hexdigest()
+
+    if not page.content_hash:
+        # First run — record baseline without creating a submission
+        page.content_hash = new_hash
+        page.save()
+        report.notes.append(f"Initialized: {page.url}")
+        return report
+
+    if new_hash == page.content_hash:
+        page.save()
+        # Said differently from the 304 line above on purpose: this one means we
+        # read a real body and found it identical, which is what a page whose chrome
+        # moves — but whose content didn't — looks like.
+        report.notes.append(f"No change (full fetch): {page.url}")
         return report
 
     page.content_hash = new_hash
@@ -157,14 +239,23 @@ def _parse_alert_datetime(value):
 
 def check_heat_emergency_page(page):
     report = CheckReport()
-    html = _fetch(page.url, report)
-    if html is None:
+    now = timezone.now()
+    fetched = _fetch(page.url, report, _validators_for(page, now))
+    if fetched.failed:
         return report
 
-    page.last_checked = timezone.now()
-    page.save(update_fields=["last_checked"])
+    page.last_checked = now
 
-    soup = BeautifulSoup(html, "html.parser")
+    if fetched.not_modified:
+        # An unchanged listing page can't have gained a press release.
+        page.save(update_fields=["last_checked"])
+        report.notes.append(f"Not modified (304): {page.url}")
+        return report
+
+    _record_body(page, fetched, now)
+    page.save()
+
+    soup = BeautifulSoup(fetched.html, "html.parser")
     grid = soup.find("div", class_="press-grid")
     if not grid:
         report.errors.append(f"press-grid not found on {page.url} — page structure may have changed")

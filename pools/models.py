@@ -235,6 +235,25 @@ class MonitoredPage(models.Model):
     last_checked = models.DateTimeField(null=True, blank=True)
     last_changed = models.DateTimeField(null=True, blank=True)
 
+    # --- conditional requests ---
+    # What the server last told us its copy was, sent back as If-None-Match /
+    # If-Modified-Since so an unchanged page costs it a 304 with an empty body
+    # instead of 70KB of rendered HTML. See pools/services/page_monitor.py.
+    etag = models.CharField(max_length=256, blank=True, help_text="ETag from the last full response")
+    last_modified = models.CharField(
+        max_length=64, blank=True, help_text="Last-Modified header from the last full response, verbatim",
+    )
+    last_full_fetch = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When we last saw a real body. Only a 200 advances this — a 304 must not, "
+                  "or the every-23-hours forced refetch would never come due.",
+    )
+    extractor_version = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Which version of the parser produced content_hash. A mismatch forces a "
+                  "full fetch, since the page can be unchanged while what we read out of it isn't.",
+    )
+
     def save(self, *args, **kwargs):
         if self.pk:
             try:
@@ -243,6 +262,12 @@ class MonitoredPage(models.Model):
                     self.content_hash = ""
                     self.last_checked = None
                     self.last_changed = None
+                    # A validator describes one URL's content. Carrying it to a new
+                    # URL would ask the new server about the old page's version and
+                    # could take a 304 for an answer.
+                    self.etag = ""
+                    self.last_modified = ""
+                    self.last_full_fetch = None
             except MonitoredPage.DoesNotExist:
                 pass
         super().save(*args, **kwargs)

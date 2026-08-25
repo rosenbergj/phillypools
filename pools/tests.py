@@ -21,7 +21,8 @@ from pools.models import (
     UsageEvent, UsageRollupState, VisitorSalt,
 )
 from pools.services import datacenter, usage
-from pools.services.page_monitor import check_pool_info_page, start_monitoring
+from pools.services import page_monitor
+from pools.services.page_monitor import check_page, check_pool_info_page, start_monitoring
 from pools.services.season import (
     VIEW_HEIGHT, VIEW_WIDTH, build_season_facts, build_season_histogram,
     format_duration, season_length_days,
@@ -2009,8 +2010,17 @@ class MonitoredPageCheckTests(TestCase):
 
     URL = "https://example.com/pool-info"
 
-    def _response(self, body):
-        resp = type("R", (), {"text": f"<html><body>{body}</body></html>"})()
+    def _response(self, body, status_code=200, etag='"v1"', last_modified="Mon, 24 Aug 2026 05:08:12 GMT"):
+        headers = {}
+        if etag:
+            headers["ETag"] = etag
+        if last_modified:
+            headers["Last-Modified"] = last_modified
+        resp = type("R", (), {
+            "text": f"<html><body>{body}</body></html>",
+            "status_code": status_code,
+            "headers": headers,
+        })()
         resp.raise_for_status = lambda: None
         return resp
 
@@ -2054,6 +2064,173 @@ class MonitoredPageCheckTests(TestCase):
         mock_create.assert_called_once_with(self.URL)
 
 
+class ConditionalRequestTests(TestCase):
+    """Unchanged pages are fetched conditionally, so phila.gov answers 304 with an
+    empty body instead of re-rendering 70KB five times a day.
+
+    The whole scheme rests on trusting someone else's validator, so what's tested
+    here is mostly the bounds on that trust: how long a lying ETag could hide a
+    change, and what forces a real body regardless of what the server claims."""
+
+    URL = "https://example.com/pool-info"
+
+    def _response(self, body="Opens June 15", status_code=200, etag='"v1"'):
+        resp = type("R", (), {
+            "text": f"<html><body>{body}</body></html>",
+            "status_code": status_code,
+            "headers": {"ETag": etag, "Last-Modified": "Mon, 24 Aug 2026 05:08:12 GMT"} if etag else {},
+        })()
+        resp.raise_for_status = lambda: None
+        return resp
+
+    def _baseline(self, mock_get, body="Opens June 15"):
+        mock_get.return_value = self._response(body)
+        page, _, _ = start_monitoring(self.URL)
+        return MonitoredPage.objects.get(pk=page.pk)
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_the_next_check_sends_the_validators_we_were_given(self, mock_get):
+        page = self._baseline(mock_get)
+        self.assertEqual(page.etag, '"v1"')
+        mock_get.return_value = self._response(status_code=304)
+        check_pool_info_page(page)
+        sent = mock_get.call_args.kwargs["headers"]
+        self.assertEqual(sent["If-None-Match"], '"v1"')
+        self.assertEqual(sent["If-Modified-Since"], "Mon, 24 Aug 2026 05:08:12 GMT")
+
+    @patch("pools.services.page_monitor._create_submission")
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_304_changes_nothing_but_the_check_time(self, mock_get, mock_create):
+        page = self._baseline(mock_get)
+        before = MonitoredPage.objects.get(pk=page.pk)
+        mock_get.return_value = self._response(status_code=304)
+
+        report = check_pool_info_page(page)
+
+        after = MonitoredPage.objects.get(pk=page.pk)
+        self.assertEqual(after.content_hash, before.content_hash)
+        self.assertEqual(after.last_changed, before.last_changed)
+        self.assertGreater(after.last_checked, before.last_checked)
+        mock_create.assert_not_called()
+        self.assertTrue(any("304" in n for n in report.notes))
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_304_does_not_advance_the_forced_refetch_clock(self, mock_get):
+        """The invariant the floor depends on. If a 304 counted as seeing the body,
+        a server that answered 304 forever would push the deadline forward forever
+        and we'd never demand a real page again."""
+        page = self._baseline(mock_get)
+        first_body_at = page.last_full_fetch
+        mock_get.return_value = self._response(status_code=304)
+        for _ in range(3):
+            check_pool_info_page(page)
+        self.assertEqual(MonitoredPage.objects.get(pk=page.pk).last_full_fetch, first_body_at)
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_stale_body_forces_an_unconditional_fetch(self, mock_get):
+        page = self._baseline(mock_get)
+        MonitoredPage.objects.filter(pk=page.pk).update(
+            last_full_fetch=timezone.now() - timedelta(hours=23, minutes=1)
+        )
+        page.refresh_from_db()
+        mock_get.return_value = self._response(status_code=304)
+
+        check_pool_info_page(page)
+
+        sent = mock_get.call_args.kwargs["headers"]
+        self.assertNotIn("If-None-Match", sent)
+        self.assertNotIn("If-Modified-Since", sent)
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_just_under_the_floor_still_asks_conditionally(self, mock_get):
+        page = self._baseline(mock_get)
+        MonitoredPage.objects.filter(pk=page.pk).update(
+            last_full_fetch=timezone.now() - timedelta(hours=22, minutes=59)
+        )
+        page.refresh_from_db()
+        mock_get.return_value = self._response(status_code=304)
+
+        check_pool_info_page(page)
+
+        self.assertIn("If-None-Match", mock_get.call_args.kwargs["headers"])
+
+    @patch("pools.services.page_monitor._create_submission")
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_new_extractor_version_forces_a_reread(self, mock_get, mock_create):
+        """A parser fix has to reach pages that haven't changed — otherwise shipping
+        one against a baselined page would do nothing, silently."""
+        page = self._baseline(mock_get)
+        MonitoredPage.objects.filter(pk=page.pk).update(extractor_version=0)
+        page.refresh_from_db()
+        mock_get.return_value = self._response("Opens June 22")
+
+        report = check_pool_info_page(page)
+
+        self.assertNotIn("If-None-Match", mock_get.call_args.kwargs["headers"])
+        self.assertEqual(
+            MonitoredPage.objects.get(pk=page.pk).extractor_version,
+            page_monitor.EXTRACTOR_VERSION,
+        )
+        self.assertTrue(report.highlights)
+        mock_create.assert_called_once()
+
+    @patch("pools.services.page_monitor._create_submission")
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_real_change_after_quiet_304s_is_still_caught(self, mock_get, mock_create):
+        page = self._baseline(mock_get)
+        mock_get.return_value = self._response(status_code=304)
+        check_pool_info_page(page)
+        check_pool_info_page(page)
+
+        mock_get.return_value = self._response("Opens June 22", etag='"v2"')
+        report = check_pool_info_page(page)
+
+        self.assertTrue(report.highlights)
+        mock_create.assert_called_once_with(self.URL)
+        self.assertEqual(MonitoredPage.objects.get(pk=page.pk).etag, '"v2"')
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_a_full_fetch_that_is_identical_reads_differently_in_the_log(self, mock_get):
+        page = self._baseline(mock_get)
+        MonitoredPage.objects.filter(pk=page.pk).update(last_full_fetch=None)
+        page.refresh_from_db()
+        mock_get.return_value = self._response("Opens June 15")
+
+        report = check_pool_info_page(page)
+
+        self.assertTrue(any("full fetch" in n for n in report.notes))
+        self.assertFalse(any("304" in n for n in report.notes))
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_changing_the_url_drops_the_old_page_validators(self, mock_get):
+        """A validator describes one URL's content. Reused against a different URL it
+        could earn a 304 about a page we have never read."""
+        page = self._baseline(mock_get)
+        page.url = "https://example.com/somewhere-else"
+        page.save()
+        page.refresh_from_db()
+        self.assertEqual(page.etag, "")
+        self.assertEqual(page.last_modified, "")
+        self.assertIsNone(page.last_full_fetch)
+
+    @patch("pools.services.page_monitor.requests.get")
+    def test_heat_emergency_pages_are_conditional_too(self, mock_get):
+        # get_or_create: migration 0020 seeds the real DPH page, and the URL is unique.
+        page, _ = MonitoredPage.objects.get_or_create(
+            url="https://www.phila.gov/departments/department-of-public-health/",
+            defaults={"page_type": "heat_emergency"},
+        )
+        mock_get.return_value = self._response('<div class="press-grid"></div>')
+        check_page(page)
+        page.refresh_from_db()
+        self.assertEqual(page.etag, '"v1"')
+
+        mock_get.return_value = self._response(status_code=304)
+        report = check_page(page)
+        self.assertIn("If-None-Match", mock_get.call_args.kwargs["headers"])
+        self.assertTrue(any("304" in n for n in report.notes))
+
+
 class MonitorFromApplyPageTests(TestCase):
     """The multi-pool apply page can start monitoring the source URL."""
 
@@ -2075,7 +2252,11 @@ class MonitorFromApplyPageTests(TestCase):
 
     @patch("pools.services.page_monitor.requests.get")
     def test_checkbox_starts_monitoring_and_checks_immediately(self, mock_get):
-        resp = type("R", (), {"text": "<html><body>Opens June 15</body></html>"})()
+        resp = type("R", (), {
+            "text": "<html><body>Opens June 15</body></html>",
+            "status_code": 200,
+            "headers": {"ETag": '"v1"'},
+        })()
         resp.raise_for_status = lambda: None
         mock_get.return_value = resp
 
