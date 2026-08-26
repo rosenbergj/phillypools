@@ -694,7 +694,16 @@ def _process_submission_llm(submission_pk, url, has_image):
         submission.parsed_weekend_schedule = parsed_fields.get("weekend_schedule") or ""
         submission.parsed_notes = parsed_notes
         submission.llm_confidence = parsed_fields.get("confidence", "")
-        submission.save()
+        # Only the columns this thread owns. A bare save() would write back every
+        # field from the copy loaded before the LLM call, silently reverting any
+        # review the admin did while the parse was still running — status and
+        # moderator_notes most of all.
+        submission.save(update_fields=[
+            "raw_fetched_content", "llm_response", "parsed_pool",
+            "parsed_opening_date", "parsed_closing_date",
+            "parsed_weekday_schedule", "parsed_weekend_schedule",
+            "parsed_notes", "llm_confidence",
+        ])
     except Exception:
         logger.exception("Background LLM processing failed for submission %s", submission_pk)
     finally:

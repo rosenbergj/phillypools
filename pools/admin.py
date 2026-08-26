@@ -715,7 +715,11 @@ class SubmissionAdmin(admin.ModelAdmin):
             import json
             return format_html("<pre style='white-space:pre-wrap'>{}</pre>",
                                json.dumps(obj.llm_response, indent=2))
-        return "—"
+        # A bare dash here reads as "nothing to see", which is what made a failed
+        # parse indistinguishable from one that hadn't finished yet.
+        if obj.llm_parse_pending:
+            return format_html("<em>{}</em>", "Still parsing — this page reloads until it finishes.")
+        return format_html("<em>{}</em>", "— no LLM response recorded")
     llm_response_display.short_description = "Raw LLM response"
 
     def _current(self, obj, field):

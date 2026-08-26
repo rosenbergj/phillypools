@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 
@@ -390,11 +392,34 @@ class Submission(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     moderator_notes = models.TextField(blank=True)
 
+    # How long after a submission arrives we still assume its background parse
+    # might be running. Long enough to cover a slow vision call, short enough
+    # that a worker that died mid-parse stops claiming to be busy.
+    LLM_PARSE_GRACE = timedelta(minutes=2)
+
     class Meta:
         ordering = ["-submitted_at"]
 
     def __str__(self):
         return f"{self.url} ({self.submitted_at:%Y-%m-%d})"
+
+    @property
+    def llm_parse_pending(self):
+        """True while the background parse is probably still running.
+
+        Only the submit form creates a row before its parse finishes — the GIS
+        and page-monitor paths set llm_response at creation time. Those two show
+        up as pending for the first couple of minutes of their life, which is
+        harmless and self-correcting.
+
+        Time-bounded on purpose: the thread is a daemon in a gunicorn worker, so
+        a restart mid-parse leaves llm_response null forever. Past the grace
+        period this reports False and the admin says the parse may have failed
+        rather than waiting on something that is never coming.
+        """
+        if self.llm_response is not None or not self.submitted_at:
+            return False
+        return timezone.now() - self.submitted_at < self.LLM_PARSE_GRACE
 
 
 class SubmissionThrottle(models.Model):

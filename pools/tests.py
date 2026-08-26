@@ -2615,6 +2615,97 @@ class AllPoolsStreamingTests(TestCase):
                 llm_parser.parse_all_pools("page text", [])
 
 
+class LlmParsePendingTests(TestCase):
+    """A submission's parse runs in a background thread, so the row exists before
+    its results do. Null llm_response has to be readable as "not finished yet"
+    rather than "nothing here", which is what made a crashed parse and a running
+    one look identical in the admin."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser("admin3", "a3@example.com", "pw")
+        self.client.force_login(self.user)
+
+    def _age(self, sub, **kwargs):
+        """auto_now_add blocks setting submitted_at through save()."""
+        Submission.objects.filter(pk=sub.pk).update(
+            submitted_at=timezone.now() - timedelta(**kwargs)
+        )
+        sub.refresh_from_db()
+        return sub
+
+    def test_a_fresh_row_with_no_response_is_pending(self):
+        sub = Submission.objects.create(url="https://example.com/x")
+        self.assertTrue(sub.llm_parse_pending)
+
+    def test_a_finished_parse_is_not_pending(self):
+        sub = Submission.objects.create(url="https://example.com/x", llm_response='{"pool_id": 1}')
+        self.assertFalse(sub.llm_parse_pending)
+
+    def test_a_stored_error_is_not_pending(self):
+        sub = Submission.objects.create(
+            url="https://example.com/x", llm_response={"error": "AttributeError: nope"}
+        )
+        self.assertFalse(sub.llm_parse_pending)
+
+    def test_a_row_past_the_grace_period_stops_claiming_to_be_busy(self):
+        """A worker that dies mid-parse leaves llm_response null forever. Without
+        the time bound the admin would auto-refresh on it indefinitely."""
+        sub = self._age(Submission.objects.create(url="https://example.com/x"), minutes=5)
+        self.assertFalse(sub.llm_parse_pending)
+
+    def test_the_change_page_says_so_and_asks_the_browser_to_reload(self):
+        sub = Submission.objects.create(url="https://example.com/x")
+        resp = self.client.get(reverse("admin:pools_submission_change", args=[sub.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Still parsing")
+        self.assertContains(resp, 'http-equiv="refresh"')
+
+    def test_the_reload_stops_once_the_parse_lands(self):
+        sub = Submission.objects.create(url="https://example.com/x", llm_response='{"pool_id": 1}')
+        resp = self.client.get(reverse("admin:pools_submission_change", args=[sub.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'http-equiv="refresh"')
+        self.assertNotContains(resp, "Still parsing")
+
+    def test_a_stalled_row_reloads_no_further_and_says_nothing_was_recorded(self):
+        sub = self._age(Submission.objects.create(url="https://example.com/x"), minutes=5)
+        resp = self.client.get(reverse("admin:pools_submission_change", args=[sub.pk]))
+        self.assertNotContains(resp, 'http-equiv="refresh"')
+        self.assertContains(resp, "no LLM response recorded")
+
+
+class BackgroundParseClobberTests(TestCase):
+    """The parse thread loads its copy of the row before the LLM call and saves
+    after it. A bare save() writes every column from that stale copy, so a review
+    done while the parse was still running was silently reverted."""
+
+    def test_a_review_during_the_parse_survives(self):
+        from pools.views import _process_submission_llm
+
+        sub = Submission.objects.create(url="https://example.com/x")
+
+        def parse_and_meanwhile_admin_reviews(*args, **kwargs):
+            # Stands in for the admin saving the form while the LLM is still working.
+            Submission.objects.filter(pk=sub.pk).update(
+                status="approved", moderator_notes="checked by hand"
+            )
+            return {"pool_id": None, "confidence": "high", "_raw": '{"confidence": "high"}'}
+
+        with patch("pools.services.llm_parser.build_pool_list", return_value=[]), \
+             patch("pools.services.url_fetcher.fetch_url", return_value="page text"), \
+             patch("pools.services.llm_parser.parse_submission",
+                   side_effect=parse_and_meanwhile_admin_reviews), \
+             patch("django.db.connection.close"):
+            _process_submission_llm(sub.pk, "https://example.com/x", False)
+
+        sub.refresh_from_db()
+        self.assertEqual(sub.status, "approved")            # not reverted to "pending"
+        self.assertEqual(sub.moderator_notes, "checked by hand")
+        self.assertEqual(sub.llm_confidence, "high")        # and the parse still landed
+        self.assertEqual(sub.llm_response, '{"confidence": "high"}')
+
+
 class AdaLiftTests(TestCase):
     """Wheelchair-lift data comes from the city's ada_lift field, where only an
     explicit 'Y' is a positive claim."""
