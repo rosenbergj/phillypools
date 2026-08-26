@@ -31,6 +31,16 @@ def _prepare_image_for_claude(image_bytes: bytes) -> tuple[bytes, str]:
     return buf.getvalue(), "image/jpeg"
 
 
+def _response_text(message) -> str:
+    """Join the text blocks of a Claude response, skipping any thinking blocks.
+
+    content[0] is not reliably the answer: models that think return a
+    ThinkingBlock ahead of the text, and Sonnet 5 thinks adaptively whenever the
+    `thinking` parameter is omitted — so the same call can come back either way.
+    """
+    return "".join(block.text for block in message.content if block.type == "text")
+
+
 def _system_prompt() -> str:
     today = date.today()
     return (
@@ -138,7 +148,7 @@ def moderate_image(image_bytes: bytes, image_name: str) -> bool:
                 ],
             }],
         )
-        result = json.loads(message.content[0].text.strip())
+        result = json.loads(_response_text(message).strip())
         return bool(result.get("flagged"))
     except Exception:
         return False
@@ -250,7 +260,7 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = message.content[0].text
+    raw = _response_text(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):
@@ -310,7 +320,7 @@ def parse_heat_emergency(title: str, content: str, reference_date: date | None =
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = message.content[0].text
+    raw = _response_text(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):
@@ -332,7 +342,7 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = message.content[0].text
+    raw = _response_text(message)
     try:
         return _parse_list_response(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -363,7 +373,7 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
             ],
         }],
     )
-    raw = message.content[0].text
+    raw = _response_text(message)
     try:
         return _parse_list_response(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -384,7 +394,9 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
     )
     message = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=1024,
+        # Room for adaptive thinking plus the JSON; thinking tokens count toward
+        # max_tokens, and at 1024 the JSON could be truncated mid-object.
+        max_tokens=8192,
         system=_system_prompt(),
         messages=[{
             "role": "user",
@@ -401,7 +413,7 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
             ],
         }],
     )
-    raw = message.content[0].text
+    raw = _response_text(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):

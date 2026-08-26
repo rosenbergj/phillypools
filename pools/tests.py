@@ -1,3 +1,4 @@
+import io
 import struct
 import tempfile
 from datetime import date, datetime, time, timedelta, timezone as utc_tz
@@ -6,6 +7,7 @@ from unittest.mock import Mock, patch
 from xml.dom import minidom
 
 import requests
+from PIL import Image
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -20,7 +22,7 @@ from pools.models import (
     MonitoredPage, Pool, ScheduleChange, Submission, SubmissionThrottle, UsageDaily,
     UsageEvent, UsageRollupState, VisitorSalt,
 )
-from pools.services import datacenter, usage
+from pools.services import datacenter, llm_parser, usage
 from pools.services import page_monitor
 from pools.services.page_monitor import check_page, check_pool_info_page, start_monitoring
 from pools.services.season import (
@@ -2496,6 +2498,57 @@ class SubmissionRawContentAdminTests(TestCase):
             reverse("admin:pools_submission_change", args=[sub.pk])
         )
         self.assertEqual(resp.status_code, 200)
+
+
+class ThinkingBlockResponseTests(TestCase):
+    """Sonnet 5 thinks adaptively whenever the `thinking` parameter is omitted, so a
+    response may lead with a ThinkingBlock and the same call can come back either way.
+    Reading content[0].text assumed the first block was the answer, which silently
+    failed roughly half of all image submissions."""
+
+    def _block(self, kind, text):
+        return Mock(type=kind, text=text)
+
+    def test_text_is_read_past_a_leading_thinking_block(self):
+        message = Mock(content=[
+            self._block("thinking", ""),
+            self._block("text", '{"pool_id": 7}'),
+        ])
+        self.assertEqual(llm_parser._response_text(message), '{"pool_id": 7}')
+
+    def test_a_plain_text_response_still_works(self):
+        message = Mock(content=[self._block("text", '{"pool_id": 7}')])
+        self.assertEqual(llm_parser._response_text(message), '{"pool_id": 7}')
+
+    def test_multiple_text_blocks_are_joined(self):
+        message = Mock(content=[
+            self._block("thinking", "reasoning"),
+            self._block("text", '{"pool_id"'),
+            self._block("text", ": 7}"),
+        ])
+        self.assertEqual(llm_parser._response_text(message), '{"pool_id": 7}')
+
+    def test_image_submission_parses_when_the_model_thinks_first(self):
+        payload = (
+            '{"pool_id": 3, "opening_date": "2026-06-20", "closing_date": null, '
+            '"weekday_schedule": "1\u20134 Open Swim", "weekend_schedule": "1\u20134 Open Swim", '
+            '"notes": null, "confidence": "high", "stale_year_warning": false}'
+        )
+        message = Mock(content=[
+            self._block("thinking", ""),
+            self._block("text", payload),
+        ])
+        client = Mock()
+        client.messages.create.return_value = message
+
+        buf = io.BytesIO()
+        Image.new("RGB", (4, 4), "white").save(buf, format="PNG")
+        with patch.object(llm_parser.anthropic, "Anthropic", return_value=client):
+            result = llm_parser.parse_image_submission(buf.getvalue(), "schedule.png", [])
+
+        self.assertEqual(result["pool_id"], 3)
+        self.assertEqual(result["confidence"], "high")
+        self.assertEqual(result["_raw"], payload)
 
 
 class AdaLiftTests(TestCase):
