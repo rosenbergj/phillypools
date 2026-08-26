@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 # Formats Claude's vision API accepts directly.
 _CLAUDE_SUPPORTED = {"JPEG": "image/jpeg", "PNG": "image/png", "GIF": "image/gif", "WEBP": "image/webp"}
 
+# How much source text parse_all_pools works from. Larger than the single-pool
+# paths use, because it extracts every pool on a page rather than one.
+#
+# Callers must ask fetch_url for this much: its own default is smaller, and it
+# truncates before this function ever sees the text, so a caller that leaves the
+# default in place silently gets the smaller limit and drops pools off the end of
+# a long page with no error. Exported so the call site can name it rather than
+# repeat the number.
+ALL_POOLS_MAX_CHARS = 12000
+
 
 def _prepare_image_for_claude(image_bytes: bytes) -> tuple[bytes, str]:
     """Return (bytes, media_type) suitable for the Claude vision API.
@@ -346,7 +356,7 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     prompt = _ALL_POOLS_PROMPT.format(
         pool_list=_format_pool_list(pool_list),
-        content=text[:12000],
+        content=text[:ALL_POOLS_MAX_CHARS],
     )
     # Haiku, deliberately — unlike parse_all_pools_image below, which is on sonnet.
     # This path reads text that is already text, against a schema with no schedule

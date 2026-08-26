@@ -2706,6 +2706,49 @@ class BackgroundParseClobberTests(TestCase):
         self.assertEqual(sub.llm_response, '{"confidence": "high"}')
 
 
+class AllPoolsFetchCapTests(TestCase):
+    """parse_all_pools works from more source text than the single-pool paths, but
+    fetch_url truncates first and its default is smaller. When the two disagreed,
+    the smaller one won silently — pools past the cut simply never reached the
+    model, with no error and nothing in the admin to show it had happened."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser("admin4", "a4@example.com", "pw")
+        self.client.force_login(self.user)
+        self.submission = Submission.objects.create(url="https://example.com/many-pools")
+
+    def test_the_reparse_page_asks_the_fetcher_for_the_full_cap(self):
+        from pools.services.llm_parser import ALL_POOLS_MAX_CHARS
+
+        with patch("pools.services.llm_parser.build_pool_list", return_value=[]), \
+             patch("pools.services.url_fetcher.fetch_url", return_value="page text") as fetch, \
+             patch("pools.services.llm_parser.parse_all_pools", return_value=[]):
+            self.client.get(
+                reverse("admin:pools_submission_reparse", args=[self.submission.pk])
+            )
+
+        fetch.assert_called_once()
+        self.assertEqual(fetch.call_args.kwargs.get("max_chars"), ALL_POOLS_MAX_CHARS)
+
+    def test_the_fetcher_can_actually_return_that_much(self):
+        """The cap is only real if fetch_url honors it — its default is lower, so
+        asking for more has to widen the limit rather than just restate it."""
+        from pools.services.llm_parser import ALL_POOLS_MAX_CHARS
+        from pools.services import url_fetcher
+
+        body = "x" * (ALL_POOLS_MAX_CHARS + 5000)
+        resp = Mock(status_code=200, text=body, headers={"content-type": "text/plain"})
+        resp.raise_for_status = Mock()
+        with patch.object(url_fetcher.requests, "get", return_value=resp):
+            default = url_fetcher.fetch_url("https://example.com/x")
+            widened = url_fetcher.fetch_url("https://example.com/x",
+                                            max_chars=ALL_POOLS_MAX_CHARS)
+
+        self.assertLess(len(default), ALL_POOLS_MAX_CHARS)   # the old silent ceiling
+        self.assertEqual(len(widened), ALL_POOLS_MAX_CHARS)
+
+
 class AdaLiftTests(TestCase):
     """Wheelchair-lift data comes from the city's ada_lift field, where only an
     explicit 'Y' is a positive claim."""
