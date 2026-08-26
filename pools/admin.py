@@ -497,7 +497,7 @@ class SubmissionAdmin(admin.ModelAdmin):
                 parsed_fields = parse_image_submission(image_bytes, submission.uploaded_image.name, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception as e:
-                llm_response = {"error": str(e)}
+                llm_response = {"error": f"{type(e).__name__}: {e}"}
         elif submission.url:
             try:
                 raw_content = fetch_url(submission.url)
@@ -507,7 +507,7 @@ class SubmissionAdmin(admin.ModelAdmin):
                 parsed_fields = parse_submission(raw_content, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception as e:
-                llm_response = {"error": str(e)}
+                llm_response = {"error": f"{type(e).__name__}: {e}"}
         else:
             self.message_user(request, "This submission has no URL or image to parse.", level=messages.WARNING)
             return

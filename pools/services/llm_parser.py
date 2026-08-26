@@ -41,6 +41,18 @@ def _response_text(message) -> str:
     return "".join(block.text for block in message.content if block.type == "text")
 
 
+def _no_text_note(message) -> str:
+    """Describe a response that carried no text, for storing in place of "".
+
+    Most often this means thinking consumed the whole max_tokens budget. Storing
+    an empty string leaves the admin rendering its empty-value dash, which looks
+    exactly like "the parse never ran" — the reviewer has no way to tell the two
+    apart.
+    """
+    blocks = ", ".join(sorted({block.type for block in message.content})) or "none"
+    return f"(no text in response — stop_reason={message.stop_reason}, blocks=[{blocks}])"
+
+
 def _system_prompt() -> str:
     today = date.today()
     return (
@@ -255,12 +267,12 @@ def parse_submission(text: str, pool_list: list[dict]) -> dict:
         schedule_instructions=_SCHEDULE_INSTRUCTIONS,
     )
     message = client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=1024,
+        model="claude-sonnet-5",
+        max_tokens=8192,
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = _response_text(message)
+    raw = _response_text(message) or _no_text_note(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):
@@ -320,7 +332,7 @@ def parse_heat_emergency(title: str, content: str, reference_date: date | None =
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = _response_text(message)
+    raw = _response_text(message) or _no_text_note(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):
@@ -336,13 +348,14 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
         pool_list=_format_pool_list(pool_list),
         content=text[:12000],
     )
-    message = client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=8192,
+    with client.messages.stream(
+        model="claude-sonnet-5",
+        max_tokens=16000,
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
-    )
-    raw = _response_text(message)
+    ) as stream:
+        message = stream.get_final_message()
+    raw = _response_text(message) or _no_text_note(message)
     try:
         return _parse_list_response(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -358,9 +371,9 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _ALL_POOLS_IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
-    message = client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=8192,
+    with client.messages.stream(
+        model="claude-sonnet-5",
+        max_tokens=16000,
         system=_system_prompt(),
         messages=[{
             "role": "user",
@@ -372,8 +385,9 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
                 {"type": "text", "text": prompt},
             ],
         }],
-    )
-    raw = _response_text(message)
+    ) as stream:
+        message = stream.get_final_message()
+    raw = _response_text(message) or _no_text_note(message)
     try:
         return _parse_list_response(raw)
     except (json.JSONDecodeError, ValueError) as e:
@@ -413,7 +427,7 @@ def parse_image_submission(image_bytes: bytes, image_name: str, pool_list: list[
             ],
         }],
     )
-    raw = _response_text(message)
+    raw = _response_text(message) or _no_text_note(message)
     try:
         result = _parse_response(raw)
     except (json.JSONDecodeError, ValueError):

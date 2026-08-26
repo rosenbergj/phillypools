@@ -662,7 +662,7 @@ def _process_submission_llm(submission_pk, url, has_image):
                 parsed_fields = parse_submission(raw_content, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception as e:
-                llm_response = {"error": str(e)}
+                llm_response = {"error": f"{type(e).__name__}: {e}"}
 
         elif has_image and submission.uploaded_image:
             try:
@@ -672,7 +672,7 @@ def _process_submission_llm(submission_pk, url, has_image):
                 parsed_fields = parse_image_submission(image_bytes, image_name, pool_list)
                 llm_response = parsed_fields.pop("_raw", None)
             except Exception as e:
-                llm_response = {"error": str(e)}
+                llm_response = {"error": f"{type(e).__name__}: {e}"}
 
         parsed_pool = submission.parsed_pool
         if not parsed_pool and parsed_fields.get("pool_id"):

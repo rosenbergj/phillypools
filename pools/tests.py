@@ -1,4 +1,5 @@
 import io
+import json
 import struct
 import tempfile
 from datetime import date, datetime, time, timedelta, timezone as utc_tz
@@ -2549,6 +2550,69 @@ class ThinkingBlockResponseTests(TestCase):
         self.assertEqual(result["pool_id"], 3)
         self.assertEqual(result["confidence"], "high")
         self.assertEqual(result["_raw"], payload)
+
+    def test_a_response_with_no_text_records_why_instead_of_nothing(self):
+        """Thinking can consume the whole max_tokens budget, leaving no text block.
+        Storing "" for that renders as the admin's empty-value dash, which is
+        indistinguishable from a parse that never ran."""
+        message = Mock(
+            content=[self._block("thinking", "")],
+            stop_reason="max_tokens",
+        )
+        client = Mock()
+        client.messages.create.return_value = message
+
+        with patch.object(llm_parser.anthropic, "Anthropic", return_value=client):
+            result = llm_parser.parse_submission("some page text", [])
+
+        self.assertIn("no text in response", result["_raw"])
+        self.assertIn("max_tokens", result["_raw"])
+        self.assertIn("thinking", result["_raw"])
+        self.assertTrue(result["_raw"])  # never falsy, so the admin renders it
+
+
+class AllPoolsStreamingTests(TestCase):
+    """parse_all_pools/_image ask for up to 16000 tokens, past the point where a
+    non-streaming request risks the SDK's HTTP timeout. They must stream, and a
+    truncated array has to keep raising rather than silently returning fewer pools."""
+
+    def _stream_client(self, message):
+        client = Mock()
+        stream_cm = Mock()
+        stream_cm.__enter__ = Mock(return_value=Mock(get_final_message=Mock(return_value=message)))
+        stream_cm.__exit__ = Mock(return_value=False)
+        client.messages.stream.return_value = stream_cm
+        return client
+
+    def test_all_pools_streams_and_parses_past_a_thinking_block(self):
+        payload = '[{"pool_id": 3, "pool_name": "Christy", "opening_date": "2026-06-20"}]'
+        message = Mock(
+            content=[Mock(type="thinking", text=""), Mock(type="text", text=payload)],
+            stop_reason="end_turn",
+        )
+        client = self._stream_client(message)
+
+        with patch.object(llm_parser.anthropic, "Anthropic", return_value=client):
+            results = llm_parser.parse_all_pools("page text", [])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["pool_id"], 3)
+        client.messages.create.assert_not_called()
+        kwargs = client.messages.stream.call_args.kwargs
+        self.assertEqual(kwargs["model"], "claude-sonnet-5")
+        self.assertEqual(kwargs["max_tokens"], 16000)
+
+    def test_truncated_array_still_raises(self):
+        truncated = '[{"pool_id": 3, "pool_name": "Chris'
+        message = Mock(
+            content=[Mock(type="text", text=truncated)],
+            stop_reason="max_tokens",
+        )
+        client = self._stream_client(message)
+
+        with patch.object(llm_parser.anthropic, "Anthropic", return_value=client):
+            with self.assertRaises(json.JSONDecodeError):
+                llm_parser.parse_all_pools("page text", [])
 
 
 class AdaLiftTests(TestCase):
