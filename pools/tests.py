@@ -2599,7 +2599,7 @@ class AllPoolsStreamingTests(TestCase):
         self.assertEqual(results[0]["pool_id"], 3)
         client.messages.create.assert_not_called()
         kwargs = client.messages.stream.call_args.kwargs
-        self.assertEqual(kwargs["model"], "claude-sonnet-5")
+        self.assertEqual(kwargs["model"], "claude-haiku-4-5")
         self.assertEqual(kwargs["max_tokens"], 16000)
 
     def test_truncated_array_still_raises(self):

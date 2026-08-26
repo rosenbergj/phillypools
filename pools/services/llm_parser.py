@@ -348,8 +348,16 @@ def parse_all_pools(text: str, pool_list: list[dict]) -> list[dict]:
         pool_list=_format_pool_list(pool_list),
         content=text[:12000],
     )
+    # Haiku, deliberately — unlike parse_all_pools_image below, which is on sonnet.
+    # This path reads text that is already text, against a schema with no schedule
+    # rules in it, so there is nothing here for a stronger model to be better at:
+    # on the phila.gov closings page (the real use case) haiku and sonnet returned
+    # the same 62 pools with identical names and dates, haiku in 17.5s to sonnet's
+    # 32.2s. The image path has to OCR first, which is where the gap does show.
+    # Latency is worth paying for there and not here, since this call blocks an
+    # admin request. Re-measure before unifying them.
     with client.messages.stream(
-        model="claude-sonnet-5",
+        model="claude-haiku-4-5",
         max_tokens=16000,
         system=_system_prompt(),
         messages=[{"role": "user", "content": prompt}],
@@ -371,6 +379,7 @@ def parse_all_pools_image(image_bytes: bytes, image_name: str, pool_list: list[d
     image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     prompt = _ALL_POOLS_IMAGE_PROMPT.format(pool_list=_format_pool_list(pool_list))
+    # Sonnet for the OCR; parse_all_pools above is on haiku on purpose — see there.
     with client.messages.stream(
         model="claude-sonnet-5",
         max_tokens=16000,
