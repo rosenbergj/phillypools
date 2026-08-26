@@ -153,6 +153,61 @@ it in `DATE_FIELD_MAP` (`pools/services/gis.py`) and detection, submissions, and
 all start handling it with no other change. The check watches for a close/end-date field
 appearing and reports it, so nobody has to notice by hand.
 
+## How submissions are parsed
+
+Six calls to Claude live in `pools/services/llm_parser.py`. They do not all use the
+same model, on purpose:
+
+| Call | Model | Why |
+| --- | --- | --- |
+| `parse_submission` (URL/text) | Sonnet 5 | Carries the full `_SCHEDULE_INSTRUCTIONS` — time-block merging, en-dashes, per-day annotation. Haiku couldn't hold all of it. |
+| `parse_image_submission` | Sonnet 5 | Same instructions, plus OCR. |
+| `parse_all_pools_image` | Sonnet 5 | Has to OCR before it can extract. |
+| `parse_all_pools` (text) | Haiku 4.5 | Measured identical on the real source — same 62 pools, same dates — at half the latency, and this one blocks an admin request. |
+| `parse_heat_emergency` | Haiku 4.5 | Date extraction from a press release. |
+| `moderate_image` | Haiku 4.5 | A 64-token yes/no. |
+
+**Never read `message.content[0].text`.** Sonnet 5 thinks adaptively whenever the
+`thinking` parameter is omitted, so the response may lead with a `ThinkingBlock` and
+`content[0]` is not reliably the answer. Because that decision is made per request, the
+same call succeeds and fails at random — roughly half of image submissions were failing
+with `'ThinkingBlock' object has no attribute 'text'` before anyone noticed a pattern.
+Use `_response_text()`, which joins the text blocks and skips the rest.
+
+Thinking tokens also count against `max_tokens`, which is why the sonnet calls ask for
+8192–16000 rather than the 1024 that was enough before. Two things go wrong when that
+budget is too small: the JSON is truncated mid-object, or the response carries no text at
+all. `_no_text_note()` records `stop_reason` and the block types in that second case, so
+an exhausted budget doesn't reach the admin as a blank field.
+
+### Truncation is silent, so the caps have to agree
+
+`fetch_url` truncates before any parser sees the text, and its default (8000) is smaller
+than what `parse_all_pools` works from. The call site passes `ALL_POOLS_MAX_CHARS`
+explicitly for that reason — leave it off and the fetcher's default quietly wins, dropping
+pools off the end of a long page with no error and nothing in the admin to show it
+happened.
+
+### Form submissions are parsed in the background
+
+The submit view saves the row and returns, then a daemon thread runs the LLM. So a
+submission opened straight away exists but has no results yet. Two consequences:
+
+- **The background save names its columns** (`update_fields=[...]`). A bare `save()`
+  writes back every field from the copy loaded before the LLM call, which silently
+  reverted `status`, `moderator_notes` and `reviewed_at` if the submission was reviewed
+  while its parse was still running.
+- **`Submission.llm_parse_pending`** is null `llm_response` within a two-minute grace
+  period, and the admin change form shows a banner and a `<meta http-equiv="refresh">`
+  while it holds. Emitting the refresh only in that state makes it self-terminating. The
+  grace period matters because the thread is a daemon in a gunicorn worker: a restart
+  mid-parse leaves `llm_response` null forever, and without the bound that page would
+  reload on it indefinitely.
+
+`parse_all_pools` and `parse_all_pools_image` are the exception — they run inline in the
+admin's "Re-parse for all pools" request, which is why gunicorn runs with `--timeout 120`
+(the real page takes ~18s, and would have exceeded the 30s default at sonnet's ~32s).
+
 ## How long a pool was open
 
 "Days open" means **opening day to closing day, counting both endpoints** —
