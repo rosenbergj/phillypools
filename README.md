@@ -228,3 +228,41 @@ bullets, while still counting toward "N pools opened" if it has an opening date.
 The summary bullets and the histogram are generated at shutdown by `render_static_site`,
 not by a live view; see `offseason-runbook.md` step 3, including how to preview the build
 from another machine while tweaking it.
+
+## The map basemap and its API key
+
+The map tiles come from CARTO's `light_all` raster style, requested straight from
+their CDN by the browser (`pools/templates/pools/index.html`). The pale style is
+deliberate: the pool markers are green / orange / gray / dark red, and they need a
+quiet background to read against. Switching to a busier style like `voyager` is a
+one-word change, and would cost marker contrast.
+
+Since August 2026 CARTO stamps "API KEY REQUIRED" across unauthenticated tiles, so
+the URL carries `?key=`, filled from `CARTO_API_KEY` (`phillypools/settings.py`).
+**That key is publishable, not secret** — it rides in the tile URL and so reaches
+every visitor's browser. It lives in the environment to stay out of git and to let
+local and prod differ, not to keep it confidential. The template appends it only
+when set, so an unset key leaves the tile URL exactly as it was rather than sending
+an empty parameter.
+
+Free tier is 5,000,000 tile requests a month. For scale, August 2026 ran about
+1,000 map loads a month, so the ceiling is not a live concern.
+
+### Attribution is a license condition, not a courtesy
+
+CARTO's basemap terms require attribution that is prominent to anyone viewing the
+map, and explicitly forbid obscuring it. Two places satisfy it, and both must
+survive future edits:
+
+1. **The live map** — the `attribution` option on the `L.tileLayer` call, which
+   Leaflet renders in the map's bottom-right corner. Don't pass
+   `attributionControl: false`, and don't add CSS that hides
+   `.leaflet-control-attribution`.
+2. **`static/og-preview.png`** — the terms cover static images of the map too, and
+   this one is the OpenGraph image on every page. The credit currently in it was
+   composited on, because the capture recipe crops Leaflet's own control out of
+   frame. If you regenerate it, frame the real control into the shot or draw the
+   credit back on; never ship it without one.
+
+The footer in `pools/templates/pools/base.html` also credits CARTO and
+OpenStreetMap, which is more than the terms ask for.

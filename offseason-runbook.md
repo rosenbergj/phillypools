@@ -238,6 +238,7 @@ From the Railway dashboard, copy every env var from both the **web service** and
 - `ANTHROPIC_API_KEY`
 - `CLOUDFLARE_TURNSTILE_SITE_KEY`
 - `CLOUDFLARE_TURNSTILE_SECRET_KEY`
+- `CARTO_API_KEY` (web service — without it the map tiles come back stamped "API KEY REQUIRED")
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
@@ -302,6 +303,15 @@ as "Page with redirect" or "Soft 404," something is shadowing the static pages �
 Do these roughly in order. The database restore comes *before* the first web deploy,
 and the DNS cutover is last — the app can run on a Railway URL for testing before you
 point the real domain at it.
+
+> **Read this before step 4.** Railway deprecated Config as Code (`railway.toml`) in
+> favor of Infrastructure as Code (`.railway/railway.ts`), and its CLI says existing
+> files keep working only **until 2026-12-01** — which falls *between* this teardown and
+> this rebuild. Steps 4 and 5 below both assume Railway reads `railway.toml` for the
+> build and start commands, including the `RAILWAY_SERVICE_NAME` branch that makes one
+> repo serve as both web and cron. Expect to convert it first: `railway config migrate`,
+> or https://docs.railway.com/infrastructure-as-code. Noted 2026-08-26; if a later
+> session already migrated, delete this note.
 
 ### 1. Create a new Railway project
 
