@@ -283,6 +283,45 @@ DNS for `phillypools.app` is at **Namecheap**, not Cloudflare. Update both the
 `phillypools.app` and `www.phillypools.app` records to point at the Cloudflare Pages
 URL instead of the Railway-provided domain. Verify the offseason site loads on both.
 
+### 10.5. Migrate `railway.toml` to Infrastructure as Code
+
+> **This step is for the 2026 shutdown only.** It exists because Railway's Config as
+> Code deprecation lands mid-offseason. Once the 2027 rebuild has run successfully on
+> `.railway/railway.ts`, **delete this step** — it has no reason to run again.
+
+Railway stops reading `railway.json` / `railway.toml` on **2026-12-01**, a hard cutoff
+that falls between this shutdown and next season's rebuild. Part 2 steps 4 and 5 both
+assume Railway picks up `railway.toml` automatically, so the rebuild would hit this cold
+if it isn't handled now.
+
+**Do it here, in this exact gap, and not earlier or later.** Step 10 already moved
+traffic to Cloudflare Pages, so anything breaking in Railway now costs nothing. Step 11
+deletes the project, after which there is no longer a configuration to migrate *from*.
+This is the only point in the year where both are true — and you have the whole setup
+paged in from steps 8-11, rather than meeting it cold next June.
+
+Run `railway config migrate`, review the generated `.railway/railway.ts`, and commit it.
+What it must preserve:
+
+- the build command (`collectstatic`)
+- the healthcheck path and timeout
+- **the `RAILWAY_SERVICE_NAME` branch in the start command** — this is the load-bearing
+  part, and the reason one repo can serve as both the web service and the cron service.
+  If the migration flattens that into a single start command, the rebuild's step 5 stops
+  working and you won't find out until June.
+
+**Then answer the question this step exists to de-risk:** migrating proves IaC can
+*describe* a project that already exists. The rebuild needs it to *create* one from
+nothing, which is not the same thing and is not something we've confirmed. Point the
+file at a throwaway Railway project and see whether it stands one up. If it can't, the
+rebuild stays manual and Part 2 needs the dashboard steps kept — better to learn that
+now, while a working project is still around to compare against, than next June.
+
+Note also that it's unconfirmed whether Railway applies `.railway/railway.ts`
+automatically on deploy or only via the CLI. That uncertainty is a second reason this
+step sits *after* the DNS cutover: if committing the file does apply it immediately,
+nothing user-facing is behind it any more.
+
 ### 11. Delete the Railway project
 
 Once DNS has propagated and you've confirmed the offseason site is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
@@ -304,14 +343,18 @@ Do these roughly in order. The database restore comes *before* the first web dep
 and the DNS cutover is last — the app can run on a Railway URL for testing before you
 point the real domain at it.
 
-> **Read this before step 4.** Railway deprecated Config as Code (`railway.toml`) in
-> favor of Infrastructure as Code (`.railway/railway.ts`), and its CLI says existing
-> files keep working only **until 2026-12-01** — which falls *between* this teardown and
-> this rebuild. Steps 4 and 5 below both assume Railway reads `railway.toml` for the
-> build and start commands, including the `RAILWAY_SERVICE_NAME` branch that makes one
-> repo serve as both web and cron. Expect to convert it first: `railway config migrate`,
-> or https://docs.railway.com/infrastructure-as-code. Noted 2026-08-26; if a later
-> session already migrated, delete this note.
+> **Read this before step 4.** Steps 4 and 5 below assume Railway reads `railway.toml`
+> for the build and start commands, including the `RAILWAY_SERVICE_NAME` branch that
+> makes one repo serve as both web and cron. That stopped being true on **2026-12-01**,
+> when Railway's Config as Code deprecation took effect — the replacement is
+> `.railway/railway.ts` (https://docs.railway.com/infrastructure-as-code).
+>
+> **Part 1 step 10.5 should have converted this already**, during the shutdown. Confirm
+> `.railway/railway.ts` is in the repo before starting step 4, and check what step 10.5
+> recorded about whether IaC can stand up a project from scratch — if it can't, steps 4
+> and 5 stay manual as written. If that conversion never happened, do it now, before
+> creating anything. Once the rebuild has succeeded on IaC, rewrite steps 4 and 5 for
+> the new format and delete both this note and step 10.5.
 
 ### 1. Create a new Railway project
 
