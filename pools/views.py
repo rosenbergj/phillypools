@@ -461,6 +461,8 @@ def index(request):
         if p.latitude and p.longitude
     ]
 
+    from django.conf import settings as django_settings
+
     return render(request, "pools/index.html", {
         "pools": pools,
         "pools_geojson": pools_geojson,
@@ -475,6 +477,7 @@ def index(request):
         "neighborhoods": get_neighborhoods(),
         "show_distance": ctx["show_distance"],
         "center_label": ctx["center_label"],
+        "carto_api_key": django_settings.CARTO_API_KEY,
     })
 
 

@@ -32,6 +32,11 @@ os.environ.setdefault('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY)
 CLOUDFLARE_TURNSTILE_SITE_KEY = env('CLOUDFLARE_TURNSTILE_SITE_KEY', default='')
 CLOUDFLARE_TURNSTILE_SECRET_KEY = env('CLOUDFLARE_TURNSTILE_SECRET_KEY', default='')
 
+# Basemap tiles. This one reaches the browser in the tile URL, so it's
+# publishable rather than secret; it lives in the env only so it stays out of
+# git and can differ between local and prod.
+CARTO_API_KEY = env('CARTO_API_KEY', default='')
+
 # AWS SES credentials for the pending-items digest email (SES_* names so they
 # can't be confused with the R2 credentials mapped onto AWS_* settings below).
 SES_ACCESS_KEY_ID = env('SES_ACCESS_KEY_ID', default='')
