@@ -231,6 +231,32 @@ def _pool_map_status(pool, today):
     return "no_date"
 
 
+def _default_status_filter() -> str:
+    """The Status filter to show when nobody's touched it.
+
+    Early in the season most pools don't have a closing_date yet, so "All" is
+    the useful view. The city announces closing dates for the whole system at
+    once, usually in August; once that's landed for a majority of active pools,
+    most people checking the alphabetical "All" list have already settled into
+    a summer routine, so the default flips to "Open" to skip past the pools
+    that are done for the year.
+    """
+    active = Pool.objects.filter(is_active=True)
+    total = active.count()
+    if not total:
+        return "all"
+    with_closing_date = active.exclude(closing_date__isnull=True).count()
+    return "open" if with_closing_date > total / 2 else "all"
+
+
+def _resolve_status_filter(request) -> tuple[str, bool]:
+    """(status filter to apply, whether it's the un-requested season default)."""
+    raw = request.GET.get("status")
+    if raw is not None:
+        return raw, False
+    return _default_status_filter(), True
+
+
 def _annotate_active_schedule_changes(pools, today):
     from django.db.models import Q
 
@@ -428,7 +454,7 @@ def _thanks_url(pool_id: str) -> str:
 
 def index(request):
     zip_query = request.GET.get("zip", "").strip()
-    status_filter = request.GET.get("status", "")
+    status_filter, status_is_default = _resolve_status_filter(request)
     ada_lift_only = request.GET.get("ada_lift") == "1"
     neighborhood_filter = request.GET.get("neighborhood", "")
 
@@ -472,6 +498,7 @@ def index(request):
         "philly_boundary": _PHILLY_BOUNDARY,
         "zip_error": ctx["zip_error"],
         "status_filter": status_filter,
+        "status_is_default": status_is_default,
         "ada_lift_only": ada_lift_only,
         "neighborhood_filter": neighborhood_filter,
         "neighborhoods": get_neighborhoods(),
@@ -483,7 +510,7 @@ def index(request):
 
 def pools_json(request):
     zip_query = request.GET.get("zip", "").strip()
-    status_filter = request.GET.get("status", "")
+    status_filter, status_is_default = _resolve_status_filter(request)
     ada_lift_only = request.GET.get("ada_lift") == "1"
     neighborhood_filter = request.GET.get("neighborhood", "")
 
@@ -530,6 +557,7 @@ def pools_json(request):
         "neighborhood_filter": neighborhood_filter,
         "zip_query": zip_query,
         "status_filter": status_filter,
+        "status_is_default": status_is_default,
         "ada_lift_only": ada_lift_only,
     })
 

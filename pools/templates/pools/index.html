@@ -49,7 +49,7 @@
     <div class="col-sm-4 col-md-2">
       <label class="form-label small mb-1">Status</label>
       <select id="status-select" name="status" class="form-select form-select-sm">
-        <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+        <option value="all" {% if status_filter == "all" or not status_filter %}selected{% endif %}>All</option>
         <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open</option>
         <option value="opening_soon" {% if status_filter == "opening_soon" %}selected{% endif %}>Open or opening soon</option>
         <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active this summer</option>
@@ -71,7 +71,7 @@
     </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      <a href="/" class="btn btn-outline-secondary btn-sm ms-1{% if not zip_query and not status_filter and not neighborhood_filter and not ada_lift_only %} d-none{% endif %}" id="clear-btn">Clear</a>
+      <a href="/" class="btn btn-outline-secondary btn-sm ms-1{% if not zip_query and status_is_default and not neighborhood_filter and not ada_lift_only %} d-none{% endif %}" id="clear-btn">Clear</a>
     </div>
   </form>
 
@@ -135,6 +135,7 @@
 {{ zip_center_json|json_script:"zip-center" }}
 {{ boundary_geometry|json_script:"boundary-geometry" }}
 {{ philly_boundary|json_script:"philly-boundary" }}
+{{ status_filter|json_script:"initial-status-filter" }}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -142,6 +143,10 @@
 <script>
   const isAdmin = {{ request.user.is_staff|yesno:"true,false" }};
   const poolsData = JSON.parse(document.getElementById('pools-data').textContent);
+  // The Status select's server-computed default (see _default_status_filter in
+  // views.py) — used to restore it on a bare-URL popstate, since "" is no longer
+  // a value any option holds.
+  const initialStatusFilter = JSON.parse(document.getElementById('initial-status-filter').textContent);
   const zipCenter = JSON.parse(document.getElementById('zip-center').textContent);
   const boundaryGeometry = JSON.parse(document.getElementById('boundary-geometry').textContent);
   const phillyBoundary = JSON.parse(document.getElementById('philly-boundary').textContent);
@@ -439,7 +444,7 @@
       ? `<div class="alert alert-warning py-2 small mb-3">${escHtml(data.zip_error)}</div>`
       : '';
     document.getElementById('clear-btn').classList.toggle(
-      'd-none', !(data.zip_query || data.status_filter || data.neighborhood_filter || data.ada_lift_only)
+      'd-none', !(data.zip_query || !data.status_is_default || data.neighborhood_filter || data.ada_lift_only)
     );
 
     const col = document.querySelector('.list-col');
@@ -503,7 +508,7 @@
     const params = new URLSearchParams(location.search);
     document.getElementById('zip-input').value = params.get('zip') || '';
     document.getElementById('neighborhood-select').value = params.get('neighborhood') || '';
-    document.getElementById('status-select').value = params.get('status') || '';
+    document.getElementById('status-select').value = params.get('status') || initialStatusFilter;
     document.getElementById('ada-lift-check').checked = params.get('ada_lift') === '1';
     fetchAndRender();
   });

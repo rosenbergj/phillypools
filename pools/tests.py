@@ -2842,10 +2842,10 @@ class AdaLiftFilterTests(TestCase):
         return {p["name"] for p in self.client.get(reverse("pools_json"), params).json()["pools"]}
 
     def test_unchecked_shows_everything(self):
-        self.assertEqual(len(self._names()), 3)
+        self.assertEqual(len(self._names(status="all")), 3)
 
     def test_checked_keeps_only_lift_pools(self):
-        self.assertEqual(self._names(ada_lift="1"), {"Open Lift Pool", "Shut Lift Pool"})
+        self.assertEqual(self._names(status="all", ada_lift="1"), {"Open Lift Pool", "Shut Lift Pool"})
 
     def test_composes_with_status_rather_than_replacing_it(self):
         """The whole reason for a checkbox over a dropdown entry."""
@@ -2853,8 +2853,8 @@ class AdaLiftFilterTests(TestCase):
         self.assertEqual(self._names(status="open"), {"Open Lift Pool", "Open Plain Pool"})
 
     def test_only_the_literal_1_enables_it(self):
-        self.assertEqual(len(self._names(ada_lift="yes")), 3)
-        self.assertEqual(len(self._names(ada_lift="0")), 3)
+        self.assertEqual(len(self._names(status="all", ada_lift="yes")), 3)
+        self.assertEqual(len(self._names(status="all", ada_lift="0")), 3)
 
     def test_checkbox_renders_checked_from_the_url(self):
         self.assertContains(self.client.get(reverse("index"), {"ada_lift": "1"}), "ada-lift-check")
@@ -2892,6 +2892,62 @@ class AdaLiftFilterTests(TestCase):
         self.assertEqual(row.visitors, 1)
         # Blanks are skipped, so the metric counts only people who used the filter.
         self.assertFalse(UsageDaily.objects.filter(metric="ada_lift", key="").exists())
+
+
+class DefaultStatusFilterTests(TestCase):
+    """With no explicit ?status=, the index defaults to "All" early in the season
+    and switches to "Open" once a majority of active pools have a closing_date on
+    record — that's the citywide announcement landing, regardless of whether the
+    dates themselves are still in the future."""
+
+    def _pool(self, name, is_active=True, closing_date=None):
+        return Pool.objects.create(
+            name=name, slug=name.lower().replace(" ", "-"), address="1 Main St",
+            ppr_amenity_id=name, is_active=is_active,
+            opening_date=date(2026, 6, 1), closing_date=closing_date,
+        )
+
+    def test_all_before_any_closing_dates_are_known(self):
+        self._pool("A Pool")
+        self._pool("B Pool", closing_date=date(2026, 8, 1))
+        data = self.client.get(reverse("pools_json")).json()
+        self.assertEqual(data["status_filter"], "all")
+        self.assertTrue(data["status_is_default"])
+        self.assertEqual({p["name"] for p in data["pools"]}, {"A Pool", "B Pool"})
+
+    def test_open_once_a_majority_have_closing_dates(self):
+        self._pool("A Pool", closing_date=date(2026, 8, 1))
+        self._pool("B Pool", closing_date=date(2026, 8, 1))
+        self._pool("C Pool")
+        data = self.client.get(reverse("pools_json")).json()
+        self.assertEqual(data["status_filter"], "open")
+        self.assertTrue(data["status_is_default"])
+
+    def test_inactive_pools_are_excluded_from_the_majority_count(self):
+        # One active pool with a closing date is already a majority once the
+        # inactive pool (no closing date) is excluded from the total.
+        self._pool("A Pool", closing_date=date(2026, 8, 1))
+        self._pool("Retired Pool", is_active=False)
+        data = self.client.get(reverse("pools_json")).json()
+        self.assertEqual(data["status_filter"], "open")
+
+    def test_a_closing_date_in_the_future_still_counts(self):
+        self._pool("A Pool", closing_date=date(2026, 12, 31))
+        data = self.client.get(reverse("pools_json")).json()
+        self.assertEqual(data["status_filter"], "open")
+
+    def test_explicit_status_overrides_the_default(self):
+        self._pool("A Pool", closing_date=date(2026, 8, 1))
+        data = self.client.get(reverse("pools_json"), {"status": "all"}).json()
+        self.assertEqual(data["status_filter"], "all")
+        self.assertFalse(data["status_is_default"])
+
+    def test_index_page_dropdown_reflects_the_default(self):
+        self._pool("A Pool", closing_date=date(2026, 8, 1))
+        page = self.client.get(reverse("index")).content.decode()
+        start = page.index('id="status-select"')
+        select = page[start:page.index("</select>", start)]
+        self.assertIn('value="open" selected', select)
 
 
 class AdaLiftBrokenTests(TestCase):
