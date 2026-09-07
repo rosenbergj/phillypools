@@ -1803,6 +1803,12 @@ class NearbyPoolsTests(TestCase):
 
     def setUp(self):
         self.today = date(2026, 7, 15)
+        # The pool_detail view computes its own "today" via timezone.localdate();
+        # pinned to match self.today so requests through the client agree with the
+        # direct nearby_pools_context() calls below about what's in season.
+        localdate_patcher = patch("django.utils.timezone.localdate", return_value=self.today)
+        localdate_patcher.start()
+        self.addCleanup(localdate_patcher.stop)
         # Roughly a mile apart each, north from a fixed point in Philadelphia.
         self.pools = {}
         for i, name in enumerate(["Home", "One", "Two", "Three", "Four"]):
@@ -1930,6 +1936,12 @@ class NearbyPoolsScarcityTests(TestCase):
 
     def setUp(self):
         self.today = date(2026, 7, 15)
+        # The pool_detail view computes its own "today" via timezone.localdate();
+        # pinned to match self.today so requests through the client agree with the
+        # direct nearby_pools_context() calls below about what's in season.
+        localdate_patcher = patch("django.utils.timezone.localdate", return_value=self.today)
+        localdate_patcher.start()
+        self.addCleanup(localdate_patcher.stop)
         self.a, self.b, self.c = [
             Pool.objects.create(
                 name=f"{n} Pool", ppr_amenity_id=f"id-{n}", address=f"{i} Main St",
