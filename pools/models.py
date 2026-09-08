@@ -368,6 +368,10 @@ class Submission(models.Model):
     ]
     STATUS_CHOICES = [
         ("pending", "Pending"),
+        # Might be worth revisiting, but not currently actionable — e.g. a note
+        # about the site sent in through the submission form rather than a pool
+        # update. Nothing in code treats this differently from approved/rejected;
+        # it only exists so a moderator can park something without deciding.
         ("hold", "Hold"),
         ("approved", "Approved"),
         ("rejected", "Rejected"),
