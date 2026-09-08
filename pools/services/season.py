@@ -229,8 +229,17 @@ def build_season_histogram(lengths, bin_width=DEFAULT_BIN_WIDTH, uncounted=0):
     # Label the day axis on round tens, which read as days rather than as bucket
     # boundaries — the buckets are already drawn, and labelling all 26 of them
     # would be unreadable at any width the page actually gets.
+    #
+    # Every bin start is a multiple of bin_width (both lo and each step are), so a
+    # round-ten label that's also a multiple of bin_width — always true at the
+    # default bin_width=2 — falls exactly on a bin boundary, in the gap between two
+    # bars, with nothing to show which one it belongs to. Nudging a quarter of a
+    # bin's width to the right lands it inside the bar that actually starts there
+    # instead of straddling the seam; a label that doesn't fall on a boundary (only
+    # possible with a non-default --histogram-bin-width) already sits unambiguously
+    # inside one bar, so the same nudge is harmless there too.
     x_ticks = [
-        AxisTick(value=v, position=round(x_of(v), 2), label=str(v))
+        AxisTick(value=v, position=round(x_of(v) + slot / 4, 2), label=str(v))
         for v in range(-(-lo // 10) * 10, hi + bin_width + 1, 10)
     ]
     y_ticks = [

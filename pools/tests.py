@@ -3335,6 +3335,16 @@ class SeasonHistogramTests(TestCase):
         self.assertGreaterEqual(top_tick, 9)
         self.assertAlmostEqual(min(t.position for t in hist.y_ticks), hist.plot_top, places=1)
 
+    def test_a_boundary_tick_lands_inside_the_bar_it_labels(self):
+        # At the default bin_width, every round-ten label falls exactly on a bin
+        # boundary — nudged right so it's unambiguously inside the bar it marks the
+        # start of, rather than sitting in the gap between two bars.
+        hist = build_season_histogram([39, 40, 41, 88], bin_width=2)
+        tick = next(t for t in hist.x_ticks if t.value == 40)
+        bar = next(b for b in hist.bars if b.start == 40)
+        self.assertGreater(tick.position, bar.x)
+        self.assertLess(tick.position, bar.x + bar.width)
+
     def test_the_day_axis_is_labelled_in_days_not_buckets(self):
         hist = build_season_histogram([39, 57, 88], bin_width=2)
         # 90 included: the axis runs to the end of the last bucket (88–89), not to
