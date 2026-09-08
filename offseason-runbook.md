@@ -14,8 +14,20 @@ everything has to be backed up before the Railway project is deleted.
 
 In the Railway dashboard, disable the cron on the `url-watcher` service before
 anything else. It runs five times a day, and any submission it creates after you
-clear the queue (step 2) or take the backup (step 6) is work you'll either lose or
-have to redo. Nothing else in this runbook is safe to do while it's still firing.
+clear the queue (step 2) or before you take the backup (step 6) is work you'll
+either have to redo or lose outright. Those two steps are the only ones that
+actually depend on it being off — steps 3-5 don't touch submissions or usage data
+either way — but a real shutdown doesn't happen in one sitting: DNS propagation,
+scheduled deletions, and just working through the list take hours to days, not
+minutes (this one did). Pause it first so that gap can't accumulate several more
+cron cycles' worth of submissions before you get back to the backup, rather than
+timing the pause around exactly when it's needed.
+
+If there's no direct disable toggle in the dashboard, changing the cron schedule to a
+day that won't occur before step 11 deletes the project (e.g. `15 1,13,16,19,22 6 * *`,
+day-of-month 6) is an effective substitute — confirmed working 2026-09-07. The schedule
+lives in Railway's dashboard, not in `railway.toml`, so there's nothing to revert once
+the project is deleted.
 
 ### 2. Clear the submission queue
 
@@ -24,6 +36,10 @@ Approved submissions should already be applied to pool records. Reject or delete
 anything leftover so you start the next season clean.
 
 ### 3. Render the static offseason site
+
+**Sync the prod database first** (`sync-prod-db.md`) — this command must run locally
+(see below), against local data, and only prod has this season's final numbers.
+Re-sync any time you suspect prod has moved since your last one.
 
 ```bash
 python manage.py render_static_site --season-year 2026
@@ -39,8 +55,11 @@ got annoyed in August may well go looking in February, when there's no Django le
 to answer. It's rendered from the same body template as the live page.
 
 It also builds the index page's **season summary** — a short bullet list (how many pools
-opened, the longest and shortest seasons, the earliest opening and the latest closing,
-each naming the pools involved) and, below it, the **season-length histogram**: how many
+opened, the longest and shortest seasons, the median season length labeled "Average pool
+season," the earliest opening and the latest closing, each naming the pools involved where
+one applies — the median only names pools when it lands exactly on a real length, which an
+even pool count and no tie at the middle can leave without one) and, below it, the
+**season-length histogram**: how many
 days each pool was open, counted from opening day to closing day inclusive, bucketed 2
 days to a bar.
 
@@ -201,20 +220,34 @@ possible next season — it must stay.
 
 ### 6. Back up the database
 
-From your local machine with the Railway CLI installed:
+From your local machine with the Railway CLI and `pg_dump` installed:
 
 ```bash
 railway link          # select the phillypools project
-railway connect Postgres
+
+# terminal 1 — leave this running
+railway connect Postgres --tunnel-only
+
+# terminal 2 — use the localhost URL the command above printed
+pg_dump "<printed-local-url>" -Fc -f offseason-backups/phillypools-$(date +%Y%m%d).dump
 ```
 
-Or get the connection string from the Railway dashboard (Postgres service → Variables → `DATABASE_URL`) and run:
+**Don't copy `DATABASE_URL` straight from the Railway dashboard into `pg_dump`** — it
+ends in `@postgres.railway.internal:5432/railway`, a hostname that only resolves inside
+Railway's private network. It won't connect from this box or your laptop, and this
+project has no public `DATABASE_PUBLIC_URL` to fall back to (same issue `sync-prod-db.md`
+works around with `railway ssh` instead of a direct connection). `railway connect
+Postgres --tunnel-only` is what actually bridges that gap: it holds open a local tunnel
+and prints a `localhost:<port>` connection string `pg_dump` can use. (Plain `railway
+connect Postgres`, no flag, also works, but only for an interactive `psql` shell —
+`--tunnel-only` is what's needed to point `pg_dump` at it.) This is based on reading
+`railway connect --help`'s documented behavior, not a completed dump — if it doesn't
+work as described, update this note with what actually happened.
 
-```bash
-pg_dump "<DATABASE_URL>" -Fc -f phillypools-$(date +%Y%m%d).dump
-```
-
-Keep this `.dump` file somewhere safe — it's a full `pg_dump` of every table (pool data, season history, submission history, site announcements, etc.), so nothing needs separate handling. A password manager attachment or personal cloud storage works fine.
+`offseason-backups/` is gitignored and lives on this dev box — it's picked up by the box's own
+server-wide backups, so nothing further needs doing here. It's a full `pg_dump` of every
+table (pool data, season history, submission history, site announcements, etc.), so
+nothing needs separate handling.
 
 ### 7. Verify the backup
 
@@ -222,7 +255,7 @@ Do this before step 11, not after. Once the Railway project is gone this dump is
 only copy of the data, and a dump you've never read back is not a backup.
 
 ```bash
-pg_restore --list phillypools-YYYYMMDD.dump | head -40
+pg_restore --list offseason-backups/phillypools-YYYYMMDD.dump | head -40
 ```
 
 That confirms the file isn't truncated and lists the tables it contains — check that
@@ -232,7 +265,28 @@ is a stronger check and takes another minute.
 
 ### 8. Record all environment variables
 
-From the Railway dashboard, copy every env var from both the **web service** and the **cron service** to your password manager or a secure note. The ones that matter and won't be auto-regenerated:
+Dump both services straight to file rather than copying values by hand from the
+dashboard — faster, and nothing gets fat-fingered:
+
+```bash
+cd offseason-backups
+(umask 077 && railway variable list --service web --kv > env-vars-web-<year>.txt)
+(umask 077 && railway variable list --service url-watcher --kv > env-vars-cron-<year>.txt)
+```
+
+**Redirect straight to a file every time — never run `railway variable list` bare.**
+Its default table output includes full raw secret values, not just names, despite
+looking like a summary; only `--kv`/`--json` are documented as doing that, but the
+plain default does too. The `umask 077` subshell matters too — it makes the file mode
+600 from the moment it's created, with no window where a default-permission file sits
+there briefly readable by anyone else on the box.
+
+Once both files exist, trim each down to what Part 2 steps 4–5 actually need — delete
+every `RAILWAY_*` line (Railway injects these itself; they won't match the new
+project's IDs anyway), `DATABASE_URL` (new project, new value), and any other
+build/platform noise (`DEBUG`, `ALLOWED_HOSTS`, `MISE_PYTHON_GITHUB_ATTESTATIONS` at
+last count) — none of it needs restoring. What should survive the trim, the vars that
+matter and won't be auto-regenerated:
 
 - `SECRET_KEY`
 - `ANTHROPIC_API_KEY`
@@ -279,9 +333,18 @@ User-Agent we send points at all year.
 
 ### 10. Switch DNS to Cloudflare Pages
 
-DNS for `phillypools.app` is at **Namecheap**, not Cloudflare. Update both the
-`phillypools.app` and `www.phillypools.app` records to point at the Cloudflare Pages
-URL instead of the Railway-provided domain. Verify the offseason site loads on both.
+DNS for `phillypools.app` moved from Namecheap to **Cloudflare** during the 2026
+shutdown (Cloudflare Pages' custom-domain feature requires the apex to be a zone on
+the same account — Namecheap couldn't satisfy that without breaking HTTPS on a plain
+redirect). Namecheap is still the registrar; Cloudflare is now authoritative for DNS.
+Update both the `phillypools.app` and `www.phillypools.app` records, in Cloudflare's
+own DNS dashboard, to point at the Cloudflare Pages URL instead of the Railway-provided
+domain. Verify the offseason site loads on both.
+
+The zone also carries the site's other DNS: 3 SES DKIM CNAMEs, an SPF TXT, Namecheap's
+email-forwarding MX records (`eforward*.registrar-servers.com` — a pre-existing feature,
+unrelated to this migration), and a `google-site-verification` TXT for Search Console.
+None of these need touching here; they were carried over once, during the migration.
 
 ### 10.5. Migrate `railway.toml` to Infrastructure as Code
 
@@ -300,8 +363,10 @@ deletes the project, after which there is no longer a configuration to migrate *
 This is the only point in the year where both are true — and you have the whole setup
 paged in from steps 8-11, rather than meeting it cold next June.
 
-Run `railway config migrate`, review the generated `.railway/railway.ts`, and commit it.
-What it must preserve:
+Run `railway config migrate --apply` (the plain form without `--apply` is a dry run —
+it only prints what it would write), review the generated `.railway/railway.ts`, and
+commit it, along with `package.json`/`package-lock.json` (see below). What it must
+preserve:
 
 - the build command (`collectstatic`)
 - the healthcheck path and timeout
@@ -310,21 +375,56 @@ What it must preserve:
   If the migration flattens that into a single start command, the rebuild's step 5 stops
   working and you won't find out until June.
 
-**Then answer the question this step exists to de-risk:** migrating proves IaC can
-*describe* a project that already exists. The rebuild needs it to *create* one from
-nothing, which is not the same thing and is not something we've confirmed. Point the
-file at a throwaway Railway project and see whether it stands one up. If it can't, the
-rebuild stays manual and Part 2 needs the dashboard steps kept — better to learn that
-now, while a working project is still around to compare against, than next June.
+**`railway config plan`/`apply` need the `railway` npm package installed at the repo
+root** (`npm install railway`) — `.railway/railway.ts` imports `railway/iac`, and unlike
+`config migrate` (which only translates the file), `plan`/`apply` actually execute it.
+Commit the resulting `package.json`/`package-lock.json`; `node_modules/` is gitignored.
 
-Note also that it's unconfirmed whether Railway applies `.railway/railway.ts`
-automatically on deploy or only via the CLI. That uncertainty is a second reason this
-step sits *after* the DNS cutover: if committing the file does apply it immediately,
-nothing user-facing is behind it any more.
+**The question this step exists to de-risk, answered 2026-09-08:** migrating proves IaC
+can *describe* a project that already exists; the rebuild needs it to *create* one from
+nothing, which is a different capability. Tested against a real throwaway project
+(`railway init --name <x>` → `railway config plan` → `railway config apply`, then
+`railway delete --project <id> --yes` to clean up — deletion is scheduled by Railway,
+not instant, so it may still list briefly afterward):
+
+- **It does create a service from nothing** — `config apply` against an empty project
+  correctly planned and applied "1 to add," and `railway status` showed the new service
+  with the right build/start/healthcheck config.
+- **But it doesn't connect a GitHub source.** The created service showed **Offline**,
+  and `railway logs --build`/`railway logs` both reported "No deployments found" — there
+  was code nowhere to build. `config apply` only ever creates/updates a service's
+  *settings*; attaching it to this repo is a separate action IaC doesn't cover.
+
+So: **Part 2 steps 4 and 5 stay as dashboard-driven "add a service from the GitHub
+repo"** — IaC doesn't replace that part. What it *does* replace is manually re-entering
+build/start/healthcheck: once each service is connected to the repo, run
+`railway config plan` then `railway config apply` against it to make sure those settings
+actually land, rather than assuming the dashboard's defaults match `.railway/railway.ts`.
+
+Still unconfirmed, and untested by the above (would need a real repo connection to
+check): whether Railway auto-applies a committed `.railway/railway.ts` on deploy the way
+it currently auto-reads `railway.toml`, or whether `config apply` always has to be run
+by hand. Assume the latter — running `config apply` explicitly after connecting each
+service in Part 2 steps 4/5 — until proven otherwise.
 
 ### 11. Delete the Railway project
 
+**Optional:** the web service has stayed live and cron paused through steps 6–10, so any
+visits since step 5's cleanup exist only as raw, un-aggregated `UsageEvent` rows — nothing
+has rolled them into `UsageDaily` since. If you want this last stretch of traffic counted
+rather than discarded, repeat step 5's rollup-and-delete and step 6's `pg_dump` once more
+right before deleting the project, and use that dump for the restore instead. Skipping this
+costs nothing but a little usage data for the last few days of the season — pool records,
+season history, submissions, and everything else are unaffected either way.
+
 Once DNS has propagated and you've confirmed the offseason site is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
+
+**Deletion is scheduled, not immediate** — confirmed 2026-09-08, both on this project and
+on a throwaway one deleted the same day via CLI. Railway's own `railway delete --help`
+says as much ("Project deletion is scheduled by Railway. Treat a successful response as
+the deletion request being accepted."); in the dashboard it showed a ~48 hour delay before
+the project actually disappears. It'll still list as existing in the meantime — that's
+expected, not a failed deletion.
 
 ### 12. Resubmit the sitemap in Search Console
 
@@ -350,11 +450,15 @@ point the real domain at it.
 > `.railway/railway.ts` (https://docs.railway.com/infrastructure-as-code).
 >
 > **Part 1 step 10.5 should have converted this already**, during the shutdown. Confirm
-> `.railway/railway.ts` is in the repo before starting step 4, and check what step 10.5
-> recorded about whether IaC can stand up a project from scratch — if it can't, steps 4
-> and 5 stay manual as written. If that conversion never happened, do it now, before
-> creating anything. Once the rebuild has succeeded on IaC, rewrite steps 4 and 5 for
-> the new format and delete both this note and step 10.5.
+> `.railway/railway.ts` is in the repo before starting step 4. Step 10.5's throwaway-project
+> test (2026-09-08) found IaC creates a service's *settings* from nothing, but doesn't
+> connect it to a GitHub source — so steps 4 and 5 below **stay manual as written**
+> (dashboard, "add from GitHub repo"), with one addition: run `npm install railway` at
+> the repo root, then `railway config plan` and `railway config apply` against each
+> service right after connecting it, rather than assuming the dashboard's defaults match
+> `.railway/railway.ts`. If that conversion never happened, do it now, before creating
+> anything. Once this has actually been proven out on a live rebuild, simplify steps 4
+> and 5 to state that directly and delete both this note and step 10.5.
 
 ### 1. Create a new Railway project
 
@@ -376,7 +480,7 @@ goes green and the problem isn't obvious.
 Get the new `DATABASE_URL` from the Railway Postgres service variables, then restore:
 
 ```bash
-pg_restore -d "<NEW_DATABASE_URL>" --no-owner phillypools-YYYYMMDD.dump
+pg_restore -d "<NEW_DATABASE_URL>" --no-owner offseason-backups/phillypools-YYYYMMDD.dump
 ```
 
 This restores every table from the dump — pool records, season history, previous
@@ -391,7 +495,11 @@ its old slug for last season's rows and its new name for this season's.
 
 ### 4. Deploy the web service
 
-Add a new service from the GitHub repo (`phillypools`). Railway will use `railway.toml` for build and start commands automatically.
+Add a new service from the GitHub repo (`phillypools`). `railway.toml` stopped being
+read on 2026-12-01 (see the note above this Part) — once the service is connected, run
+`npm install railway` at the repo root if you haven't already, then
+`railway config plan` / `railway config apply` (linked to this service) to apply the
+build/start/healthcheck settings from `.railway/railway.ts` instead.
 
 Set the following environment variables on the web service:
 
@@ -426,7 +534,10 @@ Verify by visiting the Railway-provided URL for the web service and checking the
 
 ### 5. Add the cron service
 
-Add a second service from the same GitHub repo. All of its variables go on the cron service itself (Variables tab of that service). Three are cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard); the five SES digest-email vars are **plain literal values** from your saved backup — they exist only on the cron service and are not set on (or referenced from) the web service, since only the cron sends email:
+Add a second service from the same GitHub repo, then run `railway config apply` (linked
+to this service) the same as step 4 — `.railway/railway.ts` defines one service whose
+start command branches on `RAILWAY_SERVICE_NAME`, so the same file covers both.
+All of its variables go on the cron service itself (Variables tab of that service). Three are cross-service references to the web service (replace `phillypools` with whatever the web service is actually named in the Railway dashboard); the five SES digest-email vars are **plain literal values** from your saved backup — they exist only on the cron service and are not set on (or referenced from) the web service, since only the cron sends email:
 
 ```
 RAILWAY_SERVICE_NAME=url-watcher
@@ -448,13 +559,59 @@ In the Railway dashboard, configure this service as a **Cron** with schedule `15
 > which makes the manual variable redundant. Confirm the first run actually executes
 > `run_url_watcher` and not gunicorn.
 
+### 5.5. Verify every restored credential still works
+
+Anything pasted in from `offseason-backups/env-vars-*.txt` could have been rotated,
+revoked, or quietly expired in the months since it was captured — a provider-side
+rotation, an account cleanup, a value that got updated live and never written back to
+the file. A credential that's *present* isn't the same as one that *works*, and most
+of these fail silently (a dead map key just shows "API KEY REQUIRED" instead of an
+error) rather than loudly, so nothing forces you to notice on its own. Check each one
+now, before real traffic depends on it:
+
+- **`ANTHROPIC_API_KEY`** — a real call, not just a pipeline that might short-circuit
+  before reaching it:
+  ```bash
+  railway ssh --service web -- python manage.py shell -c \
+    "import anthropic, os; c = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY']); print(c.messages.create(model='claude-haiku-4-5-20251001', max_tokens=8, messages=[{'role':'user','content':'hi'}]).content)"
+  ```
+  An auth error here means the key's dead; a printed response means it's good.
+- **`CARTO_API_KEY`** — load the homepage map. Tiles stamped "API KEY REQUIRED"
+  instead of the real basemap mean the key's dead; see `README.md`'s basemap section.
+- **`CLOUDFLARE_TURNSTILE_SITE_KEY` / `_SECRET_KEY`** — can't be tested until step 7's
+  DNS cutover (Turnstile is bound to the real hostname; see the Testing gotcha under
+  step 4). Don't skip circling back — submit something real through `/submit/` on the
+  live domain once it's up, and confirm the captcha actually passes rather than just
+  assuming it will because nothing errored at deploy time.
+- **`R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`**
+  — view a pool page with an existing display image (read path), then submit a test
+  update with an uploaded photo (write path). Either credential being wrong drops
+  silently to a broken image rather than a visible error.
+- **`SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` / `SES_REGION` / `DIGEST_FROM_EMAIL`
+  / `DIGEST_TO_EMAIL`** — don't rely on `send_pending_digest` for this: it only sends
+  when something's actually pending, and a fresh restore usually has an empty queue,
+  so a clean run tells you nothing about whether SES itself works. Force a real send
+  instead:
+  ```bash
+  railway ssh --service url-watcher -- python manage.py shell -c \
+    "from pools.services.digest import _send_via_ses; _send_via_ses('[phillypools.app] SES credential test', 'If this arrived, SES credentials are good.')"
+  ```
+  Confirm the email actually lands in `DIGEST_TO_EMAIL`'s inbox — not just that the
+  command exited without raising.
+
+Anything that fails: get a fresh value from the provider, update it on the Railway
+service (and in the saved env-var file, so this season's backup is the good copy),
+and redeploy before moving on. A credential that's still broken once the cron is
+unpaused fails silently there too — the whole point of checking now is not finding
+out from a missed digest email in October.
+
 ### 6. Run the new season setup
 
 Follow `season-setup.md` from the beginning.
 
 ### 7. Switch DNS back to Railway
 
-Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records (at Namecheap) to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
+Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records — in **Cloudflare's** DNS dashboard, not Namecheap; DNS moved there during the 2026 shutdown (Part 1 step 10) and Namecheap is registrar-only now — to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
 
 ### 8. Set up monitored pages
 
