@@ -31,14 +31,24 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
   <style>
     body {
       margin: 0;
+      background: #f0f6ff;
+      font-family: Georgia, serif;
+    }
+    main {
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      background: #f0f6ff;
-      font-family: Georgia, serif;
       padding: 2rem;
       box-sizing: border-box;
+    }
+    h1.site-title {
+      font-size: .85rem;
+      font-weight: normal;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #1a3a5c;
+      margin: 0 0 1rem;
     }
     p {
       font-size: 1.5rem;
@@ -60,7 +70,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       list-style: none;
       border-top: 1px solid #c8d8ec;
     }
-    .pools h1 {
+    .pools h2 {
       font-size: 1rem;
       font-weight: normal;
       color: #1a3a5c;
@@ -92,7 +102,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
     .pools .where {
       display: block;
       font-size: .85rem;
-      color: #6c757d;
+      color: #57616a;
       margin-top: .15rem;
     }
     .facts {
@@ -103,7 +113,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       border-top: 1px solid #c8d8ec;
       list-style: none;
     }
-    .facts h1 {
+    .facts h2 {
       font-size: 1rem;
       font-weight: normal;
       color: #1a3a5c;
@@ -122,7 +132,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       padding: .15rem 0;
     }
     .facts .who {
-      color: #6c757d;
+      color: #57616a;
       font-size: .9rem;
     }
     .chart {
@@ -131,7 +141,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
       margin: 3rem 0 0;
       border-top: 1px solid #c8d8ec;
     }
-    .chart h1 {
+    .chart h2 {
       font-size: 1rem;
       font-weight: normal;
       color: #1a3a5c;
@@ -150,7 +160,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
     .chart text {
       font-family: Georgia, serif;
       font-size: 13px;
-      fill: #5d7f9e;
+      fill: #3f6483;
     }
     .chart .axis-title { fill: #1a3a5c; }
     /* The SVG scales to the column, so on a phone it lands near half size and
@@ -162,23 +172,25 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
     }
     .credit {
       font-size: .85rem;
-      color: #6c757d;
+      color: #57616a;
       margin: 2rem 0 0;
     }
-    .credit a { color: #6c757d; }
+    .credit a { color: #57616a; }
   </style>
 </head>
 <body>
-  <p>Hope you had a great summer! See you in the spring!</p>
+<main>
+  <h1 class="site-title">Philly Pools</h1>
+  <p>Hope you had a great summer! See you in spring {{ next_year }}!</p>
   <img src="/pic.png" alt="Swimmers enjoying a Philadelphia public pool">
 
   {% if facts %}
   <div class="facts">
-    <h1>The {{ season_year }} season by the numbers</h1>
+    <h2>The {{ season_year }} season by the numbers</h2>
     <ul>
       <li>{{ facts.opened }} pool{{ facts.opened|pluralize }} opened in {{ season_year }}</li>
       {% for fact in facts.facts %}
-        <li>{{ fact.label }}: {{ fact.value }} <span class="who">({{ fact.pools|join:", " }})</span></li>
+        <li>{{ fact.label }}: {{ fact.value }}{% if fact.pools %} <span class="who">({{ fact.pools|join:", " }})</span>{% endif %}</li>
       {% endfor %}
     </ul>
   </div>
@@ -187,7 +199,7 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
   {% if histogram %}
   {% localize off %}
   <div class="chart">
-    <h1>How long the pools stayed open in {{ season_year }}</h1>
+    <h2>How long the pools stayed open in {{ season_year }}</h2>
     <svg viewBox="0 0 {{ histogram.view_width }} {{ histogram.view_height }}"
          role="img" aria-labelledby="chart-title chart-desc"
          preserveAspectRatio="xMidYMid meet">
@@ -229,8 +241,8 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
   {% endif %}
 
   <div class="pools">
-    <h1>{{ pools|length }} Philadelphia public pools</h1>
-    <ul style="list-style:none;padding:0;margin:0">
+    <h2>{{ pools|length }} Philadelphia public pools</h2>
+    <ul role="list" style="list-style:none;padding:0;margin:0">
       {% for pool in pools %}
         <li>
           <a href="{{ pool.get_absolute_url }}">{{ pool.name }}</a>
@@ -242,5 +254,6 @@ Bootstrap base, so the og:/twitter: pairs stay in sync.
   </div>
 
   <p class="credit"><a href="https://icons8.com/icon/cliXK3GCh7oD/pool" target="_blank" rel="noopener">Pool icon by Icons8</a></p>
+</main>
 </body>
 </html>

@@ -55,7 +55,7 @@ got annoyed in August may well go looking in February, when there's no Django le
 to answer. It's rendered from the same body template as the live page.
 
 It also builds the index page's **season summary** — a short bullet list (how many pools
-opened, the longest and shortest seasons, the median season length labeled "Average pool
+opened, the longest and shortest seasons, the median season length labeled "Median pool
 season," the earliest opening and the latest closing, each naming the pools involved where
 one applies — the median only names pools when it lands exactly on a real length, which an
 even pool count and no tie at the middle can leave without one) and, below it, the

@@ -3343,7 +3343,7 @@ class SeasonHistogramTests(TestCase):
             [t.label for t in hist.x_ticks], ["40", "50", "60", "70", "80", "90"]
         )
 
-    def test_median_of_an_even_and_an_odd_number_of_pools(self):
+    def test_average_of_an_even_and_an_odd_number_of_pools(self):
         self.assertEqual(build_season_histogram([40, 50, 60]).median, 50)
         self.assertEqual(build_season_histogram([40, 50, 60, 70]).median, 55)
         # Rendered as '55', not '55.0'.
@@ -3659,3 +3659,69 @@ class SeasonFactsTests(TestCase):
             [self._season("Kelly Pool", date(2026, 7, 4), date(2026, 9, 7))]
         )
         self.assertEqual(self._labelled(facts)["Earliest pool opening"][0], "July 4")
+
+    def test_median_of_an_odd_count_names_that_pool(self):
+        # 39, 57, 88 — the middle value, 57, belongs to Barry Pool outright.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),   # 88
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),    # 39
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 15)),  # 57
+        ])
+        self.assertEqual(self._labelled(facts)["Median pool season"], ("57 days", ("Barry Pool",)))
+
+    def test_median_of_an_even_count_names_every_pool_tied_at_the_middle(self):
+        # 39, 57, 57, 88 — the two middle values are equal, so the median (57)
+        # is a real length two different pools actually had.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),   # 88
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),    # 39
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 15)),  # 57
+            self._season("Cruz Pool", date(2026, 6, 13), date(2026, 8, 8)),    # 57
+        ])
+        self.assertEqual(
+            self._labelled(facts)["Median pool season"],
+            ("57 days", ("Barry Pool", "Cruz Pool")),
+        )
+
+    def test_median_of_an_even_count_with_no_middle_tie_names_nobody(self):
+        # 39, 50, 60, 88 — the median (55) falls between two different lengths;
+        # no pool actually had a 55-day season, so nobody is named for it.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),   # 88
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),    # 39
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 8)),   # 50
+            self._season("Cruz Pool", date(2026, 6, 13), date(2026, 8, 11)),   # 60
+        ])
+        self.assertEqual(self._labelled(facts)["Median pool season"], ("55 days", ()))
+
+    def test_a_fractional_median_is_not_rounded_to_a_whole_day(self):
+        # 39, 55, 60, 88 — the median (57.5) is a fraction of a day and prints as one.
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),   # 88
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),    # 39
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 13)),  # 55
+            self._season("Cruz Pool", date(2026, 6, 13), date(2026, 8, 11)),   # 60
+        ])
+        self.assertEqual(self._labelled(facts)["Median pool season"], ("57.5 days", ()))
+
+    def test_median_ignores_pools_with_no_measurable_season(self):
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),  # 88
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),   # 39
+            self._season("Baker Pool", date(2026, 6, 30), None),              # unmeasurable
+        ])
+        # Median of just the two measurable seasons: (39 + 88) / 2 = 63.5.
+        self.assertEqual(self._labelled(facts)["Median pool season"], ("63.5 days", ()))
+
+    def test_median_sits_between_shortest_and_earliest_opening(self):
+        facts = build_season_facts([
+            self._season("Kelly Pool", date(2026, 6, 12), date(2026, 9, 7)),
+            self._season("Amos Pool", date(2026, 7, 31), date(2026, 9, 7)),
+            self._season("Barry Pool", date(2026, 6, 20), date(2026, 8, 15)),
+        ])
+        labels = [f.label for f in facts.facts]
+        self.assertEqual(
+            labels.index("Median pool season"),
+            labels.index("Shortest pool season") + 1,
+        )
+        self.assertLess(labels.index("Median pool season"), labels.index("Earliest pool opening"))

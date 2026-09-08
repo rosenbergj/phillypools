@@ -306,6 +306,32 @@ def _extreme(seasons, key, pick, label, format_value):
     )
 
 
+def _median_fact(seasons):
+    """The median season length among pools with a known length.
+
+    Median rather than mean, so a couple of pools that barely opened or stayed
+    open nearly year-round don't drag the number away from what a typical
+    pool's season actually looked like.
+
+    Pool names are named only when the median lands exactly on a real pool's
+    length. For an odd count that's always true — the median is the middle
+    value, an actual length someone had. For an even count it's the average of
+    the two middle values, which can fall between them with no pool at that
+    exact length; when that happens the parenthetical is skipped rather than
+    naming pools that don't match.
+    """
+    lengths = sorted(s["days"] for s in seasons if s["days"] is not None)
+    if not lengths:
+        return None
+    mid = len(lengths) // 2
+    median = lengths[mid] if len(lengths) % 2 else (lengths[mid - 1] + lengths[mid]) / 2
+    return SeasonFact(
+        label="Median pool season",
+        value=f"{median:g} day{'s' if median != 1 else ''}",
+        pools=tuple(s["name"] for s in seasons if s["days"] == median),
+    )
+
+
 def build_season_facts(seasons):
     """Summarize `seasons` — dicts of name/opening_date/closing_date/days.
 
@@ -316,7 +342,7 @@ def build_season_facts(seasons):
     if not opened:
         return SeasonFacts(opened=0, facts=[])
 
-    days = lambda value: f"{value} day{'s' if value != 1 else ''}"
+    days = lambda value: f"{value:g} day{'s' if value != 1 else ''}"
     # The last two bracket the city's whole swimming season: the first day any
     # pool was open and the last day any pool was still open. Deliberately not
     # earliest-vs-latest *opening*, which would describe the staggered rollout
@@ -324,6 +350,7 @@ def build_season_facts(seasons):
     candidates = (
         _extreme(seasons, "days", max, "Longest pool season", days),
         _extreme(seasons, "days", min, "Shortest pool season", days),
+        _median_fact(seasons),
         _extreme(seasons, "opening_date", min, "Earliest pool opening", _format_day),
         _extreme(seasons, "closing_date", max, "Latest pool closing", _format_day),
     )
