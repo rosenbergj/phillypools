@@ -417,7 +417,7 @@ right before deleting the project, and use that dump for the restore instead. Sk
 costs nothing but a little usage data for the last few days of the season — pool records,
 season history, submissions, and everything else are unaffected either way.
 
-Once DNS has propagated and you've confirmed the offseason site is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops billing.
+Once DNS has propagated and you've confirmed the offseason site is live, delete the Railway project from the Railway dashboard. This removes all three services (web, Postgres, cron) and stops usage charges — but **not** the Hobby plan's monthly subscription, which is billed to the account, not the project. Step 13 takes care of that.
 
 **Deletion is scheduled, not immediate** — confirmed 2026-09-08, both on this project and
 on a throwaway one deleted the same day via CLI. Railway's own `railway delete --help`
@@ -434,6 +434,17 @@ Search Console to re-fetch it so the offseason set is picked up promptly. Over t
 few weeks, check Coverage: the pool URLs should stay indexed. If they start showing up
 as "Page with redirect" or "Soft 404," something is shadowing the static pages — check
 `_redirects` first.
+
+### 13. Cancel the Railway Hobby plan subscription
+
+Last step, once everything above is done and step 11's scheduled deletion has actually
+gone through. In Railway's account billing settings, cancel the **Hobby plan**
+subscription.
+
+Deleting the project is not enough. The Hobby plan is a monthly subscription on the
+account itself, and Railway keeps charging it with zero projects and nothing running.
+Learned the hard way in the 2026 shutdown: the project was deleted 2026-09-08, and a
+full extra month was still billed on 2026-09-11. Part 2 step 1 re-subscribes.
 
 ---
 
@@ -462,7 +473,8 @@ point the real domain at it.
 
 ### 1. Create a new Railway project
 
-In the Railway dashboard, create a new project named `phillypools` (or similar).
+Re-subscribe to the Railway **Hobby plan** first, since Part 1 step 13 canceled it. Then,
+in the Railway dashboard, create a new project named `phillypools` (or similar).
 
 ### 2. Add a PostgreSQL service
 
