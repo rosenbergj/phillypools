@@ -483,6 +483,30 @@ full extra month was still billed on 2026-09-11. Part 2 step 1 re-subscribes.
 
 ---
 
+## Between the two — editing pool data mid-offseason
+
+There's no live database in the offseason: **prod is the backup dump** from Part 1
+step 6, so editing it is a prod write — Josh's call, same as in season. A custom-format
+dump can't be edited in place. What worked on 2026-09-16 (moving did-not-open pools'
+closure text from `updates` into `notes`):
+
+1. Keep an untouched copy first (`cp -p X.dump X.dump.bak`) and leave it alone.
+2. Restore into a throwaway local Postgres matching the dump's major version:
+   `docker run -d --name pp-scratch-pg -e POSTGRES_PASSWORD=scratch -e POSTGRES_DB=railway -p 127.0.0.1:55432:5432 postgres:18`,
+   then `pg_restore -d <url> --no-owner --no-acl X.dump`.
+3. Make the edits in a transaction whose `WHERE` requires the exact current values,
+   and set `last_updated = now()` on edited pools as an admin save would — the
+   sitemap's `lastmod` reads it, which is what tells Google to recrawl.
+4. `pg_dump -Fc` back over `X.dump`. Verify by restoring it into a second database and
+   diffing plain-SQL dumps (ignore the random `\restrict` / `\unrestrict` lines).
+5. Sync dev from the container: the `sync-prod-db.md` recipe with
+   `DATABASE_URL=<container url>` on the `dumpdata` instead of `railway ssh`.
+6. Re-render (step 3), **but keep the previously deployed `bot/index.html`** — see
+   step 4's note on why a re-render undercounts it. Diff the new build against the old
+   one before `wrangler pages deploy offseason-build`; only the pages you meant to
+   change, their sitemap `lastmod`s, and nothing else should differ.
+7. `docker rm -f pp-scratch-pg`.
+
 ## Part 2 — Start of Season Rebuild
 
 Do these roughly in order. The database restore comes *before* the first web deploy,
@@ -532,6 +556,11 @@ pg_restore -d "<NEW_DATABASE_URL>" --no-owner offseason-backups/phillypools-YYYY
 
 This restores every table from the dump — pool records, season history, previous
 submissions, site announcements, etc.
+
+**Restore the `.dump`, not a `.dump.bak` next to it.** The 2026 backup
+(`phillypools-20260907.dump`) was edited after shutdown (2026-09-16, pool notes — see
+"editing pool data mid-offseason" above); `phillypools-20260907.dump.bak` is the
+untouched original, kept only as a fallback.
 
 Last season's `/stats/` history comes back with it, so year-over-year comparison
 works immediately. Nothing needs configuring: `UsageEvent` starts empty (you cleared
