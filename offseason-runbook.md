@@ -358,6 +358,24 @@ Update both the `phillypools.app` and `www.phillypools.app` records, in Cloudfla
 own DNS dashboard, to point at the Cloudflare Pages URL instead of the Railway-provided
 domain. Verify the offseason site loads on both.
 
+**`www` → apex redirect.** In season, Django's `WWWRedirectMiddleware` 301s `www` to the
+apex; the static site has no equivalent, and `_redirects` can't do it (it matches paths,
+not hosts), so `www` served every page as a 200 duplicate until this was added on
+2026-09-16. It's a **Bulk Redirect** in the zone, set up following
+<https://developers.cloudflare.com/pages/how-to/www-redirect/>: a list with source
+`www.phillypools.app`, target `https://phillypools.app`, status 301, and all four
+parameters (preserve query string, subpath matching, preserve path suffix, include
+subdomains), plus a bulk redirect rule using that list. **Skip the guide's step 3** (the
+dummy `A www 192.0.2.1` record): the existing proxied `www` record already routes traffic
+through Cloudflare, which is all the redirect needs, and the `www` custom domain stays
+attached to the Pages project. It lives in the zone, not the Pages project, so it should
+survive between shutdowns — check it still exists rather than recreating it:
+
+```bash
+curl -sI "https://www.phillypools.app/pools/amos-pool/?x=1" | grep -iE "^(HTTP|location)"
+# expect 301 and location: https://phillypools.app/pools/amos-pool/?x=1
+```
+
 The zone also carries the site's other DNS: 3 SES DKIM CNAMEs, an SPF TXT, Namecheap's
 email-forwarding MX records (`eforward*.registrar-servers.com` — a pre-existing feature,
 unrelated to this migration), and a `google-site-verification` TXT for Search Console.
@@ -641,6 +659,10 @@ Follow `season-setup.md` from the beginning.
 ### 7. Switch DNS back to Railway
 
 Add both `phillypools.app` and `www.phillypools.app` as custom domains on the Railway web service (Railway dashboard → web service → Settings → Custom Domains). Update both DNS records — in **Cloudflare's** DNS dashboard, not Namecheap; DNS moved there during the 2026 shutdown (Part 1 step 10) and Namecheap is registrar-only now — to point to the Railway-provided CNAMEs. Verify the live app loads correctly on both.
+
+The zone's `www` → apex Bulk Redirect (Part 1 step 10) can stay on all season. With
+the `www` record proxied it answers first with the same 301 `WWWRedirectMiddleware`
+would send; with it DNS-only it simply stops applying and the middleware takes over.
 
 ### 8. Set up monitored pages
 
