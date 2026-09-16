@@ -5,6 +5,10 @@
 # assets, so a catch-all would shadow every archived pool page that
 # render_static_site writes under /pools/<slug>/.
 #
+# render_static_site appends a block of exact-match /pools/<id>/ -> /pools/<slug>/
+# 301s to its copy of this file, one pair per pool. Don't hand-write those here;
+# they're generated from the database so they can't drift from the real slugs.
+#
 # /submit/ is season-only (no server to accept a submission during the
 # offseason), so send it to the index rather than 404ing an indexed URL. Both
 # forms are listed so this doesn't depend on the splat matching an empty segment.

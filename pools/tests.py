@@ -1782,6 +1782,18 @@ class RenderStaticSiteTests(TestCase):
         # A /pools/* redirect would shadow every archived page Pages serves.
         self.assertNotIn("/pools/*", (self.out / "_redirects").read_text())
 
+    def test_retired_numeric_urls_keep_redirecting_to_the_slug(self):
+        # Live, /pools/<id>/ is a 301 to the slug. Search engines still hold old
+        # numeric results, so the archive has to answer them too rather than 404
+        # for eight months and then 301 again when Django returns.
+        pool = self._make_pool()
+        self._render()
+        text = (self.out / "_redirects").read_text()
+        self.assertIn(f"/pools/{pool.pk}  {pool.get_absolute_url()}  301", text)
+        self.assertIn(f"/pools/{pool.pk}/  {pool.get_absolute_url()}  301", text)
+        # The hand-maintained rules survive the append.
+        self.assertIn("/submit  /  302", text)
+
     def test_refuses_to_render_an_empty_site(self):
         with self.assertRaises(CommandError):
             self._render()

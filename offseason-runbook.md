@@ -160,6 +160,16 @@ March searcher is asking. This is also why `offseason/_redirects` must never con
 a `/pools/*` rule: Cloudflare Pages evaluates redirects before static assets, so a
 catch-all there would shadow every page this command generates.
 
+**Retired numeric URLs.** The command also appends an exact-match
+`/pools/<id>/ -> /pools/<slug>/` 301 for every pool to its copy of `_redirects`
+(two lines each, for the trailing-slash and bare forms). Live, those numeric URLs
+are a 301 from `pool_detail_pk_redirect`; nothing on the site links to them any
+more, but search engines still hold old results that do — Google crawled
+`/pools/15` on 2026-09-07 — and a URL that 301s in season, 404s all winter, then
+301s again in May is worse off than one that redirects consistently. These are
+exact matches, not a splat, so they can't shadow the archived pages, and a slug
+starting with a digit (`12th-and-cambria-pool`) is never a purely numeric path.
+
 Three things to know:
 
 - **It must run locally, not via `railway ssh`.** It writes files to disk, and a
