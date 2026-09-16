@@ -211,6 +211,13 @@ no heat-emergency page at all.
 
 Do this before the database dump so the stale pool-info pages don't end up in the backup.
 
+**This makes step 3 a one-shot for the /bot page.** Its "a fixed, hand-picked list of N
+pages" line is counted from this table, so any later re-render from the backup (to fix
+pool text mid-offseason, say) counts only the heat-emergency page and publishes "1 page"
+instead of the in-season number. Found on a 2026-09-16 re-render. Until the renderer
+stops depending on it, keep the previously deployed `bot/index.html` when re-rendering
+— copy the old build aside first and put that one file back before deploying.
+
 ### 5. Aggregate and clear raw usage data
 
 The `/stats/` page is backed by two tables: `UsageEvent` (one row per interaction,
