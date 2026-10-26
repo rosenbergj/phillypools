@@ -569,6 +569,43 @@ the rollup runs off the existing cron service rather than a schedule of its own.
 Note that per-pool history is keyed by slug, so a pool renamed between seasons shows
 its old slug for last season's rows and its new name for this season's.
 
+### 3.5. 2027 relaunch only: credentials changed after Railway's October 2026 breach
+
+This applies to the 2027 rebuild alone. It is a one-time cleanup, not a standing
+step: no part of this runbook says to revoke or rotate keys at shutdown, and later
+offseasons restore from the backup as usual unless something like this happens again.
+
+Railway disclosed an environment-variable breach on 2026-10-21. The 2026 project had
+been deleted about six weeks earlier, and Railway didn't classify the workspace as
+higher-risk, but the keys that had lived in Railway were still valid, so on 2026-10-25
+each one was either revoked or rolled:
+
+- **`ANTHROPIC_API_KEY`: revoked, so create a new one.** Both keys that had been in
+  Railway (`philly-pools` and `philly-pools-v2`) were deleted, and the 2026 backup files
+  carry a `REVOKED-2026-10-25-…` marker instead of a value. Create a new prod key at
+  platform.claude.com (e.g. `philly-pools-v4-prod`). Don't reuse `philly-pools-v3-dev`.
+  That's the local `.env` key, and the reason for having it is that it has never been
+  in Railway.
+- **`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`: rolled, so nothing to do.** The R2 API
+  token was rolled in place rather than deleted, and the new values were written into
+  `env-vars-web-2026.txt`, so restore them from the backup like the rest. Before the
+  roll, the bucket showed 0 Class A (write) operations over the 30 days the dashboard
+  checks easily, and a normal object count. If the token ever has to be recreated
+  from scratch, it needs **Object Read & Write** on the `phillypools-submissions`
+  bucket.
+- **`SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY`: revoked, so create a new one.** Both
+  access keys on the IAM user `phillypools-ses-sender` were revoked: `…3CEK`
+  ("railway-ses-sender", last used about 2026-08-24) and `…TCOS`
+  ("railway-ses-sender-v2", created at the 2026 shutdown and never used). The user
+  itself was kept, so create a new access key on it in IAM and set the pair on the cron
+  service in step 5. `SES_REGION` and the two `DIGEST_*` addresses are unchanged, so
+  take them from the backup. IAM allows only two access keys per user, deactivated ones
+  included, so if both old keys are still listed, delete them before creating the new
+  one.
+
+Step 5.5 verifies all of these as usual. At the 2027 shutdown, the new values go into
+that year's backup files the normal way.
+
 ### 4. Deploy the web service
 
 Add a new service from the GitHub repo (`phillypools`). `railway.toml` stopped being
@@ -581,7 +618,7 @@ Set the following environment variables on the web service:
 
 ```
 SECRET_KEY=<from your saved backup>
-ANTHROPIC_API_KEY=<from your saved backup>
+ANTHROPIC_API_KEY=<from your saved backup; 2027 only: new key, see step 3.5>
 CLOUDFLARE_TURNSTILE_SITE_KEY=<from your saved backup>
 CLOUDFLARE_TURNSTILE_SECRET_KEY=<from your saved backup>
 R2_ACCOUNT_ID=<from your saved backup>
@@ -620,8 +657,8 @@ RAILWAY_SERVICE_NAME=url-watcher
 ANTHROPIC_API_KEY=${{phillypools.ANTHROPIC_API_KEY}}
 DATABASE_URL=${{phillypools.DATABASE_URL}}
 SECRET_KEY=${{phillypools.SECRET_KEY}}
-SES_ACCESS_KEY_ID=<literal value from your saved backup>
-SES_SECRET_ACCESS_KEY=<literal value from your saved backup>
+SES_ACCESS_KEY_ID=<literal value from your saved backup; 2027 only: new key, see step 3.5>
+SES_SECRET_ACCESS_KEY=<literal value from your saved backup; 2027 only: new key, see step 3.5>
 SES_REGION=<literal value from your saved backup>
 DIGEST_FROM_EMAIL=<literal value from your saved backup>
 DIGEST_TO_EMAIL=<literal value from your saved backup>
